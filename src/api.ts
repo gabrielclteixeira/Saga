@@ -48,6 +48,26 @@ export interface ChatResponse {
   accounting: Accounting;
 }
 
+export interface ConversationMeta {
+  id: number;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoredMessage {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  attachments_json: string;
+  route: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  tokens_saved: number;
+}
+
 export type StreamEvent =
   | { kind: "Start"; route: "local" | "claude"; model: string; reason: string }
   | { kind: "Delta"; text: string }
@@ -70,11 +90,19 @@ export const api = {
   sendMessage: (messages: ChatMessage[]) =>
     invoke<ChatResponse>("send_message", { messages }),
   sendMessageStream: (
+    conversationId: number,
     messages: ChatMessage[],
     onEvent: (ev: StreamEvent) => void
   ): Promise<void> => {
     const channel = new Channel<StreamEvent>();
     channel.onmessage = onEvent;
-    return invoke<void>("send_message_stream", { messages, channel });
+    return invoke<void>("send_message_stream", { conversationId, messages, channel });
   },
+  listConversations: () => invoke<ConversationMeta[]>("list_conversations"),
+  getConversation: (id: number) => invoke<StoredMessage[]>("get_conversation", { id }),
+  newConversation: (title?: string) =>
+    invoke<number>("new_conversation", { title: title ?? null }),
+  renameConversation: (id: number, title: string) =>
+    invoke<void>("rename_conversation", { id, title }),
+  deleteConversation: (id: number) => invoke<void>("delete_conversation", { id }),
 };

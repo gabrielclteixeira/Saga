@@ -2,6 +2,7 @@
 
 use std::sync::Mutex;
 
+use rusqlite::Connection;
 use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::State;
@@ -10,18 +11,22 @@ use crate::accounting::Accounting;
 use crate::providers::{estimate_tokens, ChatMessage};
 use crate::router;
 use crate::settings::Settings;
+use crate::store::{self, ConversationMeta, StoredMessage};
 use crate::{memory, providers};
 
 pub struct AppState {
     pub settings: Mutex<Settings>,
     pub accounting: Mutex<Accounting>,
+    pub db: Mutex<Connection>,
 }
 
 impl AppState {
     pub fn new() -> Self {
+        let db = store::open().expect("falha a abrir a base de dados SQLite");
         Self {
             settings: Mutex::new(Settings::load()),
             accounting: Mutex::new(Accounting::default()),
+            db: Mutex::new(db),
         }
     }
 }
@@ -90,6 +95,39 @@ pub fn get_memory_preview(state: State<AppState>) -> String {
     memory::preview(&settings, 2000)
 }
 
+// ---- Histórico de conversas ----
+
+#[tauri::command]
+pub fn list_conversations(state: State<AppState>) -> Result<Vec<ConversationMeta>, String> {
+    let conn = state.db.lock().unwrap();
+    store::list_conversations(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_conversation(state: State<AppState>, id: i64) -> Result<Vec<StoredMessage>, String> {
+    let conn = state.db.lock().unwrap();
+    store::get_messages(&conn, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn new_conversation(state: State<AppState>, title: Option<String>) -> Result<i64, String> {
+    let conn = state.db.lock().unwrap();
+    store::create_conversation(&conn, title.as_deref().unwrap_or("Nova conversa"))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn rename_conversation(state: State<AppState>, id: i64, title: String) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    store::rename_conversation(&conn, id, &title).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_conversation(state: State<AppState>, id: i64) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    store::delete_conversation(&conn, id).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn list_ollama_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();
@@ -154,10 +192,30 @@ pub async fn send_message(
 #[tauri::command]
 pub async fn send_message_stream(
     state: State<'_, AppState>,
+    conversation_id: i64,
     messages: Vec<ChatMessage>,
     channel: Channel<StreamEvent>,
 ) -> Result<(), String> {
     let settings = state.settings.lock().unwrap().clone();
+
+    // Persistir a mensagem do utilizador (a última do histórico) + auto-título.
+    if let Some(last_user) = messages.iter().rev().find(|m| m.role == "user") {
+        let conn = state.db.lock().unwrap();
+        let _ = store::append_message(
+            &conn,
+            conversation_id,
+            "user",
+            &last_user.content,
+            "[]",
+            "",
+            "",
+            0,
+            0,
+            0.0,
+            0,
+        );
+        let _ = store::maybe_autotitle(&conn, conversation_id, &last_user.content);
+    }
 
     let prepared = router::prepare(&messages, &settings)
         .await
@@ -255,6 +313,24 @@ pub async fn send_message_stream(
     } else {
         0.0
     };
+
+    // Persistir a resposta do assistente.
+    {
+        let conn = state.db.lock().unwrap();
+        let _ = store::append_message(
+            &conn,
+            conversation_id,
+            "assistant",
+            &response.text,
+            "[]",
+            prepared.route.as_str(),
+            &prepared.model,
+            response.input_tokens as i64,
+            response.output_tokens as i64,
+            cost,
+            prepared.tokens_saved as i64,
+        );
+    }
 
     let _ = channel.send(StreamEvent::Done {
         input_tokens: response.input_tokens,

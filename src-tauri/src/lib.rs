@@ -4,6 +4,7 @@ mod memory;
 mod providers;
 mod router;
 mod settings;
+mod store;
 
 use commands::AppState;
 
@@ -21,6 +22,11 @@ pub fn run() {
             commands::list_ollama_models,
             commands::send_message,
             commands::send_message_stream,
+            commands::list_conversations,
+            commands::get_conversation,
+            commands::new_conversation,
+            commands::rename_conversation,
+            commands::delete_conversation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

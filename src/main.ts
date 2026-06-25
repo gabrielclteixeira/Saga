@@ -4,7 +4,9 @@ import {
   type Accounting,
   type ChatMessage,
   type ChatResponse,
+  type ConversationMeta,
   type Settings,
+  type StoredMessage,
 } from "./api";
 
 interface Item {
@@ -14,10 +16,18 @@ interface Item {
   error?: boolean;
 }
 
-const state: { items: Item[]; settings: Settings | null; busy: boolean } = {
+const state: {
+  items: Item[];
+  settings: Settings | null;
+  busy: boolean;
+  conversations: ConversationMeta[];
+  currentConversationId: number | null;
+} = {
   items: [],
   settings: null,
   busy: false,
+  conversations: [],
+  currentConversationId: null,
 };
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -28,6 +38,10 @@ app.innerHTML = `
     <button class="icon-btn" id="btn-settings" title="Definições">⚙</button>
   </header>
   <main class="layout">
+    <aside class="sidebar">
+      <button class="new-chat" id="btn-new-chat">+ Nova conversa</button>
+      <div class="conv-list" id="conv-list"></div>
+    </aside>
     <section class="chat">
       <div class="messages" id="messages">
         <div class="empty">Faz uma pergunta. Tarefas leves ficam no modelo local; só o que é pesado escala para o Claude.</div>
@@ -122,6 +136,7 @@ const els = {
   dialog: document.querySelector<HTMLDialogElement>("#settings-dialog")!,
   form: document.querySelector<HTMLFormElement>("#settings-form")!,
   modelsList: document.querySelector<HTMLDataListElement>("#ollama-models")!,
+  convList: document.querySelector<HTMLDivElement>("#conv-list")!,
   claudeModelPreset: document.querySelector<HTMLSelectElement>("#claude-model-preset")!,
   claudeModelCustomWrap: document.querySelector<HTMLLabelElement>("#claude-model-custom-wrap")!,
 };
@@ -239,10 +254,102 @@ async function refreshMemory() {
   }
 }
 
+// ---- Conversas ----
+function renderSidebar() {
+  els.convList.innerHTML = "";
+  for (const c of state.conversations) {
+    const row = document.createElement("div");
+    row.className = "conv" + (c.id === state.currentConversationId ? " active" : "");
+
+    const title = document.createElement("span");
+    title.className = "conv-title";
+    title.textContent = c.title || "Nova conversa";
+    title.title = c.title;
+    title.addEventListener("click", () => selectConversation(c.id));
+
+    const del = document.createElement("button");
+    del.className = "conv-del";
+    del.textContent = "×";
+    del.title = "Apagar";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      removeConversation(c.id);
+    });
+
+    row.appendChild(title);
+    row.appendChild(del);
+    els.convList.appendChild(row);
+  }
+}
+
+async function loadConversations() {
+  state.conversations = await api.listConversations();
+  renderSidebar();
+}
+
+function storedToItem(m: StoredMessage): Item {
+  if (m.role === "assistant" && m.route) {
+    return {
+      role: "assistant",
+      content: m.content,
+      meta: {
+        text: m.content,
+        route: (m.route as "local" | "claude") || "local",
+        model: m.model,
+        input_tokens: m.input_tokens,
+        output_tokens: m.output_tokens,
+        tokens_saved: m.tokens_saved,
+        cost_usd: m.cost_usd,
+        reason: "",
+        accounting: {} as Accounting,
+      },
+    };
+  }
+  return { role: m.role, content: m.content };
+}
+
+async function selectConversation(id: number) {
+  if (state.busy) return;
+  state.currentConversationId = id;
+  const msgs = await api.getConversation(id);
+  state.items = msgs.map(storedToItem);
+  renderMessages();
+  renderSidebar();
+}
+
+async function createConversation() {
+  if (state.busy) return;
+  state.currentConversationId = await api.newConversation();
+  state.items = [];
+  renderMessages();
+  await loadConversations();
+}
+
+async function removeConversation(id: number) {
+  await api.deleteConversation(id);
+  if (state.currentConversationId === id) {
+    state.currentConversationId = null;
+    state.items = [];
+    renderMessages();
+  }
+  await loadConversations();
+  if (state.currentConversationId === null && state.conversations.length > 0) {
+    await selectConversation(state.conversations[0].id);
+  } else if (state.conversations.length === 0) {
+    await createConversation();
+  }
+}
+
 async function onSubmit(ev: Event) {
   ev.preventDefault();
   const text = els.input.value.trim();
   if (!text || state.busy) return;
+
+  if (state.currentConversationId === null) {
+    state.currentConversationId = await api.newConversation();
+    await loadConversations();
+  }
+  const conversationId = state.currentConversationId;
 
   state.items.push({ role: "user", content: text });
   els.input.value = "";
@@ -271,7 +378,7 @@ async function onSubmit(ev: Event) {
   let firstDelta = true;
 
   try {
-    await api.sendMessageStream(payload, (evt) => {
+    await api.sendMessageStream(conversationId, payload, (evt) => {
       if (evt.kind === "Start") {
         start = { route: evt.route, model: evt.model, reason: evt.reason };
       } else if (evt.kind === "Delta") {
@@ -303,6 +410,7 @@ async function onSubmit(ev: Event) {
   } finally {
     setBusy(false);
     renderMessages();
+    loadConversations(); // atualiza título/ordem na sidebar
   }
 }
 
@@ -389,6 +497,7 @@ async function init() {
     renderAccounting(await api.resetAccounting());
   });
   document.querySelector("#btn-mem-refresh")!.addEventListener("click", refreshMemory);
+  document.querySelector("#btn-new-chat")!.addEventListener("click", createConversation);
   els.claudeModelPreset.addEventListener("change", () => {
     const v = els.claudeModelPreset.value;
     const input = els.form.elements.namedItem("claude_model") as HTMLInputElement;
@@ -429,6 +538,12 @@ async function init() {
     state.settings = await api.getSettings();
     renderAccounting(await api.getAccounting());
     await refreshMemory();
+    await loadConversations();
+    if (state.conversations.length === 0) {
+      await createConversation();
+    } else {
+      await selectConversation(state.conversations[0].id);
+    }
   } catch (e) {
     console.error(e);
   }

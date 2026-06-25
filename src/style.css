@@ -84,8 +84,76 @@ body {
 .layout {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: 220px 1fr 320px;
   min-height: 0;
+}
+
+/* Sidebar de conversas */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-2);
+  border-right: 1px solid var(--border);
+}
+.new-chat {
+  margin: 12px;
+  padding: 10px;
+  background: transparent;
+  color: var(--text);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.new-chat:hover {
+  background: var(--bg-3);
+  border-color: var(--accent);
+}
+.conv-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 12px;
+}
+.conv {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.conv:hover {
+  background: var(--bg-3);
+}
+.conv.active {
+  background: var(--bg-3);
+  color: var(--text);
+}
+.conv-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+.conv-del {
+  visibility: hidden;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.conv:hover .conv-del {
+  visibility: visible;
+}
+.conv-del:hover {
+  color: var(--danger);
 }
 .chat {
   display: flex;
