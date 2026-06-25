@@ -24,7 +24,7 @@ impl PlaywrightSidecar {
         }
         let mut child = Command::new(node)
             .arg(script)
-            .env("JANUS_USER_DATA_DIR", user_data_dir)
+            .env("SAGA_USER_DATA_DIR", user_data_dir)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::inherit())

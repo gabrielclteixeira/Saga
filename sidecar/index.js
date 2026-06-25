@@ -1,4 +1,4 @@
-// Sidecar Playwright para o Janus.
+// Sidecar Playwright para o Saga.
 // Protocolo: recebe linhas JSON {id, action, params} no stdin e responde
 // {id, ok, result} ou {id, ok:false, error} no stdout (uma linha por pedido).
 //
@@ -13,7 +13,7 @@ let page = null;
 
 async function ensure() {
   if (context) return;
-  const userDataDir = process.env.JANUS_USER_DATA_DIR || "./.janus-browser";
+  const userDataDir = process.env.SAGA_USER_DATA_DIR || "./.saga-browser";
   // Persistent context => sessão/login mantêm-se entre execuções.
   context = await chromium.launchPersistentContext(userDataDir, { headless: false });
   page = context.pages()[0] || (await context.newPage());
@@ -39,7 +39,7 @@ async function handle(action, params) {
       return "ok";
     }
     case "screenshot": {
-      const dir = process.env.JANUS_USER_DATA_DIR || ".";
+      const dir = process.env.SAGA_USER_DATA_DIR || ".";
       const out = path.join(dir, `shot-${Date.now()}.png`);
       await page.screenshot({ path: out, fullPage: false });
       return out;

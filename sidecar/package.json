@@ -1,8 +1,8 @@
 {
-  "name": "janus-browser-sidecar",
+  "name": "saga-browser-sidecar",
   "private": true,
   "version": "0.1.0",
-  "description": "Sidecar Playwright para as ferramentas de browser do Janus",
+  "description": "Sidecar Playwright para as ferramentas de browser do Saga",
   "main": "index.js",
   "type": "commonjs",
   "dependencies": {

@@ -38,7 +38,7 @@ const state: {
 const app = document.querySelector<HTMLDivElement>("#app")!;
 app.innerHTML = `
   <header class="topbar">
-    <div class="brand">⟁ <strong>Janus</strong> <span class="tag">router local ↔ Claude</span></div>
+    <div class="brand">⛵ <strong>Saga</strong> <span class="tag">router local ↔ Claude</span></div>
     <div class="mini" id="mini-stats"></div>
     <button class="icon-btn" id="btn-settings" title="Definições">⚙</button>
   </header>

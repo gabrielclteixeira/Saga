@@ -1,18 +1,19 @@
-# ⟁ Janus
+# ⛵ Saga
 
 A cross-platform desktop AI assistant that runs a **local model (Ollama)** for light work and
 **escalates to Claude only when it's worth it** — saving tokens (and money) on everything else.
 
 Built with **Tauri 2** (Rust backend + web UI). Runs on Windows, macOS and Linux.
 
-> Janus, the two-faced Roman god: one face on the local model, one on the cloud.
+> *Saga* — the Norse goddess of wisdom, and the word for a story worth telling. Named for the ships
+> where Portugal's greatest sagas were written: the assistant that navigates between local and cloud.
 
 ---
 
 ## Why
 
 Most "chat with an LLM" apps send every keystroke to a paid frontier model — including trivial
-work like reading your notes, summarizing, or classifying. Janus puts a **router** in front:
+work like reading your notes, summarizing, or classifying. Saga puts a **router** in front:
 
 - **Light tasks** (short prompts, "summarize my memory", reading `CLAUDE.md`) → handled **locally** by Ollama. Free.
 - **Heavy tasks** (code, refactors, complex reasoning) → **escalated to Claude**.

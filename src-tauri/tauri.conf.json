@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Janus",
+  "productName": "Saga",
   "version": "0.1.0",
-  "identifier": "pt.erp24.janus",
+  "identifier": "pt.erp24.saga",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Janus",
+        "title": "Saga",
         "width": 1100,
         "height": 720,
         "minWidth": 720,

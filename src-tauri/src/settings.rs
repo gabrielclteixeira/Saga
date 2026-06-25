@@ -106,7 +106,7 @@ impl Default for Settings {
 pub fn config_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("janus")
+        .join("saga")
 }
 
 fn settings_path() -> PathBuf {

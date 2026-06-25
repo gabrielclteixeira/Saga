@@ -28,11 +28,11 @@ pub struct StoredMessage {
     pub tokens_saved: i64,
 }
 
-/// Abre (ou cria) a base de dados em `<config>/janus/janus.db` e garante o schema.
+/// Abre (ou cria) a base de dados em `<config>/saga/saga.db` e garante o schema.
 pub fn open() -> Result<Connection> {
     let dir = settings::config_dir();
     std::fs::create_dir_all(&dir).ok();
-    let path = dir.join("janus.db");
+    let path = dir.join("saga.db");
     let conn = Connection::open(&path).with_context(|| format!("abrir DB em {path:?}"))?;
     conn.pragma_update(None, "foreign_keys", "ON").ok();
     init(&conn)?;
