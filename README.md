@@ -118,6 +118,13 @@ copy/README text, and demo GIFs/screenshots for the repo.
 7. **Secret hardening** — move all credentials to the OS keychain (keyring/Stronghold); no secrets on
    disk in clear. (Also a security/GDPR win.)
 
+**Model flexibility:**
+
+- **More providers beyond Ollama** — support OpenAI-compatible endpoints, Gemini, Mistral, and local
+  runtimes (llama.cpp / LM Studio), behind the existing provider abstraction so the router can pick any.
+- **In-app model downloader** — browse and pull/download models directly from Saga (with a progress
+  UI), so the user never touches a terminal.
+
 ### Browser tool (v2) setup
 
 The browser tool runs Playwright in a Node sidecar, kept Node-free in the Rust core:
