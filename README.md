@@ -101,6 +101,23 @@ isolated phases and run focused subagents (each with only the context it needs) 
 Tauri `icons/` from a real caravel mark via `npm run tauri icon`), a coherent color palette, polished
 copy/README text, and demo GIFs/screenshots for the repo.
 
+**All-in-one / zero-setup distribution** (goal: a non-technical user double-clicks the installer and it just works):
+
+1. **First-run onboarding wizard** — detect what's missing, guide the user through setup, test each
+   connection, and pick a mode. No empty, broken-looking screen on first launch.
+2. **Bundled & managed Ollama** — ship or auto-install Ollama as a managed sidecar; auto-pull a small
+   default model on first run with a progress bar; start/stop it with the app.
+3. **Bundled browser sidecar** — package Node + Chromium as a Tauri sidecar (`externalBin`) so the
+   browser tool needs no manual `npm install` / `playwright install`.
+4. **One-step Claude setup** — paste the API key behind a guided link (or a device/OAuth-style login),
+   stored in the **OS keychain** — not in plaintext `settings.json`.
+5. **Signed & auto-updating** — code-sign + notarize the installers (removes the "unknown publisher"
+   warnings) and add the Tauri updater plugin for in-app updates.
+6. **Zero-config defaults** — usable offline via the local model the moment it finishes downloading;
+   Claude stays optional.
+7. **Secret hardening** — move all credentials to the OS keychain (keyring/Stronghold); no secrets on
+   disk in clear. (Also a security/GDPR win.)
+
 ### Browser tool (v2) setup
 
 The browser tool runs Playwright in a Node sidecar, kept Node-free in the Rust core:
