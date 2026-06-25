@@ -2,7 +2,7 @@
 name = "saga"
 version = "0.1.0"
 description = "Saga — assistente desktop com router local (Ollama) ↔ Claude para poupar tokens"
-authors = ["Gabriel Teixeira <gabriel.teixeira@erp24.pt>"]
+authors = ["Gabriel Teixeira <gabrielcalaca@hotmail.com>"]
 license = "MIT"
 repository = ""
 edition = "2021"
