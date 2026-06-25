@@ -90,12 +90,30 @@ and optionally a `CLAUDE.md`.
 
 ## Roadmap (personal/deeper version)
 
-This repo is the focused portfolio version. A deeper personal build is planned: streaming responses,
-tool calling / MCP, conversation persistence, and richer routing.
+`main` is the focused portfolio version (V1). The `v2` branch is a deeper personal build adding:
+real-time streaming, chat history (SQLite), image attachments (vision), and an agentic browser
+tool (Claude tool-calling driving Playwright). Future: deep research, extended thinking, artifacts,
+tasks, chat search, scheduled automations.
+
+### Browser tool (v2) setup
+
+The browser tool runs Playwright in a Node sidecar, kept Node-free in the Rust core:
+
+```bash
+cd sidecar
+npm install
+npx playwright install chromium
+```
+
+Then in **Settings → Browser**: enable the tool, set the sidecar path to `sidecar/index.js`, and
+pick a user-data dir (the browser session/login persists there across runs). Browser tools require
+**Claude API mode** (the CLI can't do tool-use here). Never hardcode credentials — log in once
+interactively and the persistent context keeps the session.
 
 ## Limitations
 
-- Responses are non-streaming in this version (request → full reply).
+- Streaming is real-time in API mode; the Claude **CLI** path is buffered (one chunk) — a known CLI limitation.
+- Claude **CLI** mode can't accept images or drive tools; those force API mode.
 - On Linux the system webview is WebKitGTK, which lags Chromium — the common Tauri/Wails trade-off.
 - Token "savings" for locally-served requests are estimated (≈4 chars/token); Claude figures are exact.
 

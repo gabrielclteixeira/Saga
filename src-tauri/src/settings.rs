@@ -68,6 +68,14 @@ pub struct Settings {
     pub memory_dir: String,
     /// Caminho opcional para um CLAUDE.md.
     pub claude_md_path: String,
+    /// Ferramentas de browser (tool-calling). Só funcionam em modo Claude API.
+    pub enable_browser_tools: bool,
+    /// Caminho para o sidecar Node do Playwright (sidecar/index.js).
+    pub browser_sidecar_script: String,
+    /// Executável do Node.
+    pub browser_node_path: String,
+    /// Pasta de dados persistente do browser (mantém sessão/login).
+    pub browser_user_data_dir: String,
 }
 
 impl Default for Settings {
@@ -84,6 +92,13 @@ impl Default for Settings {
             routing: RoutingConfig::default(),
             memory_dir: default_memory_dir().to_string_lossy().to_string(),
             claude_md_path: String::new(),
+            enable_browser_tools: false,
+            browser_sidecar_script: String::new(),
+            browser_node_path: "node".into(),
+            browser_user_data_dir: config_dir()
+                .join("browser")
+                .to_string_lossy()
+                .to_string(),
         }
     }
 }

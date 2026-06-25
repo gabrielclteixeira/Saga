@@ -374,6 +374,22 @@ body {
   border: 1px solid var(--border);
 }
 
+/* Passos de ferramenta (tool-calling) */
+.tool-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.tool-step {
+  font-size: 11px;
+  color: var(--claude);
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  opacity: 0.85;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Panel */
 .panel {
   padding: 16px;

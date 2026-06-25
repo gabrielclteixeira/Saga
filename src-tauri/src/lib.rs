@@ -1,10 +1,12 @@
 mod accounting;
+mod agent;
 mod commands;
 mod memory;
 mod providers;
 mod router;
 mod settings;
 mod store;
+mod tools;
 
 use commands::AppState;
 

@@ -12,12 +12,15 @@ use crate::providers::{estimate_tokens, ChatMessage};
 use crate::router;
 use crate::settings::Settings;
 use crate::store::{self, ConversationMeta, StoredMessage};
-use crate::{memory, providers};
+use crate::tools::browser::PlaywrightSidecar;
+use crate::{agent, memory, providers};
 
 pub struct AppState {
     pub settings: Mutex<Settings>,
     pub accounting: Mutex<Accounting>,
     pub db: Mutex<Connection>,
+    /// Sidecar do browser, criado preguiçosamente na 1.ª utilização de ferramentas.
+    pub browser: tokio::sync::Mutex<Option<PlaywrightSidecar>>,
 }
 
 impl AppState {
@@ -27,6 +30,7 @@ impl AppState {
             settings: Mutex::new(Settings::load()),
             accounting: Mutex::new(Accounting::default()),
             db: Mutex::new(db),
+            browser: tokio::sync::Mutex::new(None),
         }
     }
 }
@@ -42,6 +46,10 @@ pub enum StreamEvent {
     },
     Delta {
         text: String,
+    },
+    ToolStep {
+        tool: String,
+        detail: String,
     },
     Done {
         input_tokens: u64,
@@ -250,7 +258,42 @@ pub async fn send_message_stream(
         router::Route::Claude => {
             // Imagens exigem API (a CLI não as suporta).
             let use_api = prepared.has_images || settings.claude_mode == "api";
-            if use_api {
+            if use_api && settings.enable_browser_tools && !prepared.has_images {
+                // Loop agêntico com ferramentas de browser (só API).
+                let tx_d = channel.clone();
+                let tx_t = channel.clone();
+                let mut guard = state.browser.lock().await;
+                if guard.is_none() {
+                    match PlaywrightSidecar::spawn(
+                        &settings.browser_node_path,
+                        &settings.browser_sidecar_script,
+                        &settings.browser_user_data_dir,
+                    )
+                    .await
+                    {
+                        Ok(s) => *guard = Some(s),
+                        Err(e) => return Err(e.to_string()),
+                    }
+                }
+                let browser = guard.as_mut().unwrap();
+                agent::run(
+                    &settings.claude_api_key,
+                    &prepared.model,
+                    settings.claude_max_tokens,
+                    &prepared.full_messages,
+                    browser,
+                    move |d| {
+                        let _ = tx_d.send(StreamEvent::Delta { text: d.to_string() });
+                    },
+                    move |tool, detail| {
+                        let _ = tx_t.send(StreamEvent::ToolStep {
+                            tool: tool.to_string(),
+                            detail: detail.to_string(),
+                        });
+                    },
+                )
+                .await
+            } else if use_api {
                 providers::claude_api::messages_stream(
                     &settings.claude_api_key,
                     &prepared.model,

@@ -252,3 +252,38 @@ pub async fn messages_stream<F: FnMut(&str)>(
         reported_cost_usd: 0.0,
     })
 }
+
+/// Converte mensagens em (system, lista JSON {role, content}) para pedidos com ferramentas.
+pub fn to_request_messages(messages: &[ChatMessage]) -> (Option<String>, Vec<serde_json::Value>) {
+    let (system, wire) = split_messages(messages);
+    let msgs = wire
+        .into_iter()
+        .map(|w| serde_json::json!({ "role": w.role, "content": w.content }))
+        .collect();
+    (system, msgs)
+}
+
+/// POST genérico à Messages API com um corpo já montado; devolve o JSON da resposta.
+pub async fn raw_request(api_key: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
+    if api_key.trim().is_empty() {
+        return Err(anyhow!("ANTHROPIC_API_KEY não configurada (modo API)"));
+    }
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(API_URL)
+        .header("x-api-key", api_key)
+        .header("anthropic-version", API_VERSION)
+        .header("content-type", "application/json")
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| anyhow!("falha a contactar a API Anthropic: {e}"))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("API Anthropic devolveu {status}: {text}"));
+    }
+    resp.json()
+        .await
+        .map_err(|e| anyhow!("resposta da API Anthropic inválida: {e}"))
+}

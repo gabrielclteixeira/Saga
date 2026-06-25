@@ -32,6 +32,10 @@ export interface Settings {
   routing: RoutingConfig;
   memory_dir: string;
   claude_md_path: string;
+  enable_browser_tools: boolean;
+  browser_sidecar_script: string;
+  browser_node_path: string;
+  browser_user_data_dir: string;
 }
 
 export interface Accounting {
@@ -79,6 +83,7 @@ export interface StoredMessage {
 export type StreamEvent =
   | { kind: "Start"; route: "local" | "claude"; model: string; reason: string }
   | { kind: "Delta"; text: string }
+  | { kind: "ToolStep"; tool: string; detail: string }
   | {
       kind: "Done";
       input_tokens: number;

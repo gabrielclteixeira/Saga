@@ -16,6 +16,7 @@ interface Item {
   meta?: ChatResponse;
   error?: boolean;
   attachments?: Attachment[];
+  steps?: string[];
 }
 
 const state: {
@@ -125,6 +126,14 @@ app.innerHTML = `
         <label>Caminho CLAUDE.md (opcional) <input name="claude_md_path" type="text" /></label>
       </fieldset>
 
+      <fieldset>
+        <legend>Browser (ferramentas — só modo API)</legend>
+        <label class="check"><input name="enable_browser_tools" type="checkbox" /> Ativar ferramentas de browser</label>
+        <label>Caminho do sidecar (sidecar/index.js) <input name="browser_sidecar_script" type="text" /></label>
+        <label>Executável Node <input name="browser_node_path" type="text" /></label>
+        <label>Pasta de dados do browser (sessão persistente) <input name="browser_user_data_dir" type="text" /></label>
+      </fieldset>
+
       <menu>
         <button value="cancel" class="ghost">Cancelar</button>
         <button value="save" id="btn-save" class="primary">Guardar</button>
@@ -202,6 +211,18 @@ function renderMessages() {
         thumbs.appendChild(img);
       }
       row.appendChild(thumbs);
+    }
+
+    if (item.steps && item.steps.length) {
+      const steps = document.createElement("div");
+      steps.className = "tool-steps";
+      for (const s of item.steps) {
+        const line = document.createElement("div");
+        line.className = "tool-step";
+        line.textContent = "› " + s;
+        steps.appendChild(line);
+      }
+      row.appendChild(steps);
     }
 
     if (item.content !== "" || item.role === "assistant") {
@@ -455,28 +476,29 @@ async function onSubmit(ev: Event) {
   renderMessages();
   setBusy(true);
 
-  const bubbleEl = els.messages.lastElementChild?.querySelector(
-    ".bubble"
-  ) as HTMLDivElement | null;
-  if (bubbleEl) {
-    bubbleEl.innerHTML = `<span class="dots"><i></i><i></i><i></i></span>`;
-  }
+  const paintBubble = () => {
+    const b = els.messages.lastElementChild?.querySelector(".bubble") as HTMLDivElement | null;
+    if (b) b.textContent = assistant.content;
+    els.messages.scrollTop = els.messages.scrollHeight;
+  };
+  // Indicador inicial "a pensar".
+  const tb = els.messages.lastElementChild?.querySelector(".bubble") as HTMLDivElement | null;
+  if (tb) tb.innerHTML = `<span class="dots"><i></i><i></i><i></i></span>`;
 
   let start: { route: "local" | "claude"; model: string; reason: string } | null = null;
-  let firstDelta = true;
 
   try {
     await api.sendMessageStream(conversationId, payload, (evt) => {
       if (evt.kind === "Start") {
         start = { route: evt.route, model: evt.model, reason: evt.reason };
       } else if (evt.kind === "Delta") {
-        if (firstDelta && bubbleEl) {
-          bubbleEl.textContent = "";
-          firstDelta = false;
-        }
         assistant.content += evt.text;
-        if (bubbleEl) bubbleEl.textContent = assistant.content;
-        els.messages.scrollTop = els.messages.scrollHeight;
+        paintBubble();
+      } else if (evt.kind === "ToolStep") {
+        assistant.steps = assistant.steps ?? [];
+        assistant.steps.push(`${evt.tool} ${evt.detail}`);
+        renderMessages();
+        paintBubble();
       } else if (evt.kind === "Done") {
         assistant.meta = {
           text: assistant.content,
@@ -531,6 +553,13 @@ function settingsToForm(s: Settings) {
     s.routing.force_claude_keywords.join(", ");
   (f.elements.namedItem("memory_dir") as HTMLInputElement).value = s.memory_dir;
   (f.elements.namedItem("claude_md_path") as HTMLInputElement).value = s.claude_md_path;
+  (f.elements.namedItem("enable_browser_tools") as HTMLInputElement).checked =
+    s.enable_browser_tools;
+  (f.elements.namedItem("browser_sidecar_script") as HTMLInputElement).value =
+    s.browser_sidecar_script;
+  (f.elements.namedItem("browser_node_path") as HTMLInputElement).value = s.browser_node_path;
+  (f.elements.namedItem("browser_user_data_dir") as HTMLInputElement).value =
+    s.browser_user_data_dir;
 }
 
 function formToSettings(base: Settings): Settings {
@@ -554,6 +583,10 @@ function formToSettings(base: Settings): Settings {
     claude_max_tokens: parseInt(val("claude_max_tokens")) || 2048,
     memory_dir: val("memory_dir"),
     claude_md_path: val("claude_md_path"),
+    enable_browser_tools: checked("enable_browser_tools"),
+    browser_sidecar_script: val("browser_sidecar_script"),
+    browser_node_path: val("browser_node_path"),
+    browser_user_data_dir: val("browser_user_data_dir"),
     routing: {
       enabled: checked("routing_enabled"),
       use_local_classifier: checked("use_local_classifier"),
