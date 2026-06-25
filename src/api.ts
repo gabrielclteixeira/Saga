@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, Channel } from "@tauri-apps/api/core";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -48,6 +48,18 @@ export interface ChatResponse {
   accounting: Accounting;
 }
 
+export type StreamEvent =
+  | { kind: "Start"; route: "local" | "claude"; model: string; reason: string }
+  | { kind: "Delta"; text: string }
+  | {
+      kind: "Done";
+      input_tokens: number;
+      output_tokens: number;
+      tokens_saved: number;
+      cost_usd: number;
+      accounting: Accounting;
+    };
+
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
@@ -57,4 +69,12 @@ export const api = {
   listOllamaModels: () => invoke<string[]>("list_ollama_models"),
   sendMessage: (messages: ChatMessage[]) =>
     invoke<ChatResponse>("send_message", { messages }),
+  sendMessageStream: (
+    messages: ChatMessage[],
+    onEvent: (ev: StreamEvent) => void
+  ): Promise<void> => {
+    const channel = new Channel<StreamEvent>();
+    channel.onmessage = onEvent;
+    return invoke<void>("send_message_stream", { messages, channel });
+  },
 };

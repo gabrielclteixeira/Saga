@@ -3,6 +3,7 @@
 use std::sync::Mutex;
 
 use serde::Serialize;
+use tauri::ipc::Channel;
 use tauri::State;
 
 use crate::accounting::Accounting;
@@ -23,6 +24,27 @@ impl AppState {
             accounting: Mutex::new(Accounting::default()),
         }
     }
+}
+
+/// Eventos enviados ao frontend durante o streaming.
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind")]
+pub enum StreamEvent {
+    Start {
+        route: String,
+        model: String,
+        reason: String,
+    },
+    Delta {
+        text: String,
+    },
+    Done {
+        input_tokens: u64,
+        output_tokens: u64,
+        tokens_saved: u64,
+        cost_usd: f64,
+        accounting: Accounting,
+    },
 }
 
 #[derive(Serialize)]
@@ -127,4 +149,120 @@ pub async fn send_message(
         reason: outcome.reason,
         accounting: snapshot,
     })
+}
+
+#[tauri::command]
+pub async fn send_message_stream(
+    state: State<'_, AppState>,
+    messages: Vec<ChatMessage>,
+    channel: Channel<StreamEvent>,
+) -> Result<(), String> {
+    let settings = state.settings.lock().unwrap().clone();
+
+    let prepared = router::prepare(&messages, &settings)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let _ = channel.send(StreamEvent::Start {
+        route: prepared.route.as_str().to_string(),
+        model: prepared.model.clone(),
+        reason: prepared.reason.clone(),
+    });
+
+    // Closure que reenvia cada fragmento para o frontend.
+    let tx = channel.clone();
+    let on_delta = move |d: &str| {
+        let _ = tx.send(StreamEvent::Delta {
+            text: d.to_string(),
+        });
+    };
+
+    let response = match prepared.route {
+        router::Route::Local => {
+            providers::ollama::chat_stream(
+                &settings.ollama_endpoint,
+                &settings.ollama_model,
+                &prepared.full_messages,
+                on_delta,
+            )
+            .await
+        }
+        router::Route::Claude => match settings.claude_mode.as_str() {
+            "api" => {
+                providers::claude_api::messages_stream(
+                    &settings.claude_api_key,
+                    &settings.claude_model,
+                    settings.claude_max_tokens,
+                    &prepared.full_messages,
+                    on_delta,
+                )
+                .await
+            }
+            _ => {
+                // CLI não suporta streaming fino — resposta completa, emitida como um delta.
+                let r = providers::claude_cli::run(
+                    &settings.claude_cli_path,
+                    &settings.claude_model,
+                    &prepared.full_messages,
+                )
+                .await;
+                if let Ok(ref resp) = r {
+                    let _ = channel.send(StreamEvent::Delta {
+                        text: resp.text.clone(),
+                    });
+                }
+                r
+            }
+        },
+    }
+    .map_err(|e| e.to_string())?;
+
+    let snapshot = {
+        let mut acc = state.accounting.lock().unwrap();
+        match prepared.route {
+            router::Route::Local => {
+                let est = response.input_tokens + response.output_tokens;
+                let est = if est == 0 {
+                    estimate_tokens(&response.text)
+                } else {
+                    est
+                };
+                acc.record_local(est);
+            }
+            router::Route::Claude => {
+                acc.record_claude(
+                    &prepared.model,
+                    response.input_tokens,
+                    response.output_tokens,
+                    response.reported_cost_usd,
+                    prepared.tokens_saved,
+                );
+            }
+        }
+        acc.clone()
+    };
+
+    let cost = if prepared.route == router::Route::Claude {
+        if response.reported_cost_usd > 0.0 {
+            response.reported_cost_usd
+        } else {
+            crate::accounting::cost_usd(
+                &prepared.model,
+                response.input_tokens,
+                response.output_tokens,
+            )
+        }
+    } else {
+        0.0
+    };
+
+    let _ = channel.send(StreamEvent::Done {
+        input_tokens: response.input_tokens,
+        output_tokens: response.output_tokens,
+        tokens_saved: prepared.tokens_saved,
+        cost_usd: cost,
+        accounting: snapshot,
+    });
+
+    Ok(())
 }

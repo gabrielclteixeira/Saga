@@ -160,11 +160,20 @@ fn with_system(context: &str, messages: &[ChatMessage]) -> Vec<ChatMessage> {
     out
 }
 
-/// Orquestra um pedido completo: decide rota, monta contexto, chama o provedor.
-pub async fn handle(messages: &[ChatMessage], settings: &Settings) -> Result<Outcome> {
+/// Resultado da fase de decisão+preparação, partilhado pelos caminhos stream e não-stream.
+pub struct Prepared {
+    pub route: Route,
+    pub model: String,
+    pub full_messages: Vec<ChatMessage>,
+    pub tokens_saved: u64,
+    pub reason: String,
+}
+
+/// Decide a rota, carrega memória e monta as mensagens finais (com compressão se escalar).
+/// NÃO chama o provedor — isso fica para quem orquestra (stream ou não-stream).
+pub async fn prepare(messages: &[ChatMessage], settings: &Settings) -> Result<Prepared> {
     let prompt = last_user_prompt(messages);
 
-    // 1. Decisão
     let mut decision = decide(&prompt, settings);
     if !decision.firm && settings.routing.use_local_classifier {
         if let Some(route) = classify_local(&prompt, settings).await {
@@ -176,60 +185,67 @@ pub async fn handle(messages: &[ChatMessage], settings: &Settings) -> Result<Out
     let raw_memory = memory::load_raw(settings);
 
     match decision.route {
-        Route::Local => {
+        Route::Local => Ok(Prepared {
+            route: Route::Local,
+            model: settings.ollama_model.clone(),
             // Local é gratuito → injeta a memória crua (sem compressão).
-            let full = with_system(&raw_memory, messages);
-            let response = providers::ollama::chat(
-                &settings.ollama_endpoint,
-                &settings.ollama_model,
-                &full,
-            )
-            .await?;
-            Ok(Outcome {
-                route: Route::Local,
-                model: settings.ollama_model.clone(),
-                response,
-                reason: decision.reason,
-                tokens_saved_compression: 0,
-            })
-        }
+            full_messages: with_system(&raw_memory, messages),
+            tokens_saved: 0,
+            reason: decision.reason,
+        }),
         Route::Claude => {
             // Comprime a memória antes de escalar → menos tokens pagos.
             let compressed = compress_context(&raw_memory, settings).await;
-            let saved = estimate_tokens(&raw_memory)
-                .saturating_sub(estimate_tokens(&compressed));
-            let full = with_system(&compressed, messages);
-
-            let response = match settings.claude_mode.as_str() {
-                "api" => {
-                    providers::claude_api::messages(
-                        &settings.claude_api_key,
-                        &settings.claude_model,
-                        settings.claude_max_tokens,
-                        &full,
-                    )
-                    .await?
-                }
-                _ => {
-                    // "cli" (ou qualquer outro) → usa a Claude CLI
-                    providers::claude_cli::run(
-                        &settings.claude_cli_path,
-                        &settings.claude_model,
-                        &full,
-                    )
-                    .await?
-                }
-            };
-
-            Ok(Outcome {
+            let saved =
+                estimate_tokens(&raw_memory).saturating_sub(estimate_tokens(&compressed));
+            Ok(Prepared {
                 route: Route::Claude,
                 model: settings.claude_model.clone(),
-                response,
+                full_messages: with_system(&compressed, messages),
+                tokens_saved: saved,
                 reason: decision.reason,
-                tokens_saved_compression: saved,
             })
         }
     }
+}
+
+/// Orquestra um pedido completo (não-streaming): prepara + chama o provedor.
+pub async fn handle(messages: &[ChatMessage], settings: &Settings) -> Result<Outcome> {
+    let p = prepare(messages, settings).await?;
+
+    let response = match p.route {
+        Route::Local => {
+            providers::ollama::chat(&settings.ollama_endpoint, &settings.ollama_model, &p.full_messages)
+                .await?
+        }
+        Route::Claude => match settings.claude_mode.as_str() {
+            "api" => {
+                providers::claude_api::messages(
+                    &settings.claude_api_key,
+                    &settings.claude_model,
+                    settings.claude_max_tokens,
+                    &p.full_messages,
+                )
+                .await?
+            }
+            _ => {
+                providers::claude_cli::run(
+                    &settings.claude_cli_path,
+                    &settings.claude_model,
+                    &p.full_messages,
+                )
+                .await?
+            }
+        },
+    };
+
+    Ok(Outcome {
+        route: p.route,
+        model: p.model,
+        response,
+        reason: p.reason,
+        tokens_saved_compression: p.tokens_saved,
+    })
 }
 
 /// Snapshot de custo para um Outcome (usado pela contabilidade/UI).

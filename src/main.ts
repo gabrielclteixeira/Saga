@@ -247,26 +247,59 @@ async function onSubmit(ev: Event) {
   state.items.push({ role: "user", content: text });
   els.input.value = "";
   els.input.style.height = "auto";
-  renderMessages();
-  setBusy(true);
 
-  const thinking = document.createElement("div");
-  thinking.className = "msg assistant thinking";
-  thinking.innerHTML = `<div class="bubble"><span class="dots"><i></i><i></i><i></i></span></div>`;
-  els.messages.appendChild(thinking);
-  els.messages.scrollTop = els.messages.scrollHeight;
-
+  // Payload com o histórico até à mensagem do utilizador (antes do placeholder).
   const payload: ChatMessage[] = state.items.map((i) => ({
     role: i.role,
     content: i.content,
   }));
 
+  // Bolha do assistente (vazia) que vai receber o streaming.
+  const assistant: Item = { role: "assistant", content: "" };
+  state.items.push(assistant);
+  renderMessages();
+  setBusy(true);
+
+  const bubbleEl = els.messages.lastElementChild?.querySelector(
+    ".bubble"
+  ) as HTMLDivElement | null;
+  if (bubbleEl) {
+    bubbleEl.innerHTML = `<span class="dots"><i></i><i></i><i></i></span>`;
+  }
+
+  let start: { route: "local" | "claude"; model: string; reason: string } | null = null;
+  let firstDelta = true;
+
   try {
-    const resp = await api.sendMessage(payload);
-    state.items.push({ role: "assistant", content: resp.text, meta: resp });
-    renderAccounting(resp.accounting);
+    await api.sendMessageStream(payload, (evt) => {
+      if (evt.kind === "Start") {
+        start = { route: evt.route, model: evt.model, reason: evt.reason };
+      } else if (evt.kind === "Delta") {
+        if (firstDelta && bubbleEl) {
+          bubbleEl.textContent = "";
+          firstDelta = false;
+        }
+        assistant.content += evt.text;
+        if (bubbleEl) bubbleEl.textContent = assistant.content;
+        els.messages.scrollTop = els.messages.scrollHeight;
+      } else if (evt.kind === "Done") {
+        assistant.meta = {
+          text: assistant.content,
+          route: start?.route ?? "local",
+          model: start?.model ?? "",
+          input_tokens: evt.input_tokens,
+          output_tokens: evt.output_tokens,
+          tokens_saved: evt.tokens_saved,
+          cost_usd: evt.cost_usd,
+          reason: start?.reason ?? "",
+          accounting: evt.accounting,
+        };
+        renderAccounting(evt.accounting);
+      }
+    });
   } catch (e) {
-    state.items.push({ role: "assistant", content: String(e), error: true });
+    assistant.content = String(e);
+    assistant.error = true;
   } finally {
     setBusy(false);
     renderMessages();

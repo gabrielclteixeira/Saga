@@ -1,6 +1,7 @@
 //! Provedor de modelos locais via Ollama (HTTP, por omissão em http://localhost:11434).
 
 use anyhow::{anyhow, Result};
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use super::{ChatMessage, LlmResponse};
@@ -83,6 +84,101 @@ pub async fn chat(endpoint: &str, model: &str, messages: &[ChatMessage]) -> Resu
         output_tokens: parsed.eval_count,
         reported_cost_usd: 0.0,
     })
+}
+
+/// Conversa em streaming: chama `on_delta` para cada fragmento de texto recebido.
+pub async fn chat_stream<F: FnMut(&str)>(
+    endpoint: &str,
+    model: &str,
+    messages: &[ChatMessage],
+    mut on_delta: F,
+) -> Result<LlmResponse> {
+    let url = format!("{}/api/chat", endpoint.trim_end_matches('/'));
+    let wire = to_wire(messages);
+    let body = ChatRequest {
+        model,
+        messages: &wire,
+        stream: true,
+    };
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| anyhow!("falha a contactar o Ollama em {url}: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("Ollama devolveu {status}: {text}"));
+    }
+
+    let mut stream = resp.bytes_stream();
+    let mut buf = String::new();
+    let mut full = String::new();
+    let mut input_tokens = 0u64;
+    let mut output_tokens = 0u64;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| anyhow!("erro no stream do Ollama: {e}"))?;
+        buf.push_str(&String::from_utf8_lossy(&chunk));
+        while let Some(nl) = buf.find('\n') {
+            let line: String = buf[..nl].to_string();
+            buf.drain(..=nl);
+            parse_ollama_line(
+                &line,
+                &mut full,
+                &mut input_tokens,
+                &mut output_tokens,
+                &mut on_delta,
+            );
+        }
+    }
+    // Última linha sem '\n' final.
+    if !buf.trim().is_empty() {
+        let leftover = buf.clone();
+        parse_ollama_line(
+            &leftover,
+            &mut full,
+            &mut input_tokens,
+            &mut output_tokens,
+            &mut on_delta,
+        );
+    }
+
+    Ok(LlmResponse {
+        text: full,
+        input_tokens,
+        output_tokens,
+        reported_cost_usd: 0.0,
+    })
+}
+
+fn parse_ollama_line<F: FnMut(&str)>(
+    line: &str,
+    full: &mut String,
+    input_tokens: &mut u64,
+    output_tokens: &mut u64,
+    on_delta: &mut F,
+) {
+    let line = line.trim();
+    if line.is_empty() {
+        return;
+    }
+    if let Ok(parsed) = serde_json::from_str::<ChatResponse>(line) {
+        if !parsed.message.content.is_empty() {
+            on_delta(&parsed.message.content);
+            full.push_str(&parsed.message.content);
+        }
+        if parsed.prompt_eval_count > 0 {
+            *input_tokens = parsed.prompt_eval_count;
+        }
+        if parsed.eval_count > 0 {
+            *output_tokens = parsed.eval_count;
+        }
+    }
 }
 
 /// Atalho: um único prompt de utilizador, sem histórico.

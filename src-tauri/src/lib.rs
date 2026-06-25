@@ -20,6 +20,7 @@ pub fn run() {
             commands::get_memory_preview,
             commands::list_ollama_models,
             commands::send_message,
+            commands::send_message_stream,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
