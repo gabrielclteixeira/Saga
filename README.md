@@ -97,6 +97,10 @@ tool (Claude tool-calling driving Playwright). Future: deep research, extended t
 tasks, chat search, scheduled automations, and **subagent orchestration** — split a complex task into
 isolated phases and run focused subagents (each with only the context it needs) in parallel to finish faster.
 
+**Rebranding follow-through (Saga):** finish the visual identity — logo/app icons (regenerate the
+Tauri `icons/` from a real caravel mark via `npm run tauri icon`), a coherent color palette, polished
+copy/README text, and demo GIFs/screenshots for the repo.
+
 ### Browser tool (v2) setup
 
 The browser tool runs Playwright in a Node sidecar, kept Node-free in the Rust core:
