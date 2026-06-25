@@ -144,6 +144,19 @@ pub fn append_message(
     Ok(conn.last_insert_rowid())
 }
 
+/// Apaga a última mensagem do assistente de uma conversa (usado ao regenerar).
+pub fn delete_last_assistant(conn: &Connection, conversation_id: i64) -> Result<()> {
+    conn.execute(
+        "DELETE FROM messages WHERE id = (
+            SELECT id FROM messages
+            WHERE conversation_id = ?1 AND role = 'assistant'
+            ORDER BY id DESC LIMIT 1
+        )",
+        params![conversation_id],
+    )?;
+    Ok(())
+}
+
 pub fn rename_conversation(conn: &Connection, id: i64, title: &str) -> Result<()> {
     conn.execute(
         "UPDATE conversations SET title = ?2 WHERE id = ?1",

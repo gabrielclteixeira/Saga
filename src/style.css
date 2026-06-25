@@ -390,6 +390,54 @@ body {
   word-break: break-word;
 }
 
+/* Seletor de rota (Auto/Local/Claude) acima do composer */
+.route-mode {
+  display: flex;
+  gap: 4px;
+  padding: 8px 14px 0;
+}
+.route-mode button {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.route-mode button.active {
+  background: var(--bg-3);
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* Barra de ações na última resposta do assistente */
+.msg-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+.msg-actions button,
+.msg-actions .model-pick {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.msg-actions button:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+.msg-actions .model-pick {
+  padding: 4px 6px;
+}
+
 /* Panel */
 .panel {
   padding: 16px;

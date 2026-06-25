@@ -94,7 +94,8 @@ and optionally a `CLAUDE.md`.
 `main` is the focused portfolio version (V1). The `v2` branch is a deeper personal build adding:
 real-time streaming, chat history (SQLite), image attachments (vision), and an agentic browser
 tool (Claude tool-calling driving Playwright). Future: deep research, extended thinking, artifacts,
-tasks, chat search, scheduled automations.
+tasks, chat search, scheduled automations, and **subagent orchestration** — split a complex task into
+isolated phases and run focused subagents (each with only the context it needs) in parallel to finish faster.
 
 ### Browser tool (v2) setup
 

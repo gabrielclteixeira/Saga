@@ -105,11 +105,23 @@ export const api = {
   sendMessageStream: (
     conversationId: number,
     messages: ChatMessage[],
-    onEvent: (ev: StreamEvent) => void
+    onEvent: (ev: StreamEvent) => void,
+    opts?: {
+      routeOverride?: "local" | "claude";
+      modelOverride?: string;
+      regenerate?: boolean;
+    }
   ): Promise<void> => {
     const channel = new Channel<StreamEvent>();
     channel.onmessage = onEvent;
-    return invoke<void>("send_message_stream", { conversationId, messages, channel });
+    return invoke<void>("send_message_stream", {
+      conversationId,
+      messages,
+      channel,
+      routeOverride: opts?.routeOverride ?? null,
+      modelOverride: opts?.modelOverride ?? null,
+      regenerate: opts?.regenerate ?? false,
+    });
   },
   listConversations: () => invoke<ConversationMeta[]>("list_conversations"),
   getConversation: (id: number) => invoke<StoredMessage[]>("get_conversation", { id }),

@@ -26,6 +26,7 @@ const state: {
   conversations: ConversationMeta[];
   currentConversationId: number | null;
   pendingAttachments: Attachment[];
+  routeMode: "auto" | "local" | "claude";
 } = {
   items: [],
   settings: null,
@@ -33,6 +34,7 @@ const state: {
   conversations: [],
   currentConversationId: null,
   pendingAttachments: [],
+  routeMode: "auto",
 };
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -52,6 +54,11 @@ app.innerHTML = `
         <div class="empty">Faz uma pergunta. Tarefas leves ficam no modelo local; só o que é pesado escala para o Claude.</div>
       </div>
       <div class="attachments" id="attachments"></div>
+      <div class="route-mode" id="route-mode">
+        <button type="button" data-mode="auto" class="active">Auto</button>
+        <button type="button" data-mode="local">Local</button>
+        <button type="button" data-mode="claude">Claude</button>
+      </div>
       <form class="composer" id="composer">
         <button type="button" class="attach-btn" id="btn-attach" title="Anexar imagem">📎</button>
         <input type="file" id="file-input" accept="image/*" multiple hidden />
@@ -156,6 +163,7 @@ const els = {
   convList: document.querySelector<HTMLDivElement>("#conv-list")!,
   attachmentsBar: document.querySelector<HTMLDivElement>("#attachments")!,
   fileInput: document.querySelector<HTMLInputElement>("#file-input")!,
+  routeModeBar: document.querySelector<HTMLDivElement>("#route-mode")!,
   claudeModelPreset: document.querySelector<HTMLSelectElement>("#claude-model-preset")!,
   claudeModelCustomWrap: document.querySelector<HTMLLabelElement>("#claude-model-custom-wrap")!,
 };
@@ -198,7 +206,7 @@ function renderMessages() {
     els.messages.appendChild(empty);
     return;
   }
-  for (const item of state.items) {
+  state.items.forEach((item, index) => {
     const row = document.createElement("div");
     row.className = `msg ${item.role}${item.error ? " error" : ""}`;
 
@@ -251,9 +259,53 @@ function renderMessages() {
       meta.innerHTML = bits.join("");
       row.appendChild(meta);
     }
+
+    // Barra de ações: só na última resposta do assistente e fora de streaming.
+    const isLast = index === state.items.length - 1;
+    if (item.role === "assistant" && isLast && !state.busy && !item.error) {
+      row.appendChild(buildActions());
+    }
+
     els.messages.appendChild(row);
-  }
+  });
   els.messages.scrollTop = els.messages.scrollHeight;
+}
+
+function buildActions(): HTMLDivElement {
+  const actions = document.createElement("div");
+  actions.className = "msg-actions";
+
+  const mk = (label: string, title: string, fn: () => void) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener("click", fn);
+    return b;
+  };
+
+  actions.appendChild(mk("↻ Regenerar", "Regenerar com a mesma rota", () => regenerate()));
+  actions.appendChild(
+    mk("⤴ Claude", "Escalar para o Claude", () => regenerate({ routeOverride: "claude" }))
+  );
+
+  const sel = document.createElement("select");
+  sel.className = "model-pick";
+  sel.innerHTML = `
+    <option value="">Modelo ▾</option>
+    <option value="local">Tentar local</option>
+    <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+    <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+    <option value="claude-opus-4-8">Opus 4.8</option>`;
+  sel.addEventListener("change", () => {
+    const v = sel.value;
+    if (!v) return;
+    if (v === "local") regenerate({ routeOverride: "local" });
+    else regenerate({ routeOverride: "claude", modelOverride: v });
+    sel.value = "";
+  });
+  actions.appendChild(sel);
+
+  return actions;
 }
 
 function escapeHtml(s: string): string {
@@ -445,32 +497,27 @@ async function removeConversation(id: number) {
   }
 }
 
-async function onSubmit(ev: Event) {
-  ev.preventDefault();
-  const text = els.input.value.trim();
-  if ((!text && state.pendingAttachments.length === 0) || state.busy) return;
+type SendOpts = {
+  routeOverride?: "local" | "claude";
+  modelOverride?: string;
+  regenerate?: boolean;
+};
 
-  if (state.currentConversationId === null) {
-    state.currentConversationId = await api.newConversation();
-    await loadConversations();
-  }
-  const conversationId = state.currentConversationId;
-
-  const attachments = state.pendingAttachments.slice();
-  state.items.push({ role: "user", content: text, attachments });
-  state.pendingAttachments = [];
-  renderPendingAttachments();
-  els.input.value = "";
-  els.input.style.height = "auto";
-
-  // Payload com o histórico até à mensagem do utilizador (antes do placeholder).
-  const payload: ChatMessage[] = state.items.map((i) => ({
+function buildPayload(): ChatMessage[] {
+  return state.items.map((i) => ({
     role: i.role,
     content: i.content,
     attachments: i.attachments,
   }));
+}
 
-  // Bolha do assistente (vazia) que vai receber o streaming.
+function routeOptsFromMode(): SendOpts {
+  return state.routeMode === "auto" ? {} : { routeOverride: state.routeMode };
+}
+
+/** Empurra uma bolha de assistente e preenche-a com o streaming. */
+async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
+  const conversationId = state.currentConversationId!;
   const assistant: Item = { role: "assistant", content: "" };
   state.items.push(assistant);
   renderMessages();
@@ -481,39 +528,43 @@ async function onSubmit(ev: Event) {
     if (b) b.textContent = assistant.content;
     els.messages.scrollTop = els.messages.scrollHeight;
   };
-  // Indicador inicial "a pensar".
   const tb = els.messages.lastElementChild?.querySelector(".bubble") as HTMLDivElement | null;
   if (tb) tb.innerHTML = `<span class="dots"><i></i><i></i><i></i></span>`;
 
   let start: { route: "local" | "claude"; model: string; reason: string } | null = null;
 
   try {
-    await api.sendMessageStream(conversationId, payload, (evt) => {
-      if (evt.kind === "Start") {
-        start = { route: evt.route, model: evt.model, reason: evt.reason };
-      } else if (evt.kind === "Delta") {
-        assistant.content += evt.text;
-        paintBubble();
-      } else if (evt.kind === "ToolStep") {
-        assistant.steps = assistant.steps ?? [];
-        assistant.steps.push(`${evt.tool} ${evt.detail}`);
-        renderMessages();
-        paintBubble();
-      } else if (evt.kind === "Done") {
-        assistant.meta = {
-          text: assistant.content,
-          route: start?.route ?? "local",
-          model: start?.model ?? "",
-          input_tokens: evt.input_tokens,
-          output_tokens: evt.output_tokens,
-          tokens_saved: evt.tokens_saved,
-          cost_usd: evt.cost_usd,
-          reason: start?.reason ?? "",
-          accounting: evt.accounting,
-        };
-        renderAccounting(evt.accounting);
-      }
-    });
+    await api.sendMessageStream(
+      conversationId,
+      payload,
+      (evt) => {
+        if (evt.kind === "Start") {
+          start = { route: evt.route, model: evt.model, reason: evt.reason };
+        } else if (evt.kind === "Delta") {
+          assistant.content += evt.text;
+          paintBubble();
+        } else if (evt.kind === "ToolStep") {
+          assistant.steps = assistant.steps ?? [];
+          assistant.steps.push(`${evt.tool} ${evt.detail}`);
+          renderMessages();
+          paintBubble();
+        } else if (evt.kind === "Done") {
+          assistant.meta = {
+            text: assistant.content,
+            route: start?.route ?? "local",
+            model: start?.model ?? "",
+            input_tokens: evt.input_tokens,
+            output_tokens: evt.output_tokens,
+            tokens_saved: evt.tokens_saved,
+            cost_usd: evt.cost_usd,
+            reason: start?.reason ?? "",
+            accounting: evt.accounting,
+          };
+          renderAccounting(evt.accounting);
+        }
+      },
+      opts
+    );
   } catch (e) {
     assistant.content = String(e);
     assistant.error = true;
@@ -522,6 +573,36 @@ async function onSubmit(ev: Event) {
     renderMessages();
     loadConversations(); // atualiza título/ordem na sidebar
   }
+}
+
+async function onSubmit(ev: Event) {
+  ev.preventDefault();
+  const text = els.input.value.trim();
+  if ((!text && state.pendingAttachments.length === 0) || state.busy) return;
+
+  if (state.currentConversationId === null) {
+    state.currentConversationId = await api.newConversation();
+    await loadConversations();
+  }
+
+  const attachments = state.pendingAttachments.slice();
+  state.items.push({ role: "user", content: text, attachments });
+  state.pendingAttachments = [];
+  renderPendingAttachments();
+  els.input.value = "";
+  els.input.style.height = "auto";
+
+  await streamAssistant(buildPayload(), routeOptsFromMode());
+}
+
+/** Regenera a última resposta do assistente (opcionalmente forçando rota/modelo). */
+async function regenerate(opts: SendOpts = {}) {
+  if (state.busy || state.currentConversationId === null) return;
+  if (state.items.length && state.items[state.items.length - 1].role === "assistant") {
+    state.items.pop();
+  }
+  renderMessages();
+  await streamAssistant(buildPayload(), { ...opts, regenerate: true });
 }
 
 function setBusy(b: boolean) {
@@ -623,6 +704,14 @@ async function init() {
   document.querySelector("#btn-new-chat")!.addEventListener("click", createConversation);
   document.querySelector("#btn-attach")!.addEventListener("click", () => els.fileInput.click());
   els.fileInput.addEventListener("change", onFilesSelected);
+  els.routeModeBar.querySelectorAll<HTMLButtonElement>("button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.routeMode = (btn.dataset.mode as "auto" | "local" | "claude") ?? "auto";
+      els.routeModeBar
+        .querySelectorAll("button")
+        .forEach((b) => b.classList.toggle("active", b === btn));
+    });
+  });
   els.claudeModelPreset.addEventListener("change", () => {
     const v = els.claudeModelPreset.value;
     const input = els.form.elements.namedItem("claude_model") as HTMLInputElement;

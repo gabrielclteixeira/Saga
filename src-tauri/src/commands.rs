@@ -203,11 +203,18 @@ pub async fn send_message_stream(
     conversation_id: i64,
     messages: Vec<ChatMessage>,
     channel: Channel<StreamEvent>,
+    route_override: Option<String>,
+    model_override: Option<String>,
+    regenerate: bool,
 ) -> Result<(), String> {
     let settings = state.settings.lock().unwrap().clone();
 
-    // Persistir a mensagem do utilizador (a última do histórico) + auto-título.
-    if let Some(last_user) = messages.iter().rev().find(|m| m.role == "user") {
+    if regenerate {
+        // Regenerar: a mensagem do utilizador já existe; apaga a resposta anterior.
+        let conn = state.db.lock().unwrap();
+        let _ = store::delete_last_assistant(&conn, conversation_id);
+    } else if let Some(last_user) = messages.iter().rev().find(|m| m.role == "user") {
+        // Persistir a mensagem do utilizador (a última do histórico) + auto-título.
         let attachments_json =
             serde_json::to_string(&last_user.attachments).unwrap_or_else(|_| "[]".into());
         let conn = state.db.lock().unwrap();
@@ -227,9 +234,14 @@ pub async fn send_message_stream(
         let _ = store::maybe_autotitle(&conn, conversation_id, &last_user.content);
     }
 
-    let prepared = router::prepare(&messages, &settings)
-        .await
-        .map_err(|e| e.to_string())?;
+    let prepared = router::prepare(
+        &messages,
+        &settings,
+        route_override.as_deref(),
+        model_override.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
 
     let _ = channel.send(StreamEvent::Start {
         route: prepared.route.as_str().to_string(),

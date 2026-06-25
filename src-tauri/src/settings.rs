@@ -44,8 +44,18 @@ impl Default for RoutingConfig {
                 "debug".into(),
                 "arquitetura".into(),
                 "implementa".into(),
+                "claude".into(),
+                "escala".into(),
+                "pesquisa".into(),
+                "como faço".into(),
+                "como desativar".into(),
+                "passos".into(),
+                "github".into(),
+                "api".into(),
+                "documentação".into(),
+                "documentacao".into(),
             ],
-            use_local_classifier: false,
+            use_local_classifier: true,
         }
     }
 }
