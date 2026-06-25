@@ -2,6 +2,7 @@ import "./style.css";
 import {
   api,
   type Accounting,
+  type Attachment,
   type ChatMessage,
   type ChatResponse,
   type ConversationMeta,
@@ -14,6 +15,7 @@ interface Item {
   content: string;
   meta?: ChatResponse;
   error?: boolean;
+  attachments?: Attachment[];
 }
 
 const state: {
@@ -22,12 +24,14 @@ const state: {
   busy: boolean;
   conversations: ConversationMeta[];
   currentConversationId: number | null;
+  pendingAttachments: Attachment[];
 } = {
   items: [],
   settings: null,
   busy: false,
   conversations: [],
   currentConversationId: null,
+  pendingAttachments: [],
 };
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -46,7 +50,10 @@ app.innerHTML = `
       <div class="messages" id="messages">
         <div class="empty">Faz uma pergunta. Tarefas leves ficam no modelo local; só o que é pesado escala para o Claude.</div>
       </div>
+      <div class="attachments" id="attachments"></div>
       <form class="composer" id="composer">
+        <button type="button" class="attach-btn" id="btn-attach" title="Anexar imagem">📎</button>
+        <input type="file" id="file-input" accept="image/*" multiple hidden />
         <textarea id="input" rows="1" placeholder="Escreve uma mensagem…" autocomplete="off"></textarea>
         <button type="submit" id="send">Enviar</button>
       </form>
@@ -74,6 +81,7 @@ app.innerHTML = `
           </span>
         </label>
         <datalist id="ollama-models"></datalist>
+        <label>Modelo de visão (imagens) <input name="ollama_vision_model" type="text" /></label>
       </fieldset>
 
       <fieldset>
@@ -137,6 +145,8 @@ const els = {
   form: document.querySelector<HTMLFormElement>("#settings-form")!,
   modelsList: document.querySelector<HTMLDataListElement>("#ollama-models")!,
   convList: document.querySelector<HTMLDivElement>("#conv-list")!,
+  attachmentsBar: document.querySelector<HTMLDivElement>("#attachments")!,
+  fileInput: document.querySelector<HTMLInputElement>("#file-input")!,
   claudeModelPreset: document.querySelector<HTMLSelectElement>("#claude-model-preset")!,
   claudeModelCustomWrap: document.querySelector<HTMLLabelElement>("#claude-model-custom-wrap")!,
 };
@@ -183,10 +193,23 @@ function renderMessages() {
     const row = document.createElement("div");
     row.className = `msg ${item.role}${item.error ? " error" : ""}`;
 
-    const bubble = document.createElement("div");
-    bubble.className = "bubble";
-    bubble.textContent = item.content;
-    row.appendChild(bubble);
+    if (item.attachments && item.attachments.length) {
+      const thumbs = document.createElement("div");
+      thumbs.className = "msg-thumbs";
+      for (const a of item.attachments) {
+        const img = document.createElement("img");
+        img.src = `data:${a.media_type};base64,${a.data_base64}`;
+        thumbs.appendChild(img);
+      }
+      row.appendChild(thumbs);
+    }
+
+    if (item.content !== "" || item.role === "assistant") {
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = item.content;
+      row.appendChild(bubble);
+    }
 
     if (item.meta) {
       const m = item.meta;
@@ -254,6 +277,58 @@ async function refreshMemory() {
   }
 }
 
+// ---- Anexos ----
+function fileToAttachment(file: File): Promise<Attachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result); // data:<media>;base64,<data>
+      const comma = result.indexOf(",");
+      const header = result.slice(0, comma);
+      const data = result.slice(comma + 1);
+      const semi = header.indexOf(";");
+      const media = header.slice(5, semi > 0 ? semi : undefined) || file.type || "image/png";
+      resolve({ kind: "image", media_type: media, data_base64: data });
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderPendingAttachments() {
+  els.attachmentsBar.innerHTML = "";
+  state.pendingAttachments.forEach((a, idx) => {
+    const wrap = document.createElement("div");
+    wrap.className = "thumb";
+    const img = document.createElement("img");
+    img.src = `data:${a.media_type};base64,${a.data_base64}`;
+    const rm = document.createElement("button");
+    rm.textContent = "×";
+    rm.title = "Remover";
+    rm.addEventListener("click", () => {
+      state.pendingAttachments.splice(idx, 1);
+      renderPendingAttachments();
+    });
+    wrap.appendChild(img);
+    wrap.appendChild(rm);
+    els.attachmentsBar.appendChild(wrap);
+  });
+}
+
+async function onFilesSelected() {
+  const files = els.fileInput.files;
+  if (!files) return;
+  for (const file of Array.from(files)) {
+    try {
+      state.pendingAttachments.push(await fileToAttachment(file));
+    } catch (e) {
+      console.error("falha a ler ficheiro", e);
+    }
+  }
+  els.fileInput.value = "";
+  renderPendingAttachments();
+}
+
 // ---- Conversas ----
 function renderSidebar() {
   els.convList.innerHTML = "";
@@ -288,10 +363,19 @@ async function loadConversations() {
 }
 
 function storedToItem(m: StoredMessage): Item {
+  let attachments: Attachment[] | undefined;
+  if (m.attachments_json && m.attachments_json !== "[]") {
+    try {
+      attachments = JSON.parse(m.attachments_json) as Attachment[];
+    } catch {
+      /* ignora JSON inválido */
+    }
+  }
   if (m.role === "assistant" && m.route) {
     return {
       role: "assistant",
       content: m.content,
+      attachments,
       meta: {
         text: m.content,
         route: (m.route as "local" | "claude") || "local",
@@ -305,7 +389,7 @@ function storedToItem(m: StoredMessage): Item {
       },
     };
   }
-  return { role: m.role, content: m.content };
+  return { role: m.role, content: m.content, attachments };
 }
 
 async function selectConversation(id: number) {
@@ -343,7 +427,7 @@ async function removeConversation(id: number) {
 async function onSubmit(ev: Event) {
   ev.preventDefault();
   const text = els.input.value.trim();
-  if (!text || state.busy) return;
+  if ((!text && state.pendingAttachments.length === 0) || state.busy) return;
 
   if (state.currentConversationId === null) {
     state.currentConversationId = await api.newConversation();
@@ -351,7 +435,10 @@ async function onSubmit(ev: Event) {
   }
   const conversationId = state.currentConversationId;
 
-  state.items.push({ role: "user", content: text });
+  const attachments = state.pendingAttachments.slice();
+  state.items.push({ role: "user", content: text, attachments });
+  state.pendingAttachments = [];
+  renderPendingAttachments();
   els.input.value = "";
   els.input.style.height = "auto";
 
@@ -359,6 +446,7 @@ async function onSubmit(ev: Event) {
   const payload: ChatMessage[] = state.items.map((i) => ({
     role: i.role,
     content: i.content,
+    attachments: i.attachments,
   }));
 
   // Bolha do assistente (vazia) que vai receber o streaming.
@@ -425,6 +513,7 @@ function settingsToForm(s: Settings) {
   const f = els.form;
   (f.elements.namedItem("ollama_endpoint") as HTMLInputElement).value = s.ollama_endpoint;
   (f.elements.namedItem("ollama_model") as HTMLInputElement).value = s.ollama_model;
+  (f.elements.namedItem("ollama_vision_model") as HTMLInputElement).value = s.ollama_vision_model;
   (f.elements.namedItem("claude_mode") as HTMLSelectElement).value = s.claude_mode;
   syncClaudeModelControls(s.claude_model);
   (f.elements.namedItem("claude_cli_path") as HTMLInputElement).value = s.claude_cli_path;
@@ -457,6 +546,7 @@ function formToSettings(base: Settings): Settings {
     ...base,
     ollama_endpoint: val("ollama_endpoint"),
     ollama_model: val("ollama_model"),
+    ollama_vision_model: val("ollama_vision_model"),
     claude_mode: val("claude_mode") as Settings["claude_mode"],
     claude_model: val("claude_model"),
     claude_cli_path: val("claude_cli_path"),
@@ -498,6 +588,8 @@ async function init() {
   });
   document.querySelector("#btn-mem-refresh")!.addEventListener("click", refreshMemory);
   document.querySelector("#btn-new-chat")!.addEventListener("click", createConversation);
+  document.querySelector("#btn-attach")!.addEventListener("click", () => els.fileInput.click());
+  els.fileInput.addEventListener("change", onFilesSelected);
   els.claudeModelPreset.addEventListener("change", () => {
     const v = els.claudeModelPreset.value;
     const input = els.form.elements.namedItem("claude_model") as HTMLInputElement;

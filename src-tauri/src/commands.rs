@@ -200,13 +200,15 @@ pub async fn send_message_stream(
 
     // Persistir a mensagem do utilizador (a última do histórico) + auto-título.
     if let Some(last_user) = messages.iter().rev().find(|m| m.role == "user") {
+        let attachments_json =
+            serde_json::to_string(&last_user.attachments).unwrap_or_else(|_| "[]".into());
         let conn = state.db.lock().unwrap();
         let _ = store::append_message(
             &conn,
             conversation_id,
             "user",
             &last_user.content,
-            "[]",
+            &attachments_json,
             "",
             "",
             0,
@@ -239,28 +241,29 @@ pub async fn send_message_stream(
         router::Route::Local => {
             providers::ollama::chat_stream(
                 &settings.ollama_endpoint,
-                &settings.ollama_model,
+                &prepared.model,
                 &prepared.full_messages,
                 on_delta,
             )
             .await
         }
-        router::Route::Claude => match settings.claude_mode.as_str() {
-            "api" => {
+        router::Route::Claude => {
+            // Imagens exigem API (a CLI não as suporta).
+            let use_api = prepared.has_images || settings.claude_mode == "api";
+            if use_api {
                 providers::claude_api::messages_stream(
                     &settings.claude_api_key,
-                    &settings.claude_model,
+                    &prepared.model,
                     settings.claude_max_tokens,
                     &prepared.full_messages,
                     on_delta,
                 )
                 .await
-            }
-            _ => {
+            } else {
                 // CLI não suporta streaming fino — resposta completa, emitida como um delta.
                 let r = providers::claude_cli::run(
                     &settings.claude_cli_path,
-                    &settings.claude_model,
+                    &prepared.model,
                     &prepared.full_messages,
                 )
                 .await;
@@ -271,7 +274,7 @@ pub async fn send_message_stream(
                 }
                 r
             }
-        },
+        }
     }
     .map_err(|e| e.to_string())?;
 

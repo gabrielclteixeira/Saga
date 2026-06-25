@@ -307,6 +307,72 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.attach-btn {
+  align-self: flex-end;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  height: 42px;
+  width: 42px;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text);
+}
+.attach-btn:hover {
+  background: var(--bg-3);
+}
+
+/* Anexos pendentes (acima do composer) */
+.attachments {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 0;
+  flex-wrap: wrap;
+}
+.attachments:empty {
+  display: none;
+}
+.thumb {
+  position: relative;
+  width: 56px;
+  height: 56px;
+}
+.thumb img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.thumb button {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+}
+
+/* Miniaturas dentro das mensagens */
+.msg-thumbs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.msg-thumbs img {
+  max-width: 180px;
+  max-height: 180px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
 
 /* Panel */
 .panel {

@@ -154,6 +154,7 @@ fn with_system(context: &str, messages: &[ChatMessage]) -> Vec<ChatMessage> {
         out.push(ChatMessage {
             role: "system".into(),
             content: format!("Contexto/memória relevante:\n{context}"),
+            attachments: Vec::new(),
         });
     }
     out.extend_from_slice(messages);
@@ -167,6 +168,8 @@ pub struct Prepared {
     pub full_messages: Vec<ChatMessage>,
     pub tokens_saved: u64,
     pub reason: String,
+    /// Há imagens anexadas → exige API (Claude) ou modelo de visão (local).
+    pub has_images: bool,
 }
 
 /// Decide a rota, carrega memória e monta as mensagens finais (com compressão se escalar).
@@ -182,17 +185,27 @@ pub async fn prepare(messages: &[ChatMessage], settings: &Settings) -> Result<Pr
         }
     }
 
+    let has_images = messages.iter().any(|m| !m.attachments.is_empty());
     let raw_memory = memory::load_raw(settings);
 
     match decision.route {
-        Route::Local => Ok(Prepared {
-            route: Route::Local,
-            model: settings.ollama_model.clone(),
-            // Local é gratuito → injeta a memória crua (sem compressão).
-            full_messages: with_system(&raw_memory, messages),
-            tokens_saved: 0,
-            reason: decision.reason,
-        }),
+        Route::Local => {
+            // Com imagens, usa o modelo de visão local (fallback para o normal se vazio).
+            let model = if has_images && !settings.ollama_vision_model.trim().is_empty() {
+                settings.ollama_vision_model.clone()
+            } else {
+                settings.ollama_model.clone()
+            };
+            Ok(Prepared {
+                route: Route::Local,
+                model,
+                // Local é gratuito → injeta a memória crua (sem compressão).
+                full_messages: with_system(&raw_memory, messages),
+                tokens_saved: 0,
+                reason: decision.reason,
+                has_images,
+            })
+        }
         Route::Claude => {
             // Comprime a memória antes de escalar → menos tokens pagos.
             let compressed = compress_context(&raw_memory, settings).await;
@@ -204,6 +217,7 @@ pub async fn prepare(messages: &[ChatMessage], settings: &Settings) -> Result<Pr
                 full_messages: with_system(&compressed, messages),
                 tokens_saved: saved,
                 reason: decision.reason,
+                has_images,
             })
         }
     }
@@ -215,28 +229,24 @@ pub async fn handle(messages: &[ChatMessage], settings: &Settings) -> Result<Out
 
     let response = match p.route {
         Route::Local => {
-            providers::ollama::chat(&settings.ollama_endpoint, &settings.ollama_model, &p.full_messages)
-                .await?
+            providers::ollama::chat(&settings.ollama_endpoint, &p.model, &p.full_messages).await?
         }
-        Route::Claude => match settings.claude_mode.as_str() {
-            "api" => {
+        Route::Claude => {
+            // Imagens exigem API (a CLI não as suporta).
+            let use_api = p.has_images || settings.claude_mode == "api";
+            if use_api {
                 providers::claude_api::messages(
                     &settings.claude_api_key,
-                    &settings.claude_model,
+                    &p.model,
                     settings.claude_max_tokens,
                     &p.full_messages,
                 )
                 .await?
+            } else {
+                providers::claude_cli::run(&settings.claude_cli_path, &p.model, &p.full_messages)
+                    .await?
             }
-            _ => {
-                providers::claude_cli::run(
-                    &settings.claude_cli_path,
-                    &settings.claude_model,
-                    &p.full_messages,
-                )
-                .await?
-            }
-        },
+        }
     };
 
     Ok(Outcome {

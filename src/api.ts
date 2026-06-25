@@ -1,8 +1,15 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 
+export interface Attachment {
+  kind: "image";
+  media_type: string;
+  data_base64: string;
+}
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
+  attachments?: Attachment[];
 }
 
 export interface RoutingConfig {
@@ -16,6 +23,7 @@ export interface RoutingConfig {
 export interface Settings {
   ollama_endpoint: string;
   ollama_model: string;
+  ollama_vision_model: string;
   claude_mode: "off" | "cli" | "api";
   claude_api_key: string;
   claude_model: string;

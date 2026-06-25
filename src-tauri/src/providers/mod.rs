@@ -6,11 +6,21 @@ pub mod ollama;
 
 use serde::{Deserialize, Serialize};
 
+/// Anexo de uma mensagem (atualmente só imagens, em base64).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Attachment {
+    pub kind: String,       // "image"
+    pub media_type: String, // ex.: "image/png"
+    pub data_base64: String,
+}
+
 /// Mensagem de conversa, partilhada entre frontend, router e providers.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String, // "system" | "user" | "assistant"
     pub content: String,
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
 }
 
 /// Resposta normalizada de qualquer provedor de modelo.

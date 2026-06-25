@@ -23,7 +23,32 @@ struct MessagesRequest<'a> {
 #[derive(Serialize)]
 struct WireMessage {
     role: String,
-    content: String,
+    content: serde_json::Value,
+}
+
+/// Conteúdo: string simples, ou array de blocos (imagens + texto) quando há anexos.
+fn content_value(m: &ChatMessage) -> serde_json::Value {
+    use serde_json::json;
+    if m.attachments.is_empty() {
+        return json!(m.content);
+    }
+    let mut blocks: Vec<serde_json::Value> = Vec::new();
+    for a in &m.attachments {
+        if a.kind == "image" {
+            blocks.push(json!({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": a.media_type,
+                    "data": a.data_base64,
+                }
+            }));
+        }
+    }
+    if !m.content.is_empty() {
+        blocks.push(json!({ "type": "text", "text": m.content }));
+    }
+    json!(blocks)
 }
 
 #[derive(Deserialize)]
@@ -60,7 +85,7 @@ fn split_messages(messages: &[ChatMessage]) -> (Option<String>, Vec<WireMessage>
         } else {
             wire.push(WireMessage {
                 role: m.role.clone(),
-                content: m.content.clone(),
+                content: content_value(m),
             });
         }
     }

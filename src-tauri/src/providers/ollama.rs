@@ -17,6 +17,8 @@ struct ChatRequest<'a> {
 struct WireMessage {
     role: String,
     content: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    images: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -45,6 +47,12 @@ fn to_wire(messages: &[ChatMessage]) -> Vec<WireMessage> {
         .map(|m| WireMessage {
             role: m.role.clone(),
             content: m.content.clone(),
+            images: m
+                .attachments
+                .iter()
+                .filter(|a| a.kind == "image")
+                .map(|a| a.data_base64.clone())
+                .collect(),
         })
         .collect()
 }
@@ -186,6 +194,7 @@ pub async fn generate(endpoint: &str, model: &str, prompt: &str) -> Result<LlmRe
     let messages = vec![ChatMessage {
         role: "user".into(),
         content: prompt.to_string(),
+        attachments: Vec::new(),
     }];
     chat(endpoint, model, &messages).await
 }
