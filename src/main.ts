@@ -71,7 +71,18 @@ app.innerHTML = `
             <option value="api">API (ANTHROPIC_API_KEY)</option>
           </select>
         </label>
-        <label>Modelo <input name="claude_model" type="text" /></label>
+        <label>Modelo
+          <select id="claude-model-preset">
+            <option value="claude-haiku-4-5-20251001">Haiku 4.5 — rápido e barato</option>
+            <option value="claude-sonnet-4-6">Sonnet 4.6 — equilíbrio</option>
+            <option value="claude-opus-4-8">Opus 4.8 — topo</option>
+            <option value="claude-fable-5">Fable 5 — mais capaz</option>
+            <option value="__custom__">Personalizado…</option>
+          </select>
+        </label>
+        <label id="claude-model-custom-wrap" hidden>Modelo (ID personalizado)
+          <input name="claude_model" type="text" />
+        </label>
         <label>Caminho da CLI <input name="claude_cli_path" type="text" /></label>
         <label>API key <input name="claude_api_key" type="password" /></label>
         <label>Max tokens (resposta) <input name="claude_max_tokens" type="number" min="256" /></label>
@@ -111,7 +122,29 @@ const els = {
   dialog: document.querySelector<HTMLDialogElement>("#settings-dialog")!,
   form: document.querySelector<HTMLFormElement>("#settings-form")!,
   modelsList: document.querySelector<HTMLDataListElement>("#ollama-models")!,
+  claudeModelPreset: document.querySelector<HTMLSelectElement>("#claude-model-preset")!,
+  claudeModelCustomWrap: document.querySelector<HTMLLabelElement>("#claude-model-custom-wrap")!,
 };
+
+const CLAUDE_MODEL_PRESETS = [
+  "claude-haiku-4-5-20251001",
+  "claude-sonnet-4-6",
+  "claude-opus-4-8",
+  "claude-fable-5",
+];
+
+/** Sincroniza o dropdown de presets com o input de texto `claude_model`. */
+function syncClaudeModelControls(model: string) {
+  const input = els.form.elements.namedItem("claude_model") as HTMLInputElement;
+  input.value = model;
+  if (CLAUDE_MODEL_PRESETS.includes(model)) {
+    els.claudeModelPreset.value = model;
+    els.claudeModelCustomWrap.hidden = true;
+  } else {
+    els.claudeModelPreset.value = "__custom__";
+    els.claudeModelCustomWrap.hidden = false;
+  }
+}
 
 function fmtUsd(n: number): string {
   return "$" + n.toFixed(n < 0.01 ? 5 : 4);
@@ -252,7 +285,7 @@ function settingsToForm(s: Settings) {
   (f.elements.namedItem("ollama_endpoint") as HTMLInputElement).value = s.ollama_endpoint;
   (f.elements.namedItem("ollama_model") as HTMLInputElement).value = s.ollama_model;
   (f.elements.namedItem("claude_mode") as HTMLSelectElement).value = s.claude_mode;
-  (f.elements.namedItem("claude_model") as HTMLInputElement).value = s.claude_model;
+  syncClaudeModelControls(s.claude_model);
   (f.elements.namedItem("claude_cli_path") as HTMLInputElement).value = s.claude_cli_path;
   (f.elements.namedItem("claude_api_key") as HTMLInputElement).value = s.claude_api_key;
   (f.elements.namedItem("claude_max_tokens") as HTMLInputElement).value = String(s.claude_max_tokens);
@@ -323,6 +356,17 @@ async function init() {
     renderAccounting(await api.resetAccounting());
   });
   document.querySelector("#btn-mem-refresh")!.addEventListener("click", refreshMemory);
+  els.claudeModelPreset.addEventListener("change", () => {
+    const v = els.claudeModelPreset.value;
+    const input = els.form.elements.namedItem("claude_model") as HTMLInputElement;
+    if (v === "__custom__") {
+      els.claudeModelCustomWrap.hidden = false;
+      input.focus();
+    } else {
+      els.claudeModelCustomWrap.hidden = true;
+      input.value = v;
+    }
+  });
   document.querySelector("#btn-list-models")!.addEventListener("click", async () => {
     try {
       const models = await api.listOllamaModels();
