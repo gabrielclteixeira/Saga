@@ -2340,8 +2340,12 @@ function showView(view: string | null) {
   for (const [name, el] of Object.entries(CENTER_VIEWS)) el.open = name === view;
   const chat = document.querySelector<HTMLElement>(".chat")!;
   chat.hidden = inView;
-  // A lista de conversas só faz sentido nas Sagas.
+  // A lista de conversas e o painel de tokens (por Saga) só fazem sentido nas Sagas.
   els.layout.classList.toggle("viewing", inView);
+  const reopen = document.querySelector<HTMLElement>("#panel-reopen");
+  if (reopen) {
+    reopen.hidden = inView || localStorage.getItem("saga.panelCollapsed") !== "1";
+  }
   const active = view ?? "sagas";
   document
     .querySelectorAll<HTMLButtonElement>(".rail-btn")

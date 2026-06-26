@@ -144,16 +144,16 @@ body {
   display: none;
 }
 
-/* Numa vista do rail, a lista de conversas (sidebar) desaparece — só nas Sagas. */
+/* Numa vista do rail, a lista de conversas e o painel de tokens (por Saga) desaparecem. */
 .layout.viewing {
-  grid-template-columns: 60px 0 1fr 320px;
-}
-.layout.viewing.panel-collapsed {
   grid-template-columns: 60px 0 1fr 0;
 }
 .layout.viewing .sidebar {
   overflow: hidden;
   border-right: none;
+}
+.layout.viewing .panel {
+  display: none;
 }
 
 /* Centro: chat OU uma vista do rail (em vez de popup) */
