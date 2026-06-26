@@ -694,6 +694,7 @@ pub async fn send_message_stream(
                     settings.claude_max_tokens,
                     &prepared.full_messages,
                     research,
+                    settings.research_max_rounds,
                     on_delta,
                     move |tool, detail| {
                         let _ = tx_tool.send(StreamEvent::ToolStep {
@@ -759,6 +760,20 @@ pub async fn send_message_stream(
         }
     }
     .map_err(|e| e.to_string())?;
+
+    // Pesquisa numa só passagem (sem subagentes): acrescenta as fontes capturadas.
+    let mut response = response;
+    if research && !subagents && !response.sources.is_empty() {
+        let mut fontes = String::from("\n\n## Fontes\n");
+        for (i, s) in response.sources.iter().enumerate() {
+            let label = if s.title.trim().is_empty() { &s.url } else { &s.title };
+            fontes.push_str(&format!("{}. [{}]({})\n", i + 1, label, s.url));
+        }
+        let _ = channel.send(StreamEvent::Delta {
+            text: fontes.clone(),
+        });
+        response.text.push_str(&fontes);
+    }
 
     let snapshot = {
         let mut acc = state.accounting.lock().unwrap();

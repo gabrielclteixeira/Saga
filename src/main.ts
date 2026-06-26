@@ -56,6 +56,7 @@ interface Item {
   attachments?: Attachment[];
   steps?: string[];
   thinking?: string;
+  report?: boolean;
 }
 
 const state: {
@@ -227,6 +228,7 @@ app.innerHTML = `
         <label>Limite "leve" (chars) <input name="light_max_chars" type="number" min="0" /></label>
         <label>Palavras-chave → local <input name="force_local_keywords" type="text" /></label>
         <label>Palavras-chave → Claude <input name="force_claude_keywords" type="text" /></label>
+        <label>Rondas de pesquisa (deep research) <input name="research_max_rounds" type="number" min="1" max="5" /></label>
       </fieldset>
 
       <fieldset>
@@ -532,12 +534,21 @@ function renderMessages() {
       row.appendChild(meta);
     }
 
-    // Artefactos: qualquer resposta do assistente com blocos de código/HTML.
+    // Artefactos: qualquer resposta do assistente com blocos de código/HTML (+ relatório).
     if (item.role === "assistant" && item.content) {
       const blocks = extractCodeBlocks(item.content);
-      if (blocks.length) {
+      const isReport = item.report || /(^|\n)## Fontes/.test(item.content);
+      if (blocks.length || isReport) {
         const arow = document.createElement("div");
         arow.className = "artifact-actions";
+        if (isReport) {
+          const btn = document.createElement("button");
+          btn.textContent = "📄 Relatório";
+          btn.addEventListener("click", () =>
+            openArtifact({ lang: "markdown", code: item.content, kind: "markdown" })
+          );
+          arow.appendChild(btn);
+        }
         blocks.forEach((b, i) => {
           const btn = document.createElement("button");
           btn.textContent =
@@ -949,7 +960,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   if ((sendOpts.research || sendOpts.subagents) && !sendOpts.routeOverride) {
     sendOpts.routeOverride = "claude";
   }
-  const assistant: Item = { role: "assistant", content: "" };
+  const assistant: Item = { role: "assistant", content: "", report: sendOpts.research };
   state.items.push(assistant);
   renderMessages();
   setBusy(true);
@@ -1128,6 +1139,9 @@ function settingsToForm(s: Settings) {
   (f.elements.namedItem("claude_cli_path") as HTMLInputElement).value = s.claude_cli_path;
   (f.elements.namedItem("claude_api_key") as HTMLInputElement).value = s.claude_api_key;
   (f.elements.namedItem("claude_max_tokens") as HTMLInputElement).value = String(s.claude_max_tokens);
+  (f.elements.namedItem("research_max_rounds") as HTMLInputElement).value = String(
+    s.research_max_rounds
+  );
   (f.elements.namedItem("routing_enabled") as HTMLInputElement).checked = s.routing.enabled;
   (f.elements.namedItem("use_local_classifier") as HTMLInputElement).checked =
     s.routing.use_local_classifier;
@@ -1198,6 +1212,7 @@ function formToSettings(base: Settings): Settings {
     claude_cli_path: val("claude_cli_path"),
     claude_api_key: val("claude_api_key"),
     claude_max_tokens: parseInt(val("claude_max_tokens")) || 2048,
+    research_max_rounds: Math.min(5, Math.max(1, parseInt(val("research_max_rounds")) || 3)),
     memory_dir: val("memory_dir"),
     claude_md_path: val("claude_md_path"),
     enable_browser_tools: checked("enable_browser_tools"),

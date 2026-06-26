@@ -120,6 +120,7 @@ pub async fn chat(
         input_tokens,
         output_tokens,
         reported_cost_usd: 0.0,
+        sources: Vec::new(),
     })
 }
 
@@ -194,5 +195,6 @@ pub async fn chat_stream<F: FnMut(&str)>(
         input_tokens,
         output_tokens,
         reported_cost_usd: 0.0,
+        sources: Vec::new(),
     })
 }

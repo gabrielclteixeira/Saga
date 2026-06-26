@@ -119,5 +119,6 @@ where
         input_tokens: total_in,
         output_tokens: total_out,
         reported_cost_usd: 0.0,
+        sources: Vec::new(),
     })
 }

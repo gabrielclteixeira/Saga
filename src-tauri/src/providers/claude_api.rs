@@ -3,9 +3,9 @@
 
 use anyhow::{anyhow, Result};
 use futures_util::StreamExt;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-use super::{ChatMessage, LlmResponse};
+use super::{ChatMessage, LlmResponse, Source};
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_VERSION: &str = "2023-06-01";
@@ -62,28 +62,30 @@ fn content_value(m: &ChatMessage) -> serde_json::Value {
     json!(blocks)
 }
 
-#[derive(Deserialize)]
-struct MessagesResponse {
-    #[serde(default)]
-    content: Vec<ContentBlock>,
-    #[serde(default)]
-    usage: Usage,
-}
-
-#[derive(Deserialize)]
-struct ContentBlock {
-    #[serde(default, rename = "type")]
-    _block_type: String,
-    #[serde(default)]
-    text: String,
-}
-
-#[derive(Deserialize, Default)]
-struct Usage {
-    #[serde(default)]
-    input_tokens: u64,
-    #[serde(default)]
-    output_tokens: u64,
+/// Extrai fontes de um bloco `web_search_tool_result` (dedup por URL).
+fn collect_sources(block: &serde_json::Value, acc: &mut Vec<Source>) {
+    if block.get("type").and_then(|x| x.as_str()) != Some("web_search_tool_result") {
+        return;
+    }
+    let Some(results) = block.get("content").and_then(|c| c.as_array()) else {
+        return;
+    };
+    for r in results {
+        if let Some(url) = r.get("url").and_then(|x| x.as_str()) {
+            if acc.iter().any(|s| s.url == url) {
+                continue;
+            }
+            let title = r
+                .get("title")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            acc.push(Source {
+                url: url.to_string(),
+                title,
+            });
+        }
+    }
 }
 
 /// Apenas as mensagens user/assistant vão no array; o conteúdo "system" vai no campo próprio.
@@ -151,23 +153,28 @@ pub async fn messages(
         return Err(anyhow!("API Anthropic devolveu {status}: {text}"));
     }
 
-    let parsed: MessagesResponse = resp
+    let v: serde_json::Value = resp
         .json()
         .await
         .map_err(|e| anyhow!("resposta da API Anthropic inválida: {e}"))?;
 
-    let text = parsed
-        .content
-        .into_iter()
-        .map(|b| b.text)
-        .collect::<Vec<_>>()
-        .join("");
+    let mut text = String::new();
+    let mut sources: Vec<Source> = Vec::new();
+    if let Some(arr) = v.get("content").and_then(|c| c.as_array()) {
+        for b in arr {
+            if let Some(t) = b.get("text").and_then(|x| x.as_str()) {
+                text.push_str(t);
+            }
+            collect_sources(b, &mut sources);
+        }
+    }
 
     Ok(LlmResponse {
         text,
-        input_tokens: parsed.usage.input_tokens,
-        output_tokens: parsed.usage.output_tokens,
+        input_tokens: v.pointer("/usage/input_tokens").and_then(|x| x.as_u64()).unwrap_or(0),
+        output_tokens: v.pointer("/usage/output_tokens").and_then(|x| x.as_u64()).unwrap_or(0),
         reported_cost_usd: 0.0,
+        sources,
     })
 }
 
@@ -233,6 +240,7 @@ pub async fn messages_stream<F: FnMut(&str), G: FnMut(&str), H: FnMut(&str, &str
     let mut full = String::new();
     let mut input_tokens = 0u64;
     let mut output_tokens = 0u64;
+    let mut sources: Vec<Source> = Vec::new();
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| anyhow!("erro no stream da API Anthropic: {e}"))?;
@@ -264,13 +272,20 @@ pub async fn messages_stream<F: FnMut(&str), G: FnMut(&str), H: FnMut(&str, &str
                         }
                     }
                     Some("content_block_start") => {
+                        let cb_type =
+                            v.pointer("/content_block/type").and_then(|x| x.as_str());
                         // Pesquisa web server-side a começar.
-                        if v.pointer("/content_block/type").and_then(|x| x.as_str())
-                            == Some("server_tool_use")
+                        if cb_type == Some("server_tool_use")
                             && v.pointer("/content_block/name").and_then(|x| x.as_str())
                                 == Some("web_search")
                         {
                             on_tool("web_search", "a pesquisar na web…");
+                        }
+                        // Resultados da pesquisa → captura as fontes/citações.
+                        if cb_type == Some("web_search_tool_result") {
+                            if let Some(cb) = v.get("content_block") {
+                                collect_sources(cb, &mut sources);
+                            }
                         }
                     }
                     Some("content_block_delta") => {
@@ -301,6 +316,7 @@ pub async fn messages_stream<F: FnMut(&str), G: FnMut(&str), H: FnMut(&str, &str
         input_tokens,
         output_tokens,
         reported_cost_usd: 0.0,
+        sources,
     })
 }
 

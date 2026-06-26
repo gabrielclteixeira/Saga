@@ -91,6 +91,7 @@ pub async fn chat(endpoint: &str, model: &str, messages: &[ChatMessage]) -> Resu
         input_tokens: parsed.prompt_eval_count,
         output_tokens: parsed.eval_count,
         reported_cost_usd: 0.0,
+        sources: Vec::new(),
     })
 }
 
@@ -161,6 +162,7 @@ pub async fn chat_stream<F: FnMut(&str)>(
         input_tokens,
         output_tokens,
         reported_cost_usd: 0.0,
+        sources: Vec::new(),
     })
 }
 

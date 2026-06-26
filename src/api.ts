@@ -38,6 +38,7 @@ export interface Settings {
   claude_cli_path: string;
   claude_max_tokens: number;
   thinking_budget: number;
+  research_max_rounds: number;
   local_provider: "ollama" | "openai";
   openai_local_endpoint: string;
   openai_local_key: string;

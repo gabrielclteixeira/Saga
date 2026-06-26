@@ -90,5 +90,6 @@ pub async fn run(
         input_tokens: parsed.usage.input_tokens,
         output_tokens: parsed.usage.output_tokens,
         reported_cost_usd: parsed.total_cost_usd,
+        sources: Vec::new(),
     })
 }

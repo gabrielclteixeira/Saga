@@ -75,6 +75,8 @@ pub struct Settings {
     pub claude_max_tokens: u32,
     /// Orçamento de tokens para extended thinking (quando ligado no composer).
     pub thinking_budget: u32,
+    /// Nº máximo de rondas de pesquisa iterativa (deep research). Default 3.
+    pub research_max_rounds: u32,
     /// Provider do slot local: "ollama" | "openai".
     pub local_provider: String,
     pub openai_local_endpoint: String,
@@ -120,6 +122,7 @@ impl Default for Settings {
             claude_cli_path: "claude".into(),
             claude_max_tokens: 2048,
             thinking_budget: 4000,
+            research_max_rounds: 3,
             local_provider: "ollama".into(),
             openai_local_endpoint: "http://localhost:1234/v1".into(),
             openai_local_key: String::new(),
