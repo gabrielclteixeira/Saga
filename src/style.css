@@ -144,6 +144,54 @@ body {
   display: none;
 }
 
+/* Centro: chat OU uma vista do rail (em vez de popup) */
+.center {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat {
+  flex: 1;
+  min-height: 0;
+}
+.chat[hidden] {
+  display: none;
+}
+#center > dialog {
+  position: static;
+  inset: auto;
+  margin: 0;
+  border: none;
+  padding: 0;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  background: var(--bg);
+  color: var(--text);
+  flex: 1;
+  min-height: 0;
+}
+#center > dialog:not([open]) {
+  display: none;
+}
+#center > dialog[open] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#center > dialog .settings,
+#center > dialog .ws {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 18px;
+}
+
 /* Sidebar de conversas */
 .sidebar {
   display: flex;
@@ -1310,7 +1358,7 @@ dialog::backdrop {
 #workspace-dialog .ws,
 #mcp-dialog .settings,
 #activity-dialog .settings {
-  min-width: 520px;
+  min-width: 0;
 }
 
 /* Botões fora de <menu> (barras de editor, aprovação, listas) precisam da geometria base. */

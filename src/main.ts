@@ -107,6 +107,7 @@ app.innerHTML = `
       <input class="conv-search" id="conv-search" type="search" placeholder="Pesquisar Sagas…" autocomplete="off" />
       <div class="conv-list" id="conv-list"></div>
     </aside>
+    <div class="center" id="center">
     <section class="chat">
       <div class="messages" id="messages">
         <div class="empty">Faz uma pergunta. Tarefas leves ficam no modelo local; só o que é pesado escala para o Claude.</div>
@@ -129,6 +130,7 @@ app.innerHTML = `
         <button type="submit" id="send">Enviar</button>
       </form>
     </section>
+    </div>
     <aside class="panel">
       <button class="panel-collapse" id="panel-collapse" title="Ocultar painel" aria-label="Ocultar painel">❯</button>
       <h2>Painel de tokens</h2>
@@ -1663,7 +1665,7 @@ let wsKind: "skill" | "playbook" | "workflow" = "skill";
 
 async function openWorkspace() {
   setWsKind("skill");
-  await wsDialog.showModal();
+  showView("workspace");
 }
 
 function setWsKind(kind: "skill" | "playbook" | "workflow") {
@@ -1770,7 +1772,7 @@ async function delWsDoc(name: string) {
 }
 
 async function runWorkflow(name: string) {
-  wsDialog.close();
+  showView(null);
   if (state.currentConversationId === null) {
     state.currentConversationId = await api.newConversation();
     await loadConversations();
@@ -1791,7 +1793,7 @@ function mcpServers(): McpServerConfig[] {
 function openMcp() {
   clearMcpForm();
   renderMcpList();
-  mcpDialog.showModal();
+  showView("servers");
 }
 
 function renderMcpList() {
@@ -1936,7 +1938,7 @@ async function testMcp() {
 const activityDialog = document.querySelector<HTMLDialogElement>("#activity-dialog")!;
 async function openActivity() {
   await renderActivity();
-  activityDialog.showModal();
+  showView("activity");
 }
 async function renderActivity() {
   const list = document.querySelector<HTMLDivElement>("#act-list")!;
@@ -1988,7 +1990,7 @@ async function openAutomations() {
   }
   clearSchedForm();
   await renderSchedules();
-  automationsDialog.showModal();
+  showView("automations");
 }
 
 function clearSchedForm() {
@@ -2139,7 +2141,7 @@ async function openModels() {
   hubLoad(state.settings);
   applyHubProviderFields();
   renderQuickPicks();
-  modelsDialog.showModal();
+  showView("models");
   void renderHubStatus();
   void renderInstalled();
 }
@@ -2323,6 +2325,32 @@ async function pullModelUi(name: string) {
   }
 }
 
+// ---- Vistas no centro (os itens do rail abrem aqui, não em popup) ----
+const CENTER_VIEWS: Record<string, HTMLDialogElement> = {
+  workspace: wsDialog,
+  servers: mcpDialog,
+  activity: activityDialog,
+  automations: automationsDialog,
+  models: modelsDialog,
+};
+
+/** Mostra uma vista no centro (ou o chat, se null/"sagas"). */
+function showView(view: string | null) {
+  for (const [name, el] of Object.entries(CENTER_VIEWS)) el.open = name === view;
+  const chat = document.querySelector<HTMLElement>(".chat")!;
+  chat.hidden = view !== null && view !== "sagas";
+  const active = view ?? "sagas";
+  document
+    .querySelectorAll<HTMLButtonElement>(".rail-btn")
+    .forEach((b) => b.classList.toggle("active", b.dataset.view === active));
+}
+
+/** Move os painéis (ex-popups) para dentro do centro, na 1.ª vez. */
+function mountViewsInCenter() {
+  const center = document.querySelector("#center")!;
+  for (const el of Object.values(CENTER_VIEWS)) center.appendChild(el);
+}
+
 function wireWorkspaceUi() {
   wsDialog
     .querySelectorAll<HTMLButtonElement>(".ws-tab")
@@ -2332,17 +2360,17 @@ function wireWorkspaceUi() {
   document
     .querySelector("#ws-cancel")!
     .addEventListener("click", () => document.querySelector("#ws-editor")!.setAttribute("hidden", ""));
-  document.querySelector("#ws-close")!.addEventListener("click", () => wsDialog.close());
+  document.querySelector("#ws-close")!.addEventListener("click", () => showView(null));
 
   document.querySelector("#mcp-add")!.addEventListener("click", addOrUpdateMcp);
   document.querySelector("#mcp-test")!.addEventListener("click", testMcp);
-  document.querySelector("#mcp-close")!.addEventListener("click", () => mcpDialog.close());
+  document.querySelector("#mcp-close")!.addEventListener("click", () => showView(null));
 
   document.querySelector("#act-refresh")!.addEventListener("click", renderActivity);
-  document.querySelector("#act-close")!.addEventListener("click", () => activityDialog.close());
+  document.querySelector("#act-close")!.addEventListener("click", () => showView(null));
 
   document.querySelector("#sched-add")!.addEventListener("click", addOrUpdateSchedule);
-  document.querySelector("#sched-close")!.addEventListener("click", () => automationsDialog.close());
+  document.querySelector("#sched-close")!.addEventListener("click", () => showView(null));
   document.querySelector("#sched-preset")!.addEventListener("change", (e) => {
     const v = (e.target as HTMLSelectElement).value;
     if (v !== "__custom__") (document.querySelector("#sched-cron") as HTMLInputElement).value = v;
@@ -2350,7 +2378,7 @@ function wireWorkspaceUi() {
 
   // Hub Modelos
   document.querySelector("#hub-save")!.addEventListener("click", hubSave);
-  document.querySelector("#hub-close")!.addEventListener("click", () => modelsDialog.close());
+  document.querySelector("#hub-close")!.addEventListener("click", () => showView(null));
   document.querySelector("#hub-local-provider")!.addEventListener("change", applyHubProviderFields);
   document.querySelector("#hub-cloud-provider")!.addEventListener("change", applyHubProviderFields);
   document.querySelector("#hub-claude-preset")!.addEventListener("change", () => {
@@ -2370,11 +2398,13 @@ function wireWorkspaceUi() {
       else if (v === "activity") openActivity();
       else if (v === "automations") openAutomations();
       else if (v === "models") openModels();
+      else showView(null); // "sagas" → volta ao chat
     })
   );
 }
 
 async function init() {
+  mountViewsInCenter();
   els.composer.addEventListener("submit", onSubmit);
   els.input.addEventListener("input", autoGrow);
   els.input.addEventListener("keydown", (e) => {
