@@ -398,6 +398,18 @@ pub async fn send_message(
     })
 }
 
+/// Interpreta "/nome args" no início de uma mensagem. Devolve (nome, args).
+fn parse_slash_command(content: &str) -> Option<(String, String)> {
+    let rest = content.trim().strip_prefix('/')?;
+    if rest.is_empty() {
+        return None;
+    }
+    let mut parts = rest.splitn(2, char::is_whitespace);
+    let name = parts.next()?.to_string();
+    let args = parts.next().unwrap_or("").trim().to_string();
+    Some((name, args))
+}
+
 #[tauri::command]
 pub async fn send_message_stream(
     state: State<'_, AppState>,
@@ -438,14 +450,47 @@ pub async fn send_message_stream(
         let _ = store::maybe_autotitle(&conn, conversation_id, &last_user.content);
     }
 
-    let prepared = router::prepare(
+    // Disparo de workflow: "/nome args" → carrega o procedimento e força a rota agêntica.
+    let mut workflow_name: Option<String> = None;
+    let mut workflow_system: Option<String> = None;
+    if let Some(last_user) = messages.iter().rev().find(|m| m.role == "user") {
+        if let Some((name, args)) = parse_slash_command(&last_user.content) {
+            if let Some(body) = crate::workspace::read_workflow(&settings.workspace_dir, &name) {
+                let proc = body.replace("$ARGUMENTS", &args);
+                workflow_system = Some(format!(
+                    "Estás a executar o workflow '{name}'. Segue este procedimento usando as \
+                     ferramentas disponíveis, regista o progresso e termina com um resumo curto.\n\n{proc}"
+                ));
+                workflow_name = Some(name);
+            }
+        }
+    }
+    let forced_workflow = workflow_system.is_some();
+    let route_override_eff = if forced_workflow {
+        Some("claude".to_string())
+    } else {
+        route_override.clone()
+    };
+
+    let mut prepared = router::prepare(
         &messages,
         &settings,
-        route_override.as_deref(),
+        route_override_eff.as_deref(),
         model_override.as_deref(),
     )
     .await
     .map_err(|e| e.to_string())?;
+
+    if let Some(sys) = workflow_system {
+        prepared.full_messages.insert(
+            0,
+            ChatMessage {
+                role: "system".into(),
+                content: sys,
+                attachments: Vec::new(),
+            },
+        );
+    }
 
     let local_openai = settings.local_provider == "openai";
     let cloud_openai = settings.cloud_provider == "openai";
@@ -513,7 +558,7 @@ pub async fn send_message_stream(
             let has_ws = !ws_index.skills.is_empty() || !ws_index.playbooks.is_empty();
             let want_tools = use_api
                 && !prepared.has_images
-                && (settings.enable_browser_tools || any_mcp || has_ws);
+                && (settings.enable_browser_tools || any_mcp || has_ws || forced_workflow);
             if want_tools {
                 // Loop agêntico com ferramentas (browser e/ou servidores MCP) — só API.
                 let tx_d = channel.clone();
@@ -539,7 +584,18 @@ pub async fn send_message_stream(
                     mcp_guard.ensure_ready(&settings.mcp_servers).await;
                 }
 
-                let mode = ConfirmMode::parse(&settings.confirm_mode);
+                // Workflows fazem ações: se a confirmação estiver desligada, pede aprovação na mesma.
+                let mode = if forced_workflow && settings.confirm_mode == "off" {
+                    ConfirmMode::Ask
+                } else {
+                    ConfirmMode::parse(&settings.confirm_mode)
+                };
+                if let Some(name) = &workflow_name {
+                    let _ = channel.send(StreamEvent::ToolStep {
+                        tool: "workflow".into(),
+                        detail: name.clone(),
+                    });
+                }
                 let approver = ChannelApprover {
                     channel: channel.clone(),
                     state: state.inner(),

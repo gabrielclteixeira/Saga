@@ -136,7 +136,6 @@ pub fn read_playbook(root: &str, name: &str) -> Option<String> {
 }
 
 /// Corpo de um workflow (sem frontmatter), por nome (sem extensão).
-#[allow(dead_code)] // usado a partir da Fase D (disparo de workflows)
 pub fn read_workflow(root: &str, name: &str) -> Option<String> {
     let p = workflows_dir(root).join(format!("{}.md", sanitize(name)));
     fs::read_to_string(p).ok().map(|c| strip_frontmatter(&c))
