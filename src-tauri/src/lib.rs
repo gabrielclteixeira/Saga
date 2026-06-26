@@ -19,6 +19,7 @@ pub fn run() {
         .plugin(tauri_plugin_log::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
@@ -46,6 +47,7 @@ pub fn run() {
             commands::read_workspace_doc,
             commands::save_workspace_doc,
             commands::delete_workspace_doc,
+            commands::export_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

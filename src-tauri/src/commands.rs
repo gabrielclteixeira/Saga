@@ -260,6 +260,13 @@ pub fn truncate_conversation(state: State<AppState>, id: i64, keep: i64) -> Resu
     store::truncate_conversation(&conn, id, keep).map_err(|e| e.to_string())
 }
 
+/// Escreve `content` no caminho dado (usado para exportar artefactos/Sagas; o caminho
+/// vem do save-dialog no frontend).
+#[tauri::command]
+pub fn export_file(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, content).map_err(|e| e.to_string())
+}
+
 /// Índice do workspace (skills, playbooks, workflows) para a UI e o disparo de workflows.
 #[tauri::command]
 pub fn get_workspace_index(state: State<AppState>) -> crate::workspace::WorkspaceIndex {

@@ -218,6 +218,9 @@ export const api = {
   // MCP
   testMcpServer: (config: McpServerConfig) =>
     invoke<string[]>("test_mcp_server", { config }),
+  // Export
+  exportFile: (path: string, content: string) =>
+    invoke<void>("export_file", { path, content }),
   // Workspace
   getWorkspaceIndex: () => invoke<WorkspaceIndex>("get_workspace_index"),
   readWorkspaceDoc: (kind: string, name: string) =>

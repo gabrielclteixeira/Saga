@@ -1342,6 +1342,85 @@ dialog::backdrop {
   font-size: 12px;
 }
 
+/* ---- Artefactos: doc markdown, diagrama, galeria ---- */
+.artifact-doc {
+  padding: 14px 16px;
+  overflow: auto;
+  height: 100%;
+}
+.artifact-mermaid {
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+  overflow: auto;
+}
+.artifact-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+.gallery-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+}
+.gallery-item {
+  text-align: left;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+.gallery-item:hover {
+  background: var(--bg-3);
+  border-color: var(--accent);
+}
+
+/* ---- Realce de sintaxe (highlight.js) — paleta azulejo ---- */
+.hljs-keyword,
+.hljs-literal,
+.hljs-type,
+.hljs-built_in,
+.hljs-selector-tag {
+  color: var(--claude);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-symbol,
+.hljs-meta-string {
+  color: var(--local);
+}
+.hljs-number,
+.hljs-link {
+  color: var(--accent);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--muted);
+  font-style: italic;
+}
+.hljs-title,
+.hljs-section,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: var(--accent);
+  font-weight: 600;
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable {
+  color: var(--text);
+}
+.hljs-meta,
+.hljs-deletion {
+  color: var(--muted);
+}
+
 /* ---- Loader azulejo: caravela a navegar ---- */
 .caravel-loader {
   display: block;

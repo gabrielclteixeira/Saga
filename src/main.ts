@@ -3,6 +3,9 @@ import { caravelLoader } from "./caravel-loader";
 import { initZoom, nudgeZoom, onZoomChange, resetZoom } from "./zoom";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import hljs from "highlight.js/lib/common";
+import mermaid from "mermaid";
+import { save } from "@tauri-apps/plugin-dialog";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import {
@@ -27,8 +30,22 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
     node.setAttribute("rel", "noopener noreferrer");
   }
 });
+const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+mermaid.initialize({
+  startOnLoad: false,
+  securityLevel: "strict",
+  theme: prefersDark ? "dark" : "neutral",
+});
 function renderMarkdown(text: string): string {
   return DOMPurify.sanitize(marked.parse(text) as string);
+}
+/** Realça os blocos de código (hljs) dentro de um elemento já renderizado. */
+function highlightWithin(root: ParentNode) {
+  root.querySelectorAll<HTMLElement>("pre code").forEach((el) => {
+    if (el.dataset.hl) return;
+    hljs.highlightElement(el);
+    el.dataset.hl = "1";
+  });
 }
 
 interface Item {
@@ -70,6 +87,7 @@ app.innerHTML = `
   <header class="topbar">
     <div class="brand"><img src="/favicon.svg" class="brand-mark" alt="" /> <strong>Saga</strong> <span class="tag">router local ↔ Claude</span></div>
     <div class="mini" id="mini-stats"></div>
+    <button class="icon-btn" id="btn-export-saga" title="Exportar Saga (Markdown)">⤓</button>
     <button class="icon-btn" id="btn-settings" title="Definições">⚙</button>
   </header>
   <main class="layout">
@@ -122,7 +140,9 @@ app.innerHTML = `
     <header class="artifact-head">
       <span class="artifact-title" id="artifact-title">Artefacto</span>
       <span class="artifact-controls">
+        <button type="button" class="ghost" id="artifact-gallery">Galeria</button>
         <button type="button" class="ghost" id="artifact-toggle" hidden>Código</button>
+        <button type="button" class="ghost" id="artifact-export">Guardar</button>
         <button type="button" class="ghost" id="artifact-copy">Copiar</button>
         <button type="button" class="ghost" id="artifact-close">✕</button>
       </span>
@@ -485,6 +505,7 @@ function renderMessages() {
       if (item.role === "assistant" && !item.error) {
         bubble.classList.add("markdown");
         bubble.innerHTML = renderMarkdown(item.content);
+        highlightWithin(bubble);
       } else {
         bubble.textContent = item.content;
       }
@@ -520,7 +541,7 @@ function renderMessages() {
         blocks.forEach((b, i) => {
           const btn = document.createElement("button");
           btn.textContent =
-            `📄 Artefacto${blocks.length > 1 ? " " + (i + 1) : ""}` +
+            `📄 ${KIND_LABEL[b.kind]}${blocks.length > 1 ? " " + (i + 1) : ""}` +
             (b.lang ? " · " + b.lang : "");
           btn.addEventListener("click", () => openArtifact(b));
           arow.appendChild(btn);
@@ -1209,49 +1230,95 @@ function autoGrow() {
 }
 
 // ---- Artefactos ----
-function extractCodeBlocks(content: string): { lang: string; code: string }[] {
+type ArtifactKind = "html" | "mermaid" | "markdown" | "code";
+interface Artifact {
+  lang: string;
+  code: string;
+  kind: ArtifactKind;
+}
+
+function classifyArtifact(lang: string, code: string): ArtifactKind {
+  if (lang === "mermaid") return "mermaid";
+  if (lang === "md" || lang === "markdown") return "markdown";
+  if (lang === "html" || /^\s*<!doctype html|^\s*<html[\s>]/i.test(code)) return "html";
+  return "code";
+}
+
+function extractCodeBlocks(content: string): Artifact[] {
   const re = /```(\w*)\n([\s\S]*?)```/g;
-  const out: { lang: string; code: string }[] = [];
+  const out: Artifact[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(content)) !== null) {
     const code = m[2].trim();
-    if (code.length >= 20) out.push({ lang: (m[1] || "").toLowerCase(), code });
+    const lang = (m[1] || "").toLowerCase();
+    if (code.length >= 20) out.push({ lang, code, kind: classifyArtifact(lang, code) });
   }
   return out;
 }
 
-function isHtmlArtifact(a: { lang: string; code: string }): boolean {
-  return a.lang === "html" || /^\s*<!doctype html|^\s*<html[\s>]/i.test(a.code);
-}
+const KIND_LABEL: Record<ArtifactKind, string> = {
+  html: "Página",
+  mermaid: "Diagrama",
+  markdown: "Documento",
+  code: "Artefacto",
+};
 
 let artifactMode: "preview" | "code" = "preview";
-let artifactCurrent: { lang: string; code: string } | null = null;
+let artifactCurrent: Artifact | null = null;
+let mermaidSeq = 0;
 
 function renderArtifactBody() {
   if (!artifactCurrent) return;
+  const a = artifactCurrent;
   const body = els.artifactBody;
   body.innerHTML = "";
-  const html = isHtmlArtifact(artifactCurrent);
-  els.artifactToggle.hidden = !html;
+  const hasPreview = a.kind !== "code";
+  els.artifactToggle.hidden = !hasPreview;
   els.artifactToggle.textContent = artifactMode === "preview" ? "Código" : "Pré-visualizar";
-  if (html && artifactMode === "preview") {
-    const iframe = document.createElement("iframe");
-    iframe.className = "artifact-frame";
-    iframe.setAttribute("sandbox", "allow-scripts");
-    iframe.srcdoc = artifactCurrent.code;
-    body.appendChild(iframe);
+
+  if (hasPreview && artifactMode === "preview") {
+    if (a.kind === "html") {
+      const iframe = document.createElement("iframe");
+      iframe.className = "artifact-frame";
+      iframe.setAttribute("sandbox", "allow-scripts");
+      iframe.srcdoc = a.code;
+      body.appendChild(iframe);
+    } else if (a.kind === "markdown") {
+      const div = document.createElement("div");
+      div.className = "artifact-doc bubble markdown";
+      div.innerHTML = renderMarkdown(a.code);
+      highlightWithin(div);
+      body.appendChild(div);
+    } else if (a.kind === "mermaid") {
+      const div = document.createElement("div");
+      div.className = "artifact-mermaid";
+      body.appendChild(div);
+      const id = `mmd-${++mermaidSeq}`;
+      mermaid
+        .render(id, a.code)
+        .then(({ svg }) => {
+          div.innerHTML = svg;
+        })
+        .catch((e) => {
+          div.textContent = "Erro a desenhar o diagrama: " + e;
+        });
+    }
   } else {
     const pre = document.createElement("pre");
     pre.className = "artifact-code";
-    pre.textContent = artifactCurrent.code;
+    const codeEl = document.createElement("code");
+    if (a.lang) codeEl.className = "language-" + a.lang;
+    codeEl.textContent = a.code;
+    pre.appendChild(codeEl);
     body.appendChild(pre);
+    highlightWithin(pre);
   }
 }
 
-function openArtifact(a: { lang: string; code: string }) {
+function openArtifact(a: Artifact) {
   artifactCurrent = a;
-  artifactMode = isHtmlArtifact(a) ? "preview" : "code";
-  els.artifactTitle.textContent = "Artefacto" + (a.lang ? ` · ${a.lang}` : "");
+  artifactMode = a.kind === "code" ? "code" : "preview";
+  els.artifactTitle.textContent = `${KIND_LABEL[a.kind]}` + (a.lang ? ` · ${a.lang}` : "");
   els.artifactPanel.hidden = false;
   renderArtifactBody();
 }
@@ -1259,6 +1326,87 @@ function openArtifact(a: { lang: string; code: string }) {
 function closeArtifact() {
   els.artifactPanel.hidden = true;
   artifactCurrent = null;
+}
+
+/** Exporta o artefacto atual para um ficheiro (save dialog). */
+async function exportArtifact() {
+  if (!artifactCurrent) return;
+  const ext =
+    artifactCurrent.kind === "html"
+      ? "html"
+      : artifactCurrent.kind === "markdown"
+        ? "md"
+        : artifactCurrent.lang || "txt";
+  const path = await save({ defaultPath: `artefacto.${ext}` });
+  if (path) {
+    try {
+      await api.exportFile(path, artifactCurrent.code);
+    } catch (e) {
+      alert("Falha a exportar: " + e);
+    }
+  }
+}
+
+/** Galeria: lista os artefactos da Saga atual (varre as mensagens guardadas). */
+async function openGallery() {
+  if (state.currentConversationId === null) return;
+  let msgs: StoredMessage[] = [];
+  try {
+    msgs = await api.getConversation(state.currentConversationId);
+  } catch {
+    return;
+  }
+  const arts: Artifact[] = [];
+  for (const m of msgs) {
+    if (m.role === "assistant") arts.push(...extractCodeBlocks(m.content));
+  }
+  const body = els.artifactBody;
+  els.artifactTitle.textContent = `Galeria · ${arts.length}`;
+  els.artifactToggle.hidden = true;
+  els.artifactPanel.hidden = false;
+  body.innerHTML = "";
+  if (arts.length === 0) {
+    body.innerHTML = `<div class="empty-sm">Sem artefactos nesta Saga.</div>`;
+    return;
+  }
+  const list = document.createElement("div");
+  list.className = "gallery-list";
+  arts.forEach((a, i) => {
+    const item = document.createElement("button");
+    item.className = "gallery-item";
+    item.textContent = `${KIND_LABEL[a.kind]}${a.lang ? " · " + a.lang : ""} #${i + 1}`;
+    item.addEventListener("click", () => openArtifact(a));
+    list.appendChild(item);
+  });
+  body.appendChild(list);
+}
+
+/** Exporta a Saga atual para Markdown (papel + conteúdo + meta). */
+async function exportSaga() {
+  if (state.currentConversationId === null) return;
+  let msgs: StoredMessage[] = [];
+  try {
+    msgs = await api.getConversation(state.currentConversationId);
+  } catch (e) {
+    alert("Falha a ler a Saga: " + e);
+    return;
+  }
+  const title =
+    state.conversations.find((c) => c.id === state.currentConversationId)?.title || "Saga";
+  const lines = [`# ${title}`, ""];
+  for (const m of msgs) {
+    const who = m.role === "user" ? "Tu" : "Saga";
+    const tag = m.role === "assistant" && m.model ? ` _(${m.route}/${m.model})_` : "";
+    lines.push(`## ${who}${tag}`, "", m.content, "");
+  }
+  const path = await save({ defaultPath: `${title.replace(/[^\w-]+/g, "_")}.md` });
+  if (path) {
+    try {
+      await api.exportFile(path, lines.join("\n"));
+    } catch (e) {
+      alert("Falha a exportar: " + e);
+    }
+  }
 }
 
 // ---- Wizard de 1.º arranque ----
@@ -1779,6 +1927,9 @@ async function init() {
   els.artifactCopy.addEventListener("click", () => {
     if (artifactCurrent) navigator.clipboard?.writeText(artifactCurrent.code);
   });
+  document.querySelector("#artifact-export")!.addEventListener("click", exportArtifact);
+  document.querySelector("#artifact-gallery")!.addEventListener("click", openGallery);
+  document.querySelector("#btn-export-saga")!.addEventListener("click", exportSaga);
   els.claudeModelPreset.addEventListener("change", () => {
     const v = els.claudeModelPreset.value;
     const input = els.form.elements.namedItem("claude_model") as HTMLInputElement;
