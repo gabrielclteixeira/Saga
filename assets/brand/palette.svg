@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 96" width="760" height="96" role="img" aria-label="Paleta Saga">
+  <style>
+    .h { font: 600 12px ui-monospace, "Cascadia Code", monospace; fill: #5a7596; }
+    .n { font: 600 11px ui-sans-serif, system-ui, sans-serif; fill: #1c3f73; }
+  </style>
+  <g>
+    <rect x="0"   y="6" width="96" height="48" rx="10" fill="#1c3f73"/>
+    <rect x="108" y="6" width="96" height="48" rx="10" fill="#2f6ea5"/>
+    <rect x="216" y="6" width="96" height="48" rx="10" fill="#6fa8d6"/>
+    <rect x="324" y="6" width="96" height="48" rx="10" fill="#bcd6e8"/>
+    <rect x="432" y="6" width="96" height="48" rx="10" fill="#f4f1e9" stroke="#b9cdde"/>
+    <rect x="540" y="6" width="96" height="48" rx="10" fill="#d98e3c"/>
+    <rect x="648" y="6" width="96" height="48" rx="10" fill="#c8782a"/>
+  </g>
+  <g text-anchor="middle">
+    <text class="n" x="48"  y="74">Cobalt</text><text class="h" x="48"  y="88">#1c3f73</text>
+    <text class="n" x="156" y="74">Mid</text><text class="h" x="156" y="88">#2f6ea5</text>
+    <text class="n" x="264" y="74">Light</text><text class="h" x="264" y="88">#6fa8d6</text>
+    <text class="n" x="372" y="74">Pale sky</text><text class="h" x="372" y="88">#bcd6e8</text>
+    <text class="n" x="480" y="74">Glaze</text><text class="h" x="480" y="88">#f4f1e9</text>
+    <text class="n" x="588" y="74">Ochre</text><text class="h" x="588" y="88">#d98e3c</text>
+    <text class="n" x="696" y="74">Deep ochre</text><text class="h" x="696" y="88">#c8782a</text>
+  </g>
+</svg>

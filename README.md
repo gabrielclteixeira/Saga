@@ -1,12 +1,27 @@
-# ⛵ Saga
+<p align="center">
+  <img src="assets/brand/caravel-mark-wave.svg" width="92" alt="Saga" />
+</p>
 
-A cross-platform desktop AI assistant that runs a **local model (Ollama)** for light work and
-**escalates to Claude only when it's worth it** — saving tokens (and money) on everything else.
+<h1 align="center">Saga</h1>
 
-Built with **Tauri 2** (Rust backend + web UI). Runs on Windows, macOS and Linux.
+<p align="center">
+  A cross-platform desktop AI assistant with a <strong>local&nbsp;↔&nbsp;Claude router</strong> —
+  runs a local model for the light work and escalates to Claude only when it's worth it,
+  saving tokens (and money) on everything else.
+</p>
 
-> *Saga* — the Norse goddess of wisdom, and the word for a story worth telling. Named for the ships
-> where Portugal's greatest sagas were written: the assistant that navigates between local and cloud.
+<p align="center">
+  <em>Built with Tauri 2 (Rust + web UI) · Windows · macOS · Linux</em>
+</p>
+
+<p align="center">
+  <img src="assets/brand/caravel-panel.svg" width="300" alt="Azulejo caravel panel — Saga" />
+</p>
+
+<p align="center">
+  <em>Saga — the Norse goddess of wisdom, and a story worth telling. Named for the ships
+  where Portugal's greatest sagas were written: an assistant that navigates between local and cloud.</em>
+</p>
 
 ---
 
@@ -113,6 +128,23 @@ Unsigned installers trigger "unknown publisher" warnings. To sign:
 ### Browser sidecar (not yet bundled)
 The Playwright sidecar still requires a one-time `cd sidecar && npm install && npx playwright install chromium`.
 Bundling Node + Chromium into the installer (hundreds of MB) is a deliberate follow-up.
+
+## Identity
+
+Saga wears a **Portuguese _azulejo_** identity built on its caravel mark — cobalt-blue tilework with a
+single ochre accent, the palette of the Age-of-Discovery tile panels. The app defaults to a light
+"glaze" theme and switches to a dark "cobalt night" under `prefers-color-scheme: dark`.
+
+<p align="center"><img src="assets/brand/palette.svg" width="620" alt="Saga palette" /></p>
+
+| Asset | File |
+|---|---|
+| Hero panel (splash / empty state) | `assets/brand/caravel-panel.svg` |
+| App icon mark (on the wave) | `assets/brand/caravel-mark-wave.svg` |
+| Reference panel | `docs/brand/reference-caravel-panel.jpg` |
+
+The SVG masters are the source of truth — platform icons are regenerated from them with
+`npm run tauri icon`.
 
 ## Roadmap (personal/deeper version)
 
