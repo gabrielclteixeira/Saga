@@ -24,6 +24,7 @@ pub fn run() {
             commands::get_memory_preview,
             commands::diagnostics,
             commands::list_ollama_models,
+            commands::pull_ollama_model,
             commands::send_message,
             commands::send_message_stream,
             commands::list_conversations,

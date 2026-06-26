@@ -1041,6 +1041,11 @@ dialog::backdrop {
 .settings .row input {
   flex: 1;
 }
+.pull-status {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 .settings menu {
   display: flex;
   justify-content: flex-end;

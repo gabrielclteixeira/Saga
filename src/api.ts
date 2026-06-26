@@ -97,6 +97,11 @@ export interface StoredMessage {
   tokens_saved: number;
 }
 
+export type PullEvent =
+  | { kind: "Progress"; status: string; percent: number }
+  | { kind: "Done" }
+  | { kind: "Error"; message: string };
+
 export type StreamEvent =
   | { kind: "Start"; route: "local" | "claude"; model: string; reason: string }
   | { kind: "Delta"; text: string }
@@ -119,6 +124,14 @@ export const api = {
   getMemoryPreview: () => invoke<string>("get_memory_preview"),
   diagnostics: () => invoke<Diagnostics>("diagnostics"),
   listOllamaModels: () => invoke<string[]>("list_ollama_models"),
+  pullOllamaModel: (
+    model: string,
+    onEvent: (ev: PullEvent) => void
+  ): Promise<void> => {
+    const channel = new Channel<PullEvent>();
+    channel.onmessage = onEvent;
+    return invoke<void>("pull_ollama_model", { model, channel });
+  },
   sendMessage: (messages: ChatMessage[]) =>
     invoke<ChatResponse>("send_message", { messages }),
   sendMessageStream: (

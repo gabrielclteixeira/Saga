@@ -199,6 +199,71 @@ pub async fn generate(endpoint: &str, model: &str, prompt: &str) -> Result<LlmRe
     chat(endpoint, model, &messages).await
 }
 
+#[derive(Serialize)]
+struct PullRequest<'a> {
+    name: &'a str,
+    stream: bool,
+}
+
+#[derive(Deserialize)]
+struct PullLine {
+    #[serde(default)]
+    status: String,
+    #[serde(default)]
+    total: u64,
+    #[serde(default)]
+    completed: u64,
+}
+
+/// Descarrega um modelo (/api/pull); chama `on_progress(status, percent)` (percent -1 se desconhecido).
+pub async fn pull_model<F: FnMut(&str, f64)>(
+    endpoint: &str,
+    model: &str,
+    mut on_progress: F,
+) -> Result<()> {
+    let url = format!("{}/api/pull", endpoint.trim_end_matches('/'));
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&PullRequest {
+            name: model,
+            stream: true,
+        })
+        .send()
+        .await
+        .map_err(|e| anyhow!("falha a contactar o Ollama em {url}: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("Ollama devolveu {status}: {text}"));
+    }
+
+    let mut stream = resp.bytes_stream();
+    let mut buf = String::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| anyhow!("erro no stream do Ollama: {e}"))?;
+        buf.push_str(&String::from_utf8_lossy(&chunk));
+        while let Some(nl) = buf.find('\n') {
+            let line: String = buf[..nl].to_string();
+            buf.drain(..=nl);
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if let Ok(p) = serde_json::from_str::<PullLine>(line) {
+                let percent = if p.total > 0 {
+                    (p.completed as f64 / p.total as f64) * 100.0
+                } else {
+                    -1.0
+                };
+                on_progress(&p.status, percent);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Lista os modelos disponíveis localmente (/api/tags).
 pub async fn list_models(endpoint: &str) -> Result<Vec<String>> {
     let url = format!("{}/api/tags", endpoint.trim_end_matches('/'));

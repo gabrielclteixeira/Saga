@@ -128,9 +128,11 @@ app.innerHTML = `
           <span class="row">
             <input name="ollama_model" type="text" list="ollama-models" />
             <button type="button" class="ghost" id="btn-list-models">Listar</button>
+            <button type="button" class="ghost" id="btn-pull-model">Puxar</button>
           </span>
         </label>
         <datalist id="ollama-models"></datalist>
+        <div class="pull-status" id="pull-status"></div>
         <label>Modelo de visão (imagens) <input name="ollama_vision_model" type="text" /></label>
       </fieldset>
 
@@ -1230,6 +1232,36 @@ async function init() {
     } else {
       els.claudeModelCustomWrap.hidden = true;
       input.value = v;
+    }
+  });
+  document.querySelector("#btn-pull-model")!.addEventListener("click", async () => {
+    const model = (els.form.elements.namedItem("ollama_model") as HTMLInputElement).value.trim();
+    const status = document.querySelector("#pull-status")!;
+    if (!model) {
+      status.textContent = "Indica um modelo (ex.: llama3.2)";
+      return;
+    }
+    status.textContent = "A iniciar descarga…";
+    try {
+      await api.pullOllamaModel(model, (ev) => {
+        if (ev.kind === "Progress") {
+          status.textContent =
+            ev.percent >= 0 ? `${ev.status} — ${ev.percent.toFixed(0)}%` : ev.status;
+        } else if (ev.kind === "Done") {
+          status.textContent = "✓ Descarregado";
+          api.listOllamaModels()
+            .then((models) => {
+              els.modelsList.innerHTML = models
+                .map((m) => `<option value="${escapeHtml(m)}"></option>`)
+                .join("");
+            })
+            .catch(() => {});
+        } else {
+          status.textContent = "✗ " + ev.message;
+        }
+      });
+    } catch (e) {
+      status.textContent = "✗ " + e;
     }
   });
   document.querySelector("#btn-list-models")!.addEventListener("click", async () => {

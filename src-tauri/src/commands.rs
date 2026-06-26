@@ -228,6 +228,43 @@ pub async fn list_ollama_models(state: State<'_, AppState>) -> Result<Vec<String
         .map_err(|e| e.to_string())
 }
 
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind")]
+pub enum PullEvent {
+    Progress { status: String, percent: f64 },
+    Done,
+    Error { message: String },
+}
+
+#[tauri::command]
+pub async fn pull_ollama_model(
+    state: State<'_, AppState>,
+    model: String,
+    channel: Channel<PullEvent>,
+) -> Result<(), String> {
+    let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();
+    let tx = channel.clone();
+    let result = providers::ollama::pull_model(&endpoint, &model, move |status, percent| {
+        let _ = tx.send(PullEvent::Progress {
+            status: status.to_string(),
+            percent,
+        });
+    })
+    .await;
+    match result {
+        Ok(_) => {
+            let _ = channel.send(PullEvent::Done);
+            Ok(())
+        }
+        Err(e) => {
+            let _ = channel.send(PullEvent::Error {
+                message: e.to_string(),
+            });
+            Ok(())
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn send_message(
     state: State<'_, AppState>,
