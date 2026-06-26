@@ -100,6 +100,8 @@ isolated phases and run focused subagents (each with only the context it needs) 
 **Rebranding follow-through (Saga):** finish the visual identity — logo/app icons (regenerate the
 Tauri `icons/` from a real caravel mark via `npm run tauri icon`), a coherent color palette, polished
 copy/README text, and demo GIFs/screenshots for the repo.
+**Visual direction:** Portuguese *azulejo* tilework (blue-and-white) featuring **naus/caravels** — tile
+motifs as accents/empty-states/backgrounds, keeping the current dark UI for the working surface.
 
 **All-in-one / zero-setup distribution** (goal: a non-technical user double-clicks the installer and it just works):
 
