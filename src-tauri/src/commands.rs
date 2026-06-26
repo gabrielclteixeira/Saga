@@ -435,10 +435,19 @@ pub async fn send_message_stream(
                 .await
             } else {
                 // CLI não suporta streaming fino — resposta completa, emitida como um delta.
+                let mut cli_tools: Vec<&str> = Vec::new();
+                if research {
+                    cli_tools.push("WebSearch");
+                    cli_tools.push("WebFetch");
+                }
+                if subagents {
+                    cli_tools.push("Task");
+                }
                 let r = providers::claude_cli::run(
                     &settings.claude_cli_path,
                     &prepared.model,
                     &prepared.full_messages,
+                    &cli_tools,
                 )
                 .await;
                 if let Ok(ref resp) = r {

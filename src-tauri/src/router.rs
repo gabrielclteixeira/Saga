@@ -288,8 +288,13 @@ pub async fn handle(messages: &[ChatMessage], settings: &Settings) -> Result<Out
                 )
                 .await?
             } else {
-                providers::claude_cli::run(&settings.claude_cli_path, &p.model, &p.full_messages)
-                    .await?
+                providers::claude_cli::run(
+                    &settings.claude_cli_path,
+                    &p.model,
+                    &p.full_messages,
+                    &[],
+                )
+                .await?
             }
         }
     };

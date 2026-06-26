@@ -44,21 +44,29 @@ pub async fn run(
     cli_path: &str,
     model: &str,
     messages: &[ChatMessage],
+    allowed_tools: &[&str],
 ) -> Result<LlmResponse> {
     let prompt = flatten(messages);
     let cli_path = cli_path.to_string();
     let model = model.to_string();
 
+    let mut args: Vec<String> = vec![
+        "-p".into(),
+        prompt,
+        "--output-format".into(),
+        "json".into(),
+        "--model".into(),
+        model,
+    ];
+    if !allowed_tools.is_empty() {
+        // Autoriza ferramentas da CLI em modo headless (senão pede permissão).
+        args.push("--allowedTools".into());
+        args.push(allowed_tools.join(","));
+    }
+
     // Command é síncrono — corre num thread de blocking para não travar o runtime async.
     let output = tauri::async_runtime::spawn_blocking(move || {
-        Command::new(&cli_path)
-            .arg("-p")
-            .arg(&prompt)
-            .arg("--output-format")
-            .arg("json")
-            .arg("--model")
-            .arg(&model)
-            .output()
+        Command::new(&cli_path).args(&args).output()
     })
     .await
     .map_err(|e| anyhow!("falha a lançar a Claude CLI: {e}"))?

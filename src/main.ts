@@ -69,9 +69,9 @@ app.innerHTML = `
         <button type="button" data-mode="local">Local</button>
         <button type="button" data-mode="claude">Claude</button>
         <span class="composer-toggles">
-          <button type="button" id="btn-subagents" class="chip-toggle" title="Subagentes (divide a tarefa e corre em paralelo) — Claude API">🧩 Subagentes</button>
-          <button type="button" id="btn-research" class="chip-toggle" title="Deep research (pesquisa web) — Claude API">🔎 Pesquisar</button>
-          <button type="button" id="btn-think" class="chip-toggle" title="Extended thinking (raciocínio) — Claude API">🧠 Think</button>
+          <button type="button" id="btn-subagents" class="chip-toggle" title="Subagentes (API: orquestra em paralelo · CLI: ferramenta Task)">🧩 Subagentes</button>
+          <button type="button" id="btn-research" class="chip-toggle" title="Pesquisa web (API: web_search · CLI: WebSearch)">🔎 Pesquisar</button>
+          <button type="button" id="btn-think" class="chip-toggle" title="Extended thinking (raciocínio) — só Claude API">🧠 Think</button>
         </span>
       </div>
       <form class="composer" id="composer">
