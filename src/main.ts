@@ -1,6 +1,8 @@
 import "./style.css";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import {
   api,
   type Accounting,
@@ -209,6 +211,12 @@ app.innerHTML = `
         <label>Caminho do sidecar (sidecar/index.js) <input name="browser_sidecar_script" type="text" /></label>
         <label>Executável Node <input name="browser_node_path" type="text" /></label>
         <label>Pasta de dados do browser (sessão persistente) <input name="browser_user_data_dir" type="text" /></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Atualizações</legend>
+        <button type="button" class="ghost" id="btn-check-update">Verificar atualizações</button>
+        <div class="pull-status" id="update-status"></div>
       </fieldset>
 
       <menu>
@@ -1218,6 +1226,24 @@ async function finishWizard() {
   await refreshMemory();
 }
 
+async function checkForUpdates() {
+  const status = document.querySelector("#update-status")!;
+  status.textContent = "A verificar…";
+  try {
+    const update = await check();
+    if (!update) {
+      status.textContent = "Estás na versão mais recente.";
+      return;
+    }
+    status.textContent = `Nova versão ${update.version} — a descarregar…`;
+    await update.downloadAndInstall();
+    status.textContent = "Instalado. A reiniciar…";
+    await relaunch();
+  } catch (e) {
+    status.textContent = "Atualizações indisponíveis: " + e;
+  }
+}
+
 async function init() {
   els.composer.addEventListener("submit", onSubmit);
   els.input.addEventListener("input", autoGrow);
@@ -1353,6 +1379,7 @@ async function init() {
   });
   document.querySelector("#local-provider")!.addEventListener("change", applyProviderFields);
   document.querySelector("#cloud-provider")!.addEventListener("change", applyProviderFields);
+  document.querySelector("#btn-check-update")!.addEventListener("click", checkForUpdates);
 
   try {
     state.settings = await api.getSettings();

@@ -89,6 +89,31 @@ npm run tauri build    # production bundles for your OS
 In **Settings**, point *Memory folder* at any directory of `.md` files (try `examples/memory/`)
 and optionally a `CLAUDE.md`.
 
+## Releasing & auto-update
+
+Saga ships with the Tauri **updater** (Settings → Atualizações → *Verificar atualizações*). To cut a
+release that the app can auto-update to:
+
+1. **Generate your signing key** (keep the private key secret — the committed `pubkey` is a placeholder):
+   ```bash
+   npx @tauri-apps/cli signer generate --write-keys saga-updater.key
+   ```
+   Put the printed **public key** in `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`.
+2. **Add CI secrets** on GitHub: `TAURI_SIGNING_PRIVATE_KEY` (the private key contents) and
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The release workflow then signs the bundles and uploads a
+   `latest.json` the updater endpoint points at.
+3. **Tag a release** (`git tag v0.2.0 && git push --tags`) — CI builds, signs, and drafts the release.
+
+### Code signing (optional, needs paid certs)
+Unsigned installers trigger "unknown publisher" warnings. To sign:
+- **Windows**: a code-signing certificate (OV/EV); set `bundle.windows.certificateThumbprint` (or CI
+  secrets `WINDOWS_CERTIFICATE`/`WINDOWS_CERTIFICATE_PASSWORD`).
+- **macOS**: an Apple Developer cert + notarization (`APPLE_*` CI secrets).
+
+### Browser sidecar (not yet bundled)
+The Playwright sidecar still requires a one-time `cd sidecar && npm install && npx playwright install chromium`.
+Bundling Node + Chromium into the installer (hundreds of MB) is a deliberate follow-up.
+
 ## Roadmap (personal/deeper version)
 
 `main` is the focused portfolio version (V1). The `v2` branch is a deeper personal build adding:
