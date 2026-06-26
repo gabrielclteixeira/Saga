@@ -98,6 +98,12 @@ pub struct Settings {
     pub browser_node_path: String,
     /// Pasta de dados persistente do browser (mantém sessão/login).
     pub browser_user_data_dir: String,
+    /// Servidores MCP configurados (o modelo pode chamar as ferramentas deles).
+    pub mcp_servers: Vec<crate::mcp::McpServerConfig>,
+    /// Pasta do workspace (skills/, playbooks/, workflows/).
+    pub workspace_dir: String,
+    /// Confirmação de ações: "off" | "dry_run" | "ask".
+    pub confirm_mode: String,
     /// Onboarding (wizard de 1.º arranque) concluído.
     pub onboarding_done: bool,
 }
@@ -132,6 +138,12 @@ impl Default for Settings {
                 .join("browser")
                 .to_string_lossy()
                 .to_string(),
+            mcp_servers: Vec::new(),
+            workspace_dir: config_dir()
+                .join("workspace")
+                .to_string_lossy()
+                .to_string(),
+            confirm_mode: "off".into(),
             onboarding_done: false,
         }
     }
@@ -155,6 +167,11 @@ const KEYRING_SERVICE: &str = "saga";
 const KC_ANTHROPIC: &str = "anthropic_api_key";
 const KC_OPENAI_CLOUD: &str = "openai_cloud_key";
 const KC_OPENAI_LOCAL: &str = "openai_local_key";
+
+/// Nome de utilizador da keychain para o env de um servidor MCP.
+fn mcp_env_user(name: &str) -> String {
+    format!("mcp_env_{name}")
+}
 
 /// Lê uma credencial da keychain do SO (string vazia se não existir/erro).
 fn keychain_load(user: &str) -> String {
@@ -196,6 +213,22 @@ impl Settings {
                 migrated = true;
             }
         }
+        // O `env` de cada servidor MCP (pode ter tokens) vive na keychain, uma entrada por servidor.
+        for srv in &mut s.mcp_servers {
+            if srv.name.trim().is_empty() {
+                continue;
+            }
+            let user = mcp_env_user(&srv.name);
+            let kc = keychain_load(&user);
+            if !kc.is_empty() {
+                if let Ok(env) = serde_json::from_str::<Vec<(String, String)>>(&kc) {
+                    srv.env = env;
+                }
+            } else if !srv.env.is_empty() {
+                keychain_store(&user, &serde_json::to_string(&srv.env).unwrap_or_default());
+                migrated = true;
+            }
+        }
         if migrated {
             let _ = s.save();
         }
@@ -211,6 +244,19 @@ impl Settings {
         to_write.claude_api_key = String::new();
         to_write.openai_cloud_key = String::new();
         to_write.openai_local_key = String::new();
+        // Guarda o env de cada servidor MCP na keychain e limpa-o do json.
+        for srv in &mut to_write.mcp_servers {
+            if srv.name.trim().is_empty() {
+                continue;
+            }
+            let user = mcp_env_user(&srv.name);
+            if srv.env.is_empty() {
+                keychain_store(&user, "");
+            } else {
+                keychain_store(&user, &serde_json::to_string(&srv.env).unwrap_or_default());
+                srv.env = Vec::new();
+            }
+        }
 
         let path = settings_path();
         if let Some(parent) = path.parent() {

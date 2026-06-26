@@ -11,8 +11,10 @@ use crate::accounting::Accounting;
 use crate::providers::{estimate_tokens, ChatMessage};
 use crate::router;
 use crate::settings::Settings;
+use crate::mcp::McpManager;
 use crate::store::{self, ConversationMeta, SearchHit, StoredMessage};
 use crate::tools::browser::PlaywrightSidecar;
+use crate::tools::dispatch::Dispatcher;
 use crate::{agent, memory, providers};
 
 pub struct AppState {
@@ -21,6 +23,8 @@ pub struct AppState {
     pub db: Mutex<Connection>,
     /// Sidecar do browser, criado preguiçosamente na 1.ª utilização de ferramentas.
     pub browser: tokio::sync::Mutex<Option<PlaywrightSidecar>>,
+    /// Servidores MCP ativos, lançados preguiçosamente.
+    pub mcp: tokio::sync::Mutex<McpManager>,
 }
 
 impl AppState {
@@ -31,6 +35,7 @@ impl AppState {
             accounting: Mutex::new(Accounting::default()),
             db: Mutex::new(db),
             browser: tokio::sync::Mutex::new(None),
+            mcp: tokio::sync::Mutex::new(McpManager::default()),
         }
     }
 }
@@ -224,6 +229,16 @@ pub fn truncate_conversation(state: State<AppState>, id: i64, keep: i64) -> Resu
 pub async fn list_ollama_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();
     providers::ollama::list_models(&endpoint)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Testa um servidor MCP (handshake + tools/list) e devolve os nomes das tools.
+#[tauri::command]
+pub async fn test_mcp_server(
+    config: crate::mcp::McpServerConfig,
+) -> Result<Vec<String>, String> {
+    crate::mcp::test_server(&config)
         .await
         .map_err(|e| e.to_string())
 }
@@ -425,12 +440,20 @@ pub async fn send_message_stream(
         router::Route::Claude => {
             // Imagens exigem API (a CLI não as suporta).
             let use_api = prepared.has_images || settings.claude_mode == "api";
-            if use_api && settings.enable_browser_tools && !prepared.has_images {
-                // Loop agêntico com ferramentas de browser (só API).
+            let any_mcp = settings
+                .mcp_servers
+                .iter()
+                .any(|s| s.enabled && !s.name.trim().is_empty());
+            let want_tools =
+                use_api && !prepared.has_images && (settings.enable_browser_tools || any_mcp);
+            if want_tools {
+                // Loop agêntico com ferramentas (browser e/ou servidores MCP) — só API.
                 let tx_d = channel.clone();
                 let tx_t = channel.clone();
-                let mut guard = state.browser.lock().await;
-                if guard.is_none() {
+
+                // Lança o browser se ativado.
+                let mut browser_guard = state.browser.lock().await;
+                if settings.enable_browser_tools && browser_guard.is_none() {
                     match PlaywrightSidecar::spawn(
                         &settings.browser_node_path,
                         &settings.browser_sidecar_script,
@@ -438,17 +461,30 @@ pub async fn send_message_stream(
                     )
                     .await
                     {
-                        Ok(s) => *guard = Some(s),
+                        Ok(s) => *browser_guard = Some(s),
                         Err(e) => return Err(e.to_string()),
                     }
                 }
-                let browser = guard.as_mut().unwrap();
+                // Garante os servidores MCP ativos.
+                let mut mcp_guard = state.mcp.lock().await;
+                if any_mcp {
+                    mcp_guard.ensure_ready(&settings.mcp_servers).await;
+                }
+
+                let mut dispatcher = Dispatcher {
+                    browser: if settings.enable_browser_tools {
+                        browser_guard.as_mut()
+                    } else {
+                        None
+                    },
+                    mcp: if any_mcp { Some(&mut *mcp_guard) } else { None },
+                };
                 agent::run(
                     &settings.claude_api_key,
                     &prepared.model,
                     settings.claude_max_tokens,
                     &prepared.full_messages,
-                    browser,
+                    &mut dispatcher,
                     move |d| {
                         let _ = tx_d.send(StreamEvent::Delta { text: d.to_string() });
                     },

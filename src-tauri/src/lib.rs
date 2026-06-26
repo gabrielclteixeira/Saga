@@ -1,6 +1,7 @@
 mod accounting;
 mod agent;
 mod commands;
+mod mcp;
 mod memory;
 mod orchestrator;
 mod providers;
@@ -26,6 +27,7 @@ pub fn run() {
             commands::get_memory_preview,
             commands::diagnostics,
             commands::list_ollama_models,
+            commands::test_mcp_server,
             commands::pull_ollama_model,
             commands::send_message,
             commands::send_message_stream,

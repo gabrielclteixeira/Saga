@@ -1,6 +1,8 @@
-//! Ferramentas que o modelo pode chamar (tool-calling). Atualmente: browser.
+//! Ferramentas que o modelo pode chamar (tool-calling): browser + servidores MCP,
+//! agregados pelo `dispatch::Dispatcher`.
 
 pub mod browser;
+pub mod dispatch;
 
 use anyhow::Result;
 

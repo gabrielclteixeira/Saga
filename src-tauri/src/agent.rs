@@ -4,27 +4,27 @@
 use anyhow::Result;
 
 use crate::providers::{claude_api, ChatMessage, LlmResponse};
-use crate::tools::{browser_tools_schema, BrowserTool};
+use crate::tools::dispatch::ToolHost;
 
 const MAX_TURNS: usize = 8;
 
 /// Corre o loop. `on_delta` recebe o texto do assistente; `on_tool` recebe (nome, detalhe) de cada chamada.
-pub async fn run<B, D, T>(
+pub async fn run<H, D, T>(
     api_key: &str,
     model: &str,
     max_tokens: u32,
     full_messages: &[ChatMessage],
-    browser: &mut B,
+    host: &mut H,
     mut on_delta: D,
     mut on_tool: T,
 ) -> Result<LlmResponse>
 where
-    B: BrowserTool,
+    H: ToolHost,
     D: FnMut(&str),
     T: FnMut(&str, &str),
 {
     let (system, mut messages) = claude_api::to_request_messages(full_messages);
-    let tools = browser_tools_schema();
+    let tools = host.schemas();
 
     let mut total_in = 0u64;
     let mut total_out = 0u64;
@@ -83,7 +83,8 @@ where
                             .cloned()
                             .unwrap_or_else(|| serde_json::json!({}));
                         on_tool(&name, &input.to_string());
-                        let result = execute(browser, &name, &input)
+                        let result = host
+                            .call(&name, &input)
                             .await
                             .unwrap_or_else(|e| format!("ERRO: {e}"));
                         tool_results.push(serde_json::json!({
@@ -113,19 +114,4 @@ where
         output_tokens: total_out,
         reported_cost_usd: 0.0,
     })
-}
-
-async fn execute<B: BrowserTool>(
-    browser: &mut B,
-    name: &str,
-    input: &serde_json::Value,
-) -> Result<String> {
-    match name {
-        "browser_navigate" => browser.call("navigate", input).await,
-        "browser_read_text" => browser.call("read_text", input).await,
-        "browser_click" => browser.call("click", input).await,
-        "browser_fill" => browser.call("fill", input).await,
-        "browser_screenshot" => browser.call("screenshot", input).await,
-        other => Ok(format!("ferramenta desconhecida: {other}")),
-    }
 }
