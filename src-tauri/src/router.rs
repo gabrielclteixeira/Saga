@@ -151,15 +151,21 @@ fn last_user_prompt(messages: &[ChatMessage]) -> String {
         .unwrap_or_default()
 }
 
+const WORKSPACE_NUDGE: &str = "Para criar ou editar skills, playbooks ou workflows, NÃO escrevas \
+ficheiros nem uses uma pasta .claude/ — usa o comando /skill (ou /playbook, /workflow), ou o botão \
+'Gerar com IA' no Workspace da Saga.";
+
 fn with_system(context: &str, messages: &[ChatMessage]) -> Vec<ChatMessage> {
     let mut out = Vec::with_capacity(messages.len() + 1);
+    let mut sys = WORKSPACE_NUDGE.to_string();
     if !context.trim().is_empty() {
-        out.push(ChatMessage {
-            role: "system".into(),
-            content: format!("Contexto/memória relevante:\n{context}"),
-            attachments: Vec::new(),
-        });
+        sys.push_str(&format!("\n\nContexto/memória relevante:\n{context}"));
     }
+    out.push(ChatMessage {
+        role: "system".into(),
+        content: sys,
+        attachments: Vec::new(),
+    });
     out.extend_from_slice(messages);
     out
 }

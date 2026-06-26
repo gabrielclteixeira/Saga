@@ -123,6 +123,7 @@ app.innerHTML = `
           <button type="button" id="btn-think" class="chip-toggle" title="Extended thinking (raciocínio) — só Claude API">🧠 Think</button>
         </span>
       </div>
+      <div class="slash-menu" id="slash-menu" hidden></div>
       <form class="composer" id="composer">
         <button type="button" class="attach-btn" id="btn-attach" title="Anexar imagem" aria-label="Anexar imagem"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
         <input type="file" id="file-input" accept="image/*" multiple hidden />
@@ -1174,10 +1175,178 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   }
 }
 
+// ---- Menu "/" (comandos + definições) ----
+type SlashCmd = {
+  cmd: string;
+  label: string;
+  kind: "create" | "setting" | "workflow";
+  run?: () => void;
+};
+const slashMenu = document.querySelector<HTMLElement>("#slash-menu")!;
+const CREATE_CMDS = ["skill", "playbook", "workflow"];
+let slashWorkflows: string[] = [];
+let slashItems: SlashCmd[] = [];
+let slashSel = 0;
+
+function refreshSlashWorkflows() {
+  api
+    .getWorkspaceIndex()
+    .then((i) => {
+      slashWorkflows = i.workflows.map((w) => w.name);
+    })
+    .catch(() => {});
+}
+
+function setRouteMode(mode: "auto" | "local" | "claude") {
+  state.routeMode = mode;
+  els.routeModeBar
+    .querySelectorAll<HTMLButtonElement>("button[data-mode]")
+    .forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+}
+function toggleComposerFlag(flag: "thinking" | "research" | "subagents") {
+  state[flag] = !state[flag];
+  const id =
+    flag === "thinking" ? "#btn-think" : flag === "research" ? "#btn-research" : "#btn-subagents";
+  document.querySelector(id)!.classList.toggle("active", state[flag]);
+}
+function openSettingsDialog() {
+  if (state.settings) settingsToForm(state.settings);
+  els.dialog.showModal();
+}
+
+function slashCommands(): SlashCmd[] {
+  const cmds: SlashCmd[] = [
+    { cmd: "skill", label: "Criar skill com IA — /skill <descrição>", kind: "create" },
+    { cmd: "playbook", label: "Criar playbook com IA — /playbook <descrição>", kind: "create" },
+    { cmd: "workflow", label: "Criar workflow com IA — /workflow <descrição>", kind: "create" },
+    { cmd: "auto", label: "Rota: Auto", kind: "setting", run: () => setRouteMode("auto") },
+    { cmd: "local", label: "Rota: Local", kind: "setting", run: () => setRouteMode("local") },
+    { cmd: "claude", label: "Rota: Claude", kind: "setting", run: () => setRouteMode("claude") },
+    { cmd: "think", label: "Toggle: 🧠 Think", kind: "setting", run: () => toggleComposerFlag("thinking") },
+    { cmd: "pesquisar", label: "Toggle: 🔎 Pesquisar", kind: "setting", run: () => toggleComposerFlag("research") },
+    { cmd: "subagentes", label: "Toggle: 🧩 Subagentes", kind: "setting", run: () => toggleComposerFlag("subagents") },
+    { cmd: "modelos", label: "Abrir Modelos", kind: "setting", run: () => openModels() },
+    { cmd: "definicoes", label: "Abrir Definições", kind: "setting", run: openSettingsDialog },
+  ];
+  for (const w of slashWorkflows) cmds.push({ cmd: w, label: `Correr workflow: ${w}`, kind: "workflow" });
+  return cmds;
+}
+
+function updateSlashMenu() {
+  const m = els.input.value.match(/^\/([\w-]*)$/);
+  if (!m) return hideSlash();
+  const token = m[1].toLowerCase();
+  slashItems = slashCommands().filter((c) => c.cmd.toLowerCase().startsWith(token));
+  if (slashItems.length === 0) return hideSlash();
+  slashSel = 0;
+  renderSlash();
+  slashMenu.hidden = false;
+}
+function renderSlash() {
+  slashMenu.innerHTML = slashItems
+    .map(
+      (c, i) =>
+        `<button type="button" class="slash-item${i === slashSel ? " sel" : ""}" data-i="${i}"><code>/${escapeHtml(c.cmd)}</code><span>${escapeHtml(c.label)}</span></button>`
+    )
+    .join("");
+  slashMenu.querySelectorAll<HTMLButtonElement>(".slash-item").forEach((b) =>
+    b.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      selectSlash(parseInt(b.dataset.i!));
+    })
+  );
+}
+function hideSlash() {
+  slashMenu.hidden = true;
+}
+function slashOpen() {
+  return !slashMenu.hidden;
+}
+function selectSlash(i: number) {
+  const it = slashItems[i];
+  if (!it) return;
+  if (it.kind === "setting") {
+    it.run!();
+    els.input.value = "";
+    hideSlash();
+    autoGrow();
+    return;
+  }
+  els.input.value = `/${it.cmd} `;
+  hideSlash();
+  els.input.focus();
+  autoGrow();
+}
+
+function slugify(s: string): string {
+  const base = s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .split("-")
+    .filter(Boolean)
+    .slice(0, 4)
+    .join("-");
+  return base || "novo";
+}
+
+/** Cria um doc de workspace a partir do chat (determinístico, em qualquer modo). */
+async function createDocFromChat(kind: "skill" | "playbook" | "workflow", desc: string) {
+  if (state.currentConversationId === null) {
+    state.currentConversationId = await api.newConversation();
+    await loadConversations();
+  }
+  state.items.push({ role: "user", content: `/${kind} ${desc}` });
+  const note: Item = { role: "assistant", content: `A gerar ${kind}…` };
+  state.items.push(note);
+  renderMessages();
+  try {
+    const md = await api.generateDoc(kind, desc);
+    const f = parseDocFields(kind, md);
+    const name = f.name && /^[\w-]+$/.test(f.name) ? f.name : slugify(desc);
+    await api.saveWorkspaceDoc(kind, name, md);
+    refreshSlashWorkflows();
+    note.content = `✓ ${kind} **${name}** criada no Workspace. Abre o Workspace (rail) para rever/editar.`;
+  } catch (e) {
+    note.content = `✗ Falha a criar ${kind}: ${e}`;
+    note.error = true;
+  }
+  renderMessages();
+}
+
 async function onSubmit(ev: Event) {
   ev.preventDefault();
+  hideSlash();
   const text = els.input.value.trim();
   if ((!text && state.pendingAttachments.length === 0) || state.busy) return;
+
+  // Comandos "/" (criar / definições). Workflows seguem para o envio normal (backend corre-os).
+  const m = text.match(/^\/([\w-]+)\s*([\s\S]*)$/);
+  if (m) {
+    const cmd = m[1].toLowerCase();
+    const args = m[2].trim();
+    if (CREATE_CMDS.includes(cmd)) {
+      els.input.value = "";
+      els.input.style.height = "auto";
+      if (args) {
+        await createDocFromChat(cmd as "skill" | "playbook" | "workflow", args);
+      } else {
+        openWorkspace();
+        setWsKind(cmd as "skill" | "playbook" | "workflow");
+        newWsDoc();
+      }
+      return;
+    }
+    const setting = slashCommands().find((c) => c.kind === "setting" && c.cmd === cmd);
+    if (setting) {
+      setting.run!();
+      els.input.value = "";
+      els.input.style.height = "auto";
+      return;
+    }
+  }
 
   if (state.currentConversationId === null) {
     state.currentConversationId = await api.newConversation();
@@ -2543,7 +2712,33 @@ async function init() {
   mountViewsInCenter();
   els.composer.addEventListener("submit", onSubmit);
   els.input.addEventListener("input", autoGrow);
+  els.input.addEventListener("input", updateSlashMenu);
+  els.input.addEventListener("blur", () => setTimeout(hideSlash, 150));
   els.input.addEventListener("keydown", (e) => {
+    if (slashOpen()) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        slashSel = (slashSel + 1) % slashItems.length;
+        renderSlash();
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        slashSel = (slashSel - 1 + slashItems.length) % slashItems.length;
+        renderSlash();
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        selectSlash(slashSel);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        hideSlash();
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       els.composer.requestSubmit();
@@ -2680,6 +2875,7 @@ async function init() {
   document.querySelector("#cloud-provider")!.addEventListener("change", applyProviderFields);
   document.querySelector("#btn-check-update")!.addEventListener("click", checkForUpdates);
   wireWorkspaceUi();
+  refreshSlashWorkflows();
 
   // Zoom da interface (Ctrl/⌘ +/−/0) + controlos nas definições.
   initZoom();

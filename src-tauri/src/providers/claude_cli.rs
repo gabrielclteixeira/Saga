@@ -64,13 +64,19 @@ pub async fn run(
         args.push(allowed_tools.join(","));
     }
 
+    let path_msg = cli_path.clone();
     // Command é síncrono — corre num thread de blocking para não travar o runtime async.
     let output = tauri::async_runtime::spawn_blocking(move || {
         Command::new(&cli_path).args(&args).output()
     })
     .await
     .map_err(|e| anyhow!("falha a lançar a Claude CLI: {e}"))?
-    .map_err(|e| anyhow!("falha a executar a Claude CLI: {e}"))?;
+    .map_err(|e| {
+        anyhow!(
+            "Claude CLI não encontrada ('{path_msg}'): {e}. Instala a Claude CLI, ou muda o cloud para \
+modo API em Definições/Modelos. (O modelo local continua a funcionar.)"
+        )
+    })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

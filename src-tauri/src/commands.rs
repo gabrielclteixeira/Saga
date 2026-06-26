@@ -296,16 +296,22 @@ pub async fn generate_doc(
         ChatMessage { role: "user".into(), content: instruction, attachments: Vec::new() },
     ];
     let max = settings.claude_max_tokens.max(2048);
-    let resp = if settings.cloud_provider == "openai" && !settings.openai_cloud_key.trim().is_empty() {
-        providers::openai_compat::chat(&settings.openai_cloud_endpoint, &settings.openai_cloud_key, &settings.openai_cloud_model, &messages, max).await
+    // Tenta o cloud configurado; se falhar (ou não houver), cai para o modelo local.
+    let cloud = if settings.cloud_provider == "openai" && !settings.openai_cloud_key.trim().is_empty() {
+        Some(providers::openai_compat::chat(&settings.openai_cloud_endpoint, &settings.openai_cloud_key, &settings.openai_cloud_model, &messages, max).await)
     } else if settings.cloud_provider == "claude" && settings.claude_mode == "api" && !settings.claude_api_key.trim().is_empty() {
-        providers::claude_api::messages(&settings.claude_api_key, &settings.claude_model, max, &messages, false).await
+        Some(providers::claude_api::messages(&settings.claude_api_key, &settings.claude_model, max, &messages, false).await)
     } else if settings.cloud_provider == "claude" && settings.claude_mode == "cli" {
-        providers::claude_cli::run(&settings.claude_cli_path, &settings.claude_model, &messages, &[]).await
-    } else if settings.local_provider == "openai" {
-        providers::openai_compat::chat(&settings.openai_local_endpoint, &settings.openai_local_key, &settings.openai_local_model, &messages, max).await
+        Some(providers::claude_cli::run(&settings.claude_cli_path, &settings.claude_model, &messages, &[]).await)
     } else {
-        providers::ollama::chat(&settings.ollama_endpoint, &settings.ollama_model, &messages).await
+        None
+    };
+    let resp = match cloud {
+        Some(Ok(r)) => Ok(r),
+        _ if settings.local_provider == "openai" => {
+            providers::openai_compat::chat(&settings.openai_local_endpoint, &settings.openai_local_key, &settings.openai_local_model, &messages, max).await
+        }
+        _ => providers::ollama::chat(&settings.ollama_endpoint, &settings.ollama_model, &messages).await,
     };
     let text = resp.map_err(|e| e.to_string())?.text;
     Ok(strip_fences(&text))
