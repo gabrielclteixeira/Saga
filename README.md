@@ -164,7 +164,9 @@ The SVG masters are the source of truth — platform icons are regenerated from 
 search (SQLite/FTS5) · image attachments (vision) · extended thinking & deep research · subagent
 orchestration · agentic **browser tool** · **MCP host** · **skills / playbooks / workflows** · **action log +
 confirm/dry-run** · side rail · interface zoom · OpenAI-compatible providers · in-app model downloader ·
-azulejo identity + animated caravel loader · OS-keychain secrets · CI release builds.
+azulejo identity + animated caravel loader · OS-keychain secrets · CI release builds ·
+**rich artifacts** (Markdown/Mermaid/syntax-highlight, export, gallery) · **Saga export** ·
+**iterative cited deep-research** · **scheduled automations** (cron, background runner + notifications).
 
 **Next:**
 
@@ -177,8 +179,7 @@ azulejo identity + animated caravel loader · OS-keychain secrets · CI release 
   research can run fully local (today web search is Claude-only; enabling 🔎 forces the Claude route).
 - **Compact / clear a Saga** — like Claude Code's `/compact` and `/clear`: summarize old messages with the
   local model to save context/tokens, or clear the conversation.
-- **In progress** — richer artifacts (Markdown/Mermaid/syntax-highlight, export, gallery), iterative cited
-  deep-research, and scheduled automations.
+- **Tray & autostart** — keep automations running without the window open.
 
 ### Browser tool setup
 
