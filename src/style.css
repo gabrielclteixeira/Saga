@@ -543,6 +543,42 @@ body {
   }
 }
 
+/* Toast de download de modelos (fixo, visível em qualquer vista) */
+.dl-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.dl-toast[hidden] {
+  display: none;
+}
+.dl-toast-label {
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+.dl-toast-bar-wrap {
+  height: 8px;
+  background: var(--bg-3);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.dl-toast-bar {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
 /* Menu de comandos "/" */
 .chat {
   position: relative;

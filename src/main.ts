@@ -1,6 +1,7 @@
 import "./style.css";
 import { caravelLoader } from "./caravel-loader";
 import { initZoom, nudgeZoom, onZoomChange, resetZoom } from "./zoom";
+import { initLang, getLang, setLang, t } from "./i18n";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
@@ -85,64 +86,70 @@ const state: {
   subagents: false,
 };
 
+initLang();
 const app = document.querySelector<HTMLDivElement>("#app")!;
 app.innerHTML = `
   <header class="topbar">
-    <div class="brand"><img src="/favicon.svg" class="brand-mark" alt="" /> <strong>Saga</strong> <span class="tag">router local ↔ Claude</span></div>
+    <div class="brand"><img src="/favicon.svg" class="brand-mark" alt="" /> <strong>Saga</strong> <span class="tag">${t("router local ↔ Claude")}</span></div>
     <div class="mini" id="mini-stats"></div>
-    <button class="icon-btn" id="btn-export-saga" title="Exportar Saga (Markdown)">⤓</button>
-    <button class="icon-btn" id="btn-settings" title="Definições">⚙</button>
+    <button class="icon-btn" id="btn-export-saga" title="${t("Exportar Saga (Markdown)")}">⤓</button>
+    <button class="icon-btn" id="btn-settings" title="${t("Definições")}">⚙</button>
   </header>
   <main class="layout">
     <nav class="rail" id="rail">
-      <button type="button" class="rail-btn active" data-view="sagas" title="Sagas"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 9 9 0 0 1-3.9-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z"/></svg></span><span class="rail-lbl">Sagas</span></button>
-      <button type="button" class="rail-btn" data-view="workspace" title="Workspace (skills, playbooks, workflows)"><span class="rail-ico">✦</span><span class="rail-lbl">Workspace</span></button>
-      <button type="button" class="rail-btn" data-view="servers" title="Servidores MCP"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><line x1="6.5" y1="7.5" x2="6.5" y2="7.5"/><line x1="6.5" y1="16.5" x2="6.5" y2="16.5"/></svg></span><span class="rail-lbl">Servidores</span></button>
-      <button type="button" class="rail-btn" data-view="activity" title="Atividade (ações)"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><line x1="4.5" y1="6" x2="4.5" y2="6"/><line x1="4.5" y1="12" x2="4.5" y2="12"/><line x1="4.5" y1="18" x2="4.5" y2="18"/></svg></span><span class="rail-lbl">Atividade</span></button>
-      <button type="button" class="rail-btn" data-view="automations" title="Automações agendadas"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v4.7l3 1.8"/></svg></span><span class="rail-lbl">Automações</span></button>
-      <button type="button" class="rail-btn" data-view="models" title="Modelos (instalar/configurar)"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span><span class="rail-lbl">Modelos</span></button>
+      <button type="button" class="rail-btn active" data-view="sagas" title="Sagas"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 9 9 0 0 1-3.9-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z"/></svg></span><span class="rail-lbl">${t("Sagas")}</span></button>
+      <button type="button" class="rail-btn" data-view="workspace" title="Workspace (skills, playbooks, workflows)"><span class="rail-ico">✦</span><span class="rail-lbl">${t("Workspace")}</span></button>
+      <button type="button" class="rail-btn" data-view="servers" title="Servidores MCP"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><line x1="6.5" y1="7.5" x2="6.5" y2="7.5"/><line x1="6.5" y1="16.5" x2="6.5" y2="16.5"/></svg></span><span class="rail-lbl">${t("Servidores")}</span></button>
+      <button type="button" class="rail-btn" data-view="activity" title="Atividade (ações)"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><line x1="4.5" y1="6" x2="4.5" y2="6"/><line x1="4.5" y1="12" x2="4.5" y2="12"/><line x1="4.5" y1="18" x2="4.5" y2="18"/></svg></span><span class="rail-lbl">${t("Atividade")}</span></button>
+      <button type="button" class="rail-btn" data-view="automations" title="Automações agendadas"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v4.7l3 1.8"/></svg></span><span class="rail-lbl">${t("Automações")}</span></button>
+      <button type="button" class="rail-btn" data-view="models" title="Modelos (instalar/configurar)"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span><span class="rail-lbl">${t("Modelos")}</span></button>
     </nav>
     <aside class="sidebar">
-      <button class="new-chat" id="btn-new-chat">+ Nova Saga</button>
-      <input class="conv-search" id="conv-search" type="search" placeholder="Pesquisar Sagas…" autocomplete="off" />
+      <button class="new-chat" id="btn-new-chat">${t("+ Nova Saga")}</button>
+      <input class="conv-search" id="conv-search" type="search" placeholder="${t("Pesquisar Sagas…")}" autocomplete="off" />
       <div class="conv-list" id="conv-list"></div>
     </aside>
     <div class="center" id="center">
     <section class="chat">
       <div class="messages" id="messages">
-        <div class="empty">Faz uma pergunta. Tarefas leves ficam no modelo local; só o que é pesado escala para o Claude.</div>
+        <div class="empty">${t("Faz uma pergunta. Tarefas leves ficam no modelo local; só o que é pesado escala para o Claude.")}</div>
       </div>
       <div class="attachments" id="attachments"></div>
       <div class="route-mode" id="route-mode">
-        <button type="button" data-mode="auto" class="active">Auto</button>
-        <button type="button" data-mode="local">Local</button>
-        <button type="button" data-mode="claude">Claude</button>
+        <button type="button" data-mode="auto" class="active">${t("Auto")}</button>
+        <button type="button" data-mode="local">${t("Local")}</button>
+        <button type="button" data-mode="claude">${t("Claude")}</button>
         <span class="composer-toggles">
-          <button type="button" id="btn-subagents" class="chip-toggle" title="Subagentes (API: orquestra em paralelo · CLI: ferramenta Task)">🧩 Subagentes</button>
-          <button type="button" id="btn-research" class="chip-toggle" title="Pesquisa web (API: web_search · CLI: WebSearch)">🔎 Pesquisar</button>
-          <button type="button" id="btn-think" class="chip-toggle" title="Extended thinking (raciocínio) — só Claude API">🧠 Think</button>
+          <button type="button" id="btn-subagents" class="chip-toggle" title="Subagentes (API: orquestra em paralelo · CLI: ferramenta Task)">${t("🧩 Subagentes")}</button>
+          <button type="button" id="btn-research" class="chip-toggle" title="Pesquisa web (API: web_search · CLI: WebSearch)">${t("🔎 Pesquisar")}</button>
+          <button type="button" id="btn-think" class="chip-toggle" title="Extended thinking (raciocínio) — só Claude API">${t("🧠 Think")}</button>
         </span>
       </div>
       <div class="slash-menu" id="slash-menu" hidden></div>
       <form class="composer" id="composer">
-        <button type="button" class="attach-btn" id="btn-attach" title="Anexar imagem" aria-label="Anexar imagem"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+        <button type="button" class="attach-btn" id="btn-attach" title="${t("Anexar imagem")}" aria-label="${t("Anexar imagem")}"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
         <input type="file" id="file-input" accept="image/*" multiple hidden />
-        <textarea id="input" rows="1" placeholder="Escreve uma mensagem…" autocomplete="off"></textarea>
-        <button type="submit" id="send">Enviar</button>
+        <textarea id="input" rows="1" placeholder="${t("Escreve uma mensagem…")}" autocomplete="off"></textarea>
+        <button type="submit" id="send">${t("Enviar")}</button>
       </form>
     </section>
     </div>
     <aside class="panel">
       <button class="panel-collapse" id="panel-collapse" title="Ocultar painel" aria-label="Ocultar painel">❯</button>
-      <h2>Painel de tokens</h2>
+      <h2>${t("Painel de tokens")}</h2>
       <div class="cards" id="acct-cards"></div>
-      <h3>Memória carregada</h3>
+      <h3>${t("Memória carregada")}</h3>
       <pre class="mem" id="mem-preview">—</pre>
-      <button class="ghost" id="btn-mem-refresh">Atualizar pré-visualização</button>
+      <button class="ghost" id="btn-mem-refresh">${t("Atualizar pré-visualização")}</button>
     </aside>
   </main>
 
   <button class="panel-reopen" id="panel-reopen" hidden title="Mostrar painel" aria-label="Mostrar painel">❮</button>
+
+  <div class="dl-toast" id="dl-toast" hidden>
+    <div class="dl-toast-label" id="dl-toast-label"></div>
+    <div class="dl-toast-bar-wrap"><div class="dl-toast-bar" id="dl-toast-bar"></div></div>
+  </div>
 
   <aside class="artifact-panel" id="artifact-panel" hidden>
     <header class="artifact-head">
@@ -282,8 +289,14 @@ app.innerHTML = `
       </fieldset>
 
       <fieldset>
-        <legend>Aparência</legend>
-        <label>Zoom da interface
+        <legend>${t("Aparência")}</legend>
+        <label>${t("Idioma")}
+          <select id="lang-select">
+            <option value="pt">${t("Português")}</option>
+            <option value="en">${t("English")}</option>
+          </select>
+        </label>
+        <label>${t("Zoom da interface")}
           <span class="row zoom-row">
             <button type="button" class="ghost" id="zoom-out" aria-label="Reduzir zoom">−</button>
             <span class="zoom-val" id="zoom-val">100%</span>
@@ -1834,6 +1847,8 @@ async function finishWizard() {
   }
   els.wizard.close();
   await refreshMemory();
+  // 1.ª configuração → aterra no hub Modelos para escolher/descarregar um modelo.
+  openModels();
 }
 
 async function checkForUpdates() {
@@ -2730,29 +2745,33 @@ function renderQuickPicks() {
 async function pullModelUi(name: string) {
   name = name.trim();
   if (!name) return;
-  const status = document.querySelector("#hub-pull-status")!;
-  const wrap = document.querySelector<HTMLElement>("#hub-progress")!;
-  const bar = document.querySelector<HTMLElement>("#hub-bar")!;
-  wrap.hidden = false;
+  // Toast global de download (visível em qualquer vista/scroll).
+  const toast = document.querySelector<HTMLElement>("#dl-toast")!;
+  const label = document.querySelector<HTMLElement>("#dl-toast-label")!;
+  const bar = document.querySelector<HTMLElement>("#dl-toast-bar")!;
+  toast.hidden = false;
   bar.style.width = "0%";
-  status.textContent = "A iniciar…";
+  label.textContent = `${t("A descarregar")} ${name}…`;
+  const hideSoon = (ms: number) => setTimeout(() => (toast.hidden = true), ms);
   try {
     await api.pullOllamaModel(name, (ev) => {
       if (ev.kind === "Progress") {
         if (ev.percent >= 0) bar.style.width = ev.percent.toFixed(0) + "%";
-        status.textContent =
-          ev.percent >= 0 ? `${ev.status} — ${ev.percent.toFixed(0)}%` : ev.status;
+        label.textContent = `${name}: ${ev.status}${ev.percent >= 0 ? ` — ${ev.percent.toFixed(0)}%` : ""}`;
       } else if (ev.kind === "Done") {
         bar.style.width = "100%";
-        status.textContent = "✓ Descarregado";
+        label.textContent = `✓ ${name} ${t("descarregado")}`;
         void renderInstalled();
         void renderHubStatus();
+        hideSoon(2500);
       } else {
-        status.textContent = "✗ " + ev.message;
+        label.textContent = "✗ " + ev.message;
+        hideSoon(5000);
       }
     });
   } catch (e) {
-    status.textContent = "✗ " + e;
+    label.textContent = "✗ " + e;
+    hideSoon(5000);
   }
 }
 
@@ -3017,6 +3036,14 @@ async function init() {
     const el = document.querySelector("#zoom-val");
     if (el) el.textContent = Math.round(z * 100) + "%";
   });
+  const langSel = document.querySelector<HTMLSelectElement>("#lang-select");
+  if (langSel) {
+    langSel.value = getLang();
+    langSel.addEventListener("change", () => {
+      setLang(langSel.value as "pt" | "en");
+      location.reload(); // re-monta o template no novo idioma
+    });
+  }
   document.querySelector("#zoom-in")!.addEventListener("click", () => nudgeZoom(0.1));
   document.querySelector("#zoom-out")!.addEventListener("click", () => nudgeZoom(-0.1));
   document.querySelector("#zoom-reset")!.addEventListener("click", resetZoom);
