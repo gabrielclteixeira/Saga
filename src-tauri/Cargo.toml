@@ -1,6 +1,6 @@
 [package]
 name = "saga"
-version = "0.2.3"
+version = "0.2.4"
 description = "Saga — assistente desktop com router local (Ollama) ↔ Claude para poupar tokens"
 authors = ["Gabriel Teixeira <gabrielcalaca@hotmail.com>"]
 license = "MIT"
