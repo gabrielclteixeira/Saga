@@ -44,6 +44,7 @@ pub async fn orchestrate<D, T>(
     model: &str,
     max_tokens: u32,
     messages: &[ChatMessage],
+    web_search: bool,
     mut on_delta: D,
     mut on_tool: T,
 ) -> Result<LlmResponse>
@@ -61,7 +62,8 @@ where
 Responde APENAS com um array JSON de strings (as subtarefas), nada mais. \
 Se a tarefa não beneficiar de divisão, devolve um array com 1 elemento.\n\nTarefa: {task}"
     );
-    let subtasks = match claude_api::messages(api_key, model, 1024, &[msg("user", plan_prompt)]).await
+    let subtasks = match claude_api::messages(api_key, model, 1024, &[msg("user", plan_prompt)], false)
+        .await
     {
         Ok(r) => {
             total_in += r.input_tokens;
@@ -80,7 +82,7 @@ Se a tarefa não beneficiar de divisão, devolve um array com 1 elemento.\n\nTar
             max_tokens,
             messages,
             None,
-            false,
+            web_search,
             |d| on_delta(d),
             |_th| {},
             |_t, _d| {},
@@ -102,7 +104,7 @@ Se a tarefa não beneficiar de divisão, devolve um array com 1 elemento.\n\nTar
     // 2. Subagentes em paralelo (cada um com contexto próprio mínimo).
     let futures = subtasks.iter().map(|st| {
         let m = vec![msg("user", st.clone())];
-        async move { claude_api::messages(api_key, model, max_tokens, &m).await }
+        async move { claude_api::messages(api_key, model, max_tokens, &m, web_search).await }
     });
     let results = join_all(futures).await;
 

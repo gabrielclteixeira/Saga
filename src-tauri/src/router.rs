@@ -284,6 +284,7 @@ pub async fn handle(messages: &[ChatMessage], settings: &Settings) -> Result<Out
                     &p.model,
                     settings.claude_max_tokens,
                     &p.full_messages,
+                    false,
                 )
                 .await?
             } else {

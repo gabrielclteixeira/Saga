@@ -394,6 +394,7 @@ pub async fn send_message_stream(
                     &prepared.model,
                     settings.claude_max_tokens,
                     &prepared.full_messages,
+                    research,
                     on_delta,
                     move |tool, detail| {
                         let _ = tx_tool.send(StreamEvent::ToolStep {

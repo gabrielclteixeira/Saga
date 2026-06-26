@@ -27,7 +27,7 @@ struct MessagesRequest<'a> {
 /// Ferramenta de pesquisa web server-side da Anthropic (o modelo pesquisa e cita).
 fn web_search_tools() -> serde_json::Value {
     serde_json::json!([
-        { "type": "web_search_20260318", "name": "web_search", "max_uses": 6 }
+        { "type": "web_search_20250305", "name": "web_search", "max_uses": 6 }
     ])
 }
 
@@ -113,6 +113,7 @@ pub async fn messages(
     model: &str,
     max_tokens: u32,
     messages: &[ChatMessage],
+    web_search: bool,
 ) -> Result<LlmResponse> {
     if api_key.trim().is_empty() {
         return Err(anyhow!("ANTHROPIC_API_KEY não configurada (modo API)"));
@@ -126,7 +127,11 @@ pub async fn messages(
         messages: wire,
         stream: false,
         thinking: None,
-        tools: None,
+        tools: if web_search {
+            Some(web_search_tools())
+        } else {
+            None
+        },
     };
 
     let client = reqwest::Client::new();
