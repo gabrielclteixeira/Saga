@@ -1,5 +1,6 @@
 import "./style.css";
 import { caravelLoader } from "./caravel-loader";
+import { initZoom, nudgeZoom, onZoomChange, resetZoom } from "./zoom";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { check } from "@tauri-apps/plugin-updater";
@@ -228,6 +229,19 @@ app.innerHTML = `
         <label>Caminho do sidecar (sidecar/index.js) <input name="browser_sidecar_script" type="text" /></label>
         <label>Executável Node <input name="browser_node_path" type="text" /></label>
         <label>Pasta de dados do browser (sessão persistente) <input name="browser_user_data_dir" type="text" /></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Aparência</legend>
+        <label>Zoom da interface
+          <span class="row zoom-row">
+            <button type="button" class="ghost" id="zoom-out" aria-label="Reduzir zoom">−</button>
+            <span class="zoom-val" id="zoom-val">100%</span>
+            <button type="button" class="ghost" id="zoom-in" aria-label="Aumentar zoom">+</button>
+            <button type="button" class="ghost" id="zoom-reset">Repor</button>
+          </span>
+        </label>
+        <p class="wiz-hint">Atalhos: <strong>Ctrl/⌘ +</strong>, <strong>Ctrl/⌘ −</strong>, <strong>Ctrl/⌘ 0</strong> (ou Ctrl/⌘ + roda do rato).</p>
       </fieldset>
 
       <fieldset>
@@ -1826,6 +1840,16 @@ async function init() {
   document.querySelector("#cloud-provider")!.addEventListener("change", applyProviderFields);
   document.querySelector("#btn-check-update")!.addEventListener("click", checkForUpdates);
   wireWorkspaceUi();
+
+  // Zoom da interface (Ctrl/⌘ +/−/0) + controlos nas definições.
+  initZoom();
+  onZoomChange((z) => {
+    const el = document.querySelector("#zoom-val");
+    if (el) el.textContent = Math.round(z * 100) + "%";
+  });
+  document.querySelector("#zoom-in")!.addEventListener("click", () => nudgeZoom(0.1));
+  document.querySelector("#zoom-out")!.addEventListener("click", () => nudgeZoom(-0.1));
+  document.querySelector("#zoom-reset")!.addEventListener("click", resetZoom);
 
   try {
     state.settings = await api.getSettings();
