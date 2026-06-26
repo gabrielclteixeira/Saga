@@ -286,6 +286,7 @@ pub async fn send_message_stream(
     regenerate: bool,
     thinking: bool,
     research: bool,
+    subagents: bool,
 ) -> Result<(), String> {
     let settings = state.settings.lock().unwrap().clone();
 
@@ -379,6 +380,23 @@ pub async fn send_message_stream(
                     },
                     move |tool, detail| {
                         let _ = tx_t.send(StreamEvent::ToolStep {
+                            tool: tool.to_string(),
+                            detail: detail.to_string(),
+                        });
+                    },
+                )
+                .await
+            } else if use_api && subagents {
+                // Orquestração de subagentes (planeador → paralelo → síntese).
+                let tx_tool = channel.clone();
+                crate::orchestrator::orchestrate(
+                    &settings.claude_api_key,
+                    &prepared.model,
+                    settings.claude_max_tokens,
+                    &prepared.full_messages,
+                    on_delta,
+                    move |tool, detail| {
+                        let _ = tx_tool.send(StreamEvent::ToolStep {
                             tool: tool.to_string(),
                             detail: detail.to_string(),
                         });

@@ -2,6 +2,7 @@ mod accounting;
 mod agent;
 mod commands;
 mod memory;
+mod orchestrator;
 mod providers;
 mod router;
 mod settings;

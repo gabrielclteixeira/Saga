@@ -32,6 +32,7 @@ const state: {
   routeMode: "auto" | "local" | "claude";
   thinking: boolean;
   research: boolean;
+  subagents: boolean;
 } = {
   items: [],
   settings: null,
@@ -42,6 +43,7 @@ const state: {
   routeMode: "auto",
   thinking: false,
   research: false,
+  subagents: false,
 };
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -67,6 +69,7 @@ app.innerHTML = `
         <button type="button" data-mode="local">Local</button>
         <button type="button" data-mode="claude">Claude</button>
         <span class="composer-toggles">
+          <button type="button" id="btn-subagents" class="chip-toggle" title="Subagentes (divide a tarefa e corre em paralelo) — Claude API">🧩 Subagentes</button>
           <button type="button" id="btn-research" class="chip-toggle" title="Deep research (pesquisa web) — Claude API">🔎 Pesquisar</button>
           <button type="button" id="btn-think" class="chip-toggle" title="Extended thinking (raciocínio) — Claude API">🧠 Think</button>
         </span>
@@ -729,6 +732,7 @@ type SendOpts = {
   regenerate?: boolean;
   thinking?: boolean;
   research?: boolean;
+  subagents?: boolean;
 };
 
 function buildPayload(): ChatMessage[] {
@@ -750,9 +754,12 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     ...opts,
     thinking: opts.thinking ?? state.thinking,
     research: opts.research ?? state.research,
+    subagents: opts.subagents ?? state.subagents,
   };
-  // Pesquisa web é uma ferramenta server-side do Claude → força a rota API.
-  if (sendOpts.research && !sendOpts.routeOverride) sendOpts.routeOverride = "claude";
+  // Pesquisa web e subagentes são caminhos só de Claude API → forçam a rota.
+  if ((sendOpts.research || sendOpts.subagents) && !sendOpts.routeOverride) {
+    sendOpts.routeOverride = "claude";
+  }
   const assistant: Item = { role: "assistant", content: "" };
   state.items.push(assistant);
   renderMessages();
@@ -1105,6 +1112,10 @@ async function init() {
   document.querySelector("#btn-research")!.addEventListener("click", (e) => {
     state.research = !state.research;
     (e.currentTarget as HTMLElement).classList.toggle("active", state.research);
+  });
+  document.querySelector("#btn-subagents")!.addEventListener("click", (e) => {
+    state.subagents = !state.subagents;
+    (e.currentTarget as HTMLElement).classList.toggle("active", state.subagents);
   });
   els.artifactClose.addEventListener("click", closeArtifact);
   els.artifactToggle.addEventListener("click", () => {

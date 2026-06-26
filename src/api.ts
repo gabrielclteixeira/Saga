@@ -131,6 +131,7 @@ export const api = {
       regenerate?: boolean;
       thinking?: boolean;
       research?: boolean;
+      subagents?: boolean;
     }
   ): Promise<void> => {
     const channel = new Channel<StreamEvent>();
@@ -144,6 +145,7 @@ export const api = {
       regenerate: opts?.regenerate ?? false,
       thinking: opts?.thinking ?? false,
       research: opts?.research ?? false,
+      subagents: opts?.subagents ?? false,
     });
   },
   listConversations: () => invoke<ConversationMeta[]>("list_conversations"),
