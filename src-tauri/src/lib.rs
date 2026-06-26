@@ -9,6 +9,7 @@ mod router;
 mod settings;
 mod store;
 mod tools;
+mod workspace;
 
 use commands::AppState;
 
@@ -41,6 +42,7 @@ pub fn run() {
             commands::truncate_conversation,
             commands::get_action_log,
             commands::approve_action,
+            commands::get_workspace_index,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

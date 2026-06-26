@@ -23,7 +23,13 @@ where
     D: FnMut(&str),
     T: FnMut(&str, &str),
 {
-    let (system, mut messages) = claude_api::to_request_messages(full_messages);
+    let (mut system, mut messages) = claude_api::to_request_messages(full_messages);
+    if let Some(add) = host.system_addendum() {
+        system = Some(match system {
+            Some(s) => format!("{s}\n\n{add}"),
+            None => add,
+        });
+    }
     let tools = host.schemas();
 
     let mut total_in = 0u64;

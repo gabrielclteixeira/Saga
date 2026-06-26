@@ -260,6 +260,13 @@ pub fn truncate_conversation(state: State<AppState>, id: i64, keep: i64) -> Resu
     store::truncate_conversation(&conn, id, keep).map_err(|e| e.to_string())
 }
 
+/// Índice do workspace (skills, playbooks, workflows) para a UI e o disparo de workflows.
+#[tauri::command]
+pub fn get_workspace_index(state: State<AppState>) -> crate::workspace::WorkspaceIndex {
+    let dir = state.settings.lock().unwrap().workspace_dir.clone();
+    crate::workspace::index(&dir)
+}
+
 /// Log de ações (tool-calling) de uma conversa, para a vista "Atividade".
 #[tauri::command]
 pub fn get_action_log(
@@ -502,8 +509,11 @@ pub async fn send_message_stream(
                 .mcp_servers
                 .iter()
                 .any(|s| s.enabled && !s.name.trim().is_empty());
-            let want_tools =
-                use_api && !prepared.has_images && (settings.enable_browser_tools || any_mcp);
+            let ws_index = crate::workspace::index(&settings.workspace_dir);
+            let has_ws = !ws_index.skills.is_empty() || !ws_index.playbooks.is_empty();
+            let want_tools = use_api
+                && !prepared.has_images
+                && (settings.enable_browser_tools || any_mcp || has_ws);
             if want_tools {
                 // Loop agêntico com ferramentas (browser e/ou servidores MCP) — só API.
                 let tx_d = channel.clone();
@@ -541,6 +551,14 @@ pub async fn send_message_stream(
                         None
                     },
                     mcp: if any_mcp { Some(&mut *mcp_guard) } else { None },
+                    workspace: if has_ws {
+                        Some(crate::tools::dispatch::WorkspaceTools {
+                            dir: &settings.workspace_dir,
+                            index: &ws_index,
+                        })
+                    } else {
+                        None
+                    },
                     gate: ActionGate {
                         db: Some(&state.db),
                         conversation_id,

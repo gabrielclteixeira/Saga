@@ -9,18 +9,29 @@ use std::sync::Mutex;
 
 use anyhow::Result;
 use rusqlite::Connection;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::mcp::McpManager;
 use crate::tools::browser::PlaywrightSidecar;
 use crate::tools::{browser_tools_schema, BrowserTool};
+use crate::workspace::WorkspaceIndex;
 
 /// Tudo o que o loop agêntico (`agent::run`) precisa de uma fonte de ferramentas.
 pub trait ToolHost {
     /// Schemas no formato `tools` da API Anthropic.
     fn schemas(&self) -> Value;
+    /// Texto opcional a acrescentar ao system prompt (ex.: skills disponíveis).
+    fn system_addendum(&self) -> Option<String> {
+        None
+    }
     /// Executa uma ferramenta pelo nome e devolve o resultado (texto).
     async fn call(&mut self, name: &str, params: &Value) -> Result<String>;
+}
+
+/// Acesso ao workspace (skills/playbooks) para o dispatcher.
+pub struct WorkspaceTools<'a> {
+    pub dir: &'a str,
+    pub index: &'a WorkspaceIndex,
 }
 
 /// Modo de confirmação de ações.
@@ -103,12 +114,26 @@ fn is_action(name: &str) -> bool {
 pub struct Dispatcher<'a> {
     pub browser: Option<&'a mut PlaywrightSidecar>,
     pub mcp: Option<&'a mut McpManager>,
+    pub workspace: Option<WorkspaceTools<'a>>,
     pub gate: ActionGate<'a>,
 }
 
 impl Dispatcher<'_> {
     /// Execução crua, sem gate/log — encaminha pelo nome.
     async fn exec_raw(&mut self, name: &str, params: &Value) -> Result<String> {
+        // Tools de workspace (leitura de skills/playbooks).
+        if name == "load_skill" || name == "read_playbook" {
+            let n = params.get("name").and_then(|x| x.as_str()).unwrap_or("");
+            let ws = self.workspace.as_ref();
+            return Ok(match name {
+                "load_skill" => ws
+                    .and_then(|w| crate::workspace::read_skill(w.dir, n))
+                    .unwrap_or_else(|| format!("skill '{n}' não encontrada")),
+                _ => ws
+                    .and_then(|w| crate::workspace::read_playbook(w.dir, n))
+                    .unwrap_or_else(|| format!("playbook '{n}' não encontrado")),
+            });
+        }
         if name.starts_with("mcp__") {
             return match self.mcp.as_mut() {
                 Some(m) => m.call(name, params).await,
@@ -140,7 +165,46 @@ impl ToolHost for Dispatcher<'_> {
         if let Some(m) = &self.mcp {
             arr.extend(m.tools_schema());
         }
+        if let Some(ws) = &self.workspace {
+            if !ws.index.skills.is_empty() {
+                arr.push(json!({
+                    "name": "load_skill",
+                    "description": "Carrega as instruções completas de uma skill do workspace pelo nome.",
+                    "input_schema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] }
+                }));
+            }
+            if !ws.index.playbooks.is_empty() {
+                arr.push(json!({
+                    "name": "read_playbook",
+                    "description": "Lê um playbook (procedimento reutilizável) do workspace pelo nome.",
+                    "input_schema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] }
+                }));
+            }
+        }
         Value::Array(arr)
+    }
+
+    fn system_addendum(&self) -> Option<String> {
+        let ws = self.workspace.as_ref()?;
+        if ws.index.skills.is_empty() && ws.index.playbooks.is_empty() {
+            return None;
+        }
+        let mut s = String::new();
+        if !ws.index.skills.is_empty() {
+            s.push_str(
+                "Skills disponíveis (chama load_skill para carregar as instruções quando a tarefa encaixar):\n",
+            );
+            for sk in &ws.index.skills {
+                s.push_str(&format!("- {}: {}\n", sk.name, sk.description));
+            }
+        }
+        if !ws.index.playbooks.is_empty() {
+            s.push_str("\nPlaybooks disponíveis (chama read_playbook):\n");
+            for p in &ws.index.playbooks {
+                s.push_str(&format!("- {p}\n"));
+            }
+        }
+        Some(s)
     }
 
     async fn call(&mut self, name: &str, params: &Value) -> Result<String> {
