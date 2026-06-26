@@ -126,6 +126,9 @@ motifs as accents/empty-states/backgrounds, keeping the current dark UI for the 
   runtimes (llama.cpp / LM Studio), behind the existing provider abstraction so the router can pick any.
 - **In-app model downloader** — browse and pull/download models directly from Saga (with a progress
   UI), so the user never touches a terminal.
+- **Local web search** — give the local (Ollama) model web access via Rust-side `web_search`/`web_fetch`
+  tools + a tool-calling loop (for tool-capable local models), so research can run fully local/offline-ish.
+  Today web search is Claude-only (API `web_search` / CLI `WebSearch`); enabling 🔎 forces the Claude route.
 
 ### Browser tool (v2) setup
 

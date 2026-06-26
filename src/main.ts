@@ -1,4 +1,6 @@
 import "./style.css";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import {
   api,
   type Accounting,
@@ -11,6 +13,17 @@ import {
   type Settings,
   type StoredMessage,
 } from "./api";
+
+marked.setOptions({ breaks: true, gfm: true });
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+  if ((node as Element).tagName === "A") {
+    node.setAttribute("target", "_blank");
+    node.setAttribute("rel", "noopener noreferrer");
+  }
+});
+function renderMarkdown(text: string): string {
+  return DOMPurify.sanitize(marked.parse(text) as string);
+}
 
 interface Item {
   role: "user" | "assistant";
@@ -331,7 +344,12 @@ function renderMessages() {
     if (item.content !== "" || item.role === "assistant") {
       const bubble = document.createElement("div");
       bubble.className = "bubble";
-      bubble.textContent = item.content;
+      if (item.role === "assistant" && !item.error) {
+        bubble.classList.add("markdown");
+        bubble.innerHTML = renderMarkdown(item.content);
+      } else {
+        bubble.textContent = item.content;
+      }
       row.appendChild(bubble);
     }
 
@@ -767,11 +785,25 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
 
   const paintBubble = () => {
     const b = els.messages.lastElementChild?.querySelector(".bubble") as HTMLDivElement | null;
-    if (b) b.textContent = assistant.content;
+    if (b) {
+      b.classList.remove("markdown"); // texto simples durante o streaming
+      b.textContent = assistant.content;
+    }
     els.messages.scrollTop = els.messages.scrollHeight;
   };
+  const waiting = sendOpts.research
+    ? "A pesquisar na net…"
+    : sendOpts.subagents
+      ? "A coordenar subagentes…"
+      : sendOpts.thinking
+        ? "A pensar a fundo…"
+        : "A pensar…";
   const tb = els.messages.lastElementChild?.querySelector(".bubble") as HTMLDivElement | null;
-  if (tb) tb.innerHTML = `<span class="dots"><i></i><i></i><i></i></span>`;
+  if (tb) {
+    tb.innerHTML =
+      `<span class="dots"><i></i><i></i><i></i></span> <span class="status-text"></span>`;
+    tb.querySelector(".status-text")!.textContent = waiting;
+  }
 
   let start: { route: "local" | "claude"; model: string; reason: string } | null = null;
 
