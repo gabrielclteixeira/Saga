@@ -31,6 +31,7 @@ pub fn run() {
             commands::rename_conversation,
             commands::delete_conversation,
             commands::search_chats,
+            commands::get_conversation_accounting,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

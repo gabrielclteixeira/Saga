@@ -152,4 +152,6 @@ export const api = {
     invoke<void>("rename_conversation", { id, title }),
   deleteConversation: (id: number) => invoke<void>("delete_conversation", { id }),
   searchChats: (query: string) => invoke<SearchHit[]>("search_chats", { query }),
+  conversationAccounting: (id: number) =>
+    invoke<Accounting>("get_conversation_accounting", { id }),
 };

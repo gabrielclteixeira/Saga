@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 use serde::Serialize;
 
+use crate::accounting::Accounting;
 use crate::settings;
 
 #[derive(Serialize)]
@@ -221,6 +222,42 @@ pub fn delete_last_assistant(conn: &Connection, conversation_id: i64) -> Result<
             .ok();
     }
     Ok(())
+}
+
+/// Soma os tokens/custo das mensagens de uma conversa para o painel.
+pub fn conversation_accounting(conn: &Connection, conversation_id: i64) -> Result<Accounting> {
+    let row = conn.query_row(
+        "SELECT
+            COALESCE(SUM(CASE WHEN role='assistant' AND route='local'  THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN role='assistant' AND route='claude' THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN route='claude' THEN input_tokens  ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN route='claude' THEN output_tokens ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN route='local'  THEN input_tokens + output_tokens ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN route='claude' THEN tokens_saved  ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN route='claude' THEN cost_usd      ELSE 0 END), 0.0)
+         FROM messages WHERE conversation_id = ?1",
+        params![conversation_id],
+        |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, i64>(4)?,
+                r.get::<_, i64>(5)?,
+                r.get::<_, f64>(6)?,
+            ))
+        },
+    )?;
+    Ok(Accounting {
+        local_requests: row.0 as u64,
+        claude_requests: row.1 as u64,
+        claude_input_tokens: row.2 as u64,
+        claude_output_tokens: row.3 as u64,
+        tokens_served_local: row.4 as u64,
+        tokens_saved_compression: row.5 as u64,
+        claude_cost_usd: row.6,
+    })
 }
 
 pub fn rename_conversation(conn: &Connection, id: i64, title: &str) -> Result<()> {

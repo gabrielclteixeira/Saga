@@ -77,7 +77,6 @@ app.innerHTML = `
       <button class="panel-collapse" id="panel-collapse" title="Ocultar painel" aria-label="Ocultar painel">❯</button>
       <h2>Painel de tokens</h2>
       <div class="cards" id="acct-cards"></div>
-      <button class="ghost" id="btn-reset">Repor contadores</button>
       <h3>Memória carregada</h3>
       <pre class="mem" id="mem-preview">—</pre>
       <button class="ghost" id="btn-mem-refresh">Atualizar pré-visualização</button>
@@ -691,14 +690,17 @@ async function selectConversation(id: number) {
   state.items = msgs.map(storedToItem);
   renderMessages();
   renderSidebar();
+  renderAccounting(await api.conversationAccounting(id));
 }
 
 async function createConversation() {
   if (state.busy) return;
-  state.currentConversationId = await api.newConversation();
+  const id = await api.newConversation();
+  state.currentConversationId = id;
   state.items = [];
   renderMessages();
   await loadConversations();
+  renderAccounting(await api.conversationAccounting(id));
 }
 
 async function removeConversation(id: number) {
@@ -783,7 +785,6 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
             reason: start?.reason ?? "",
             accounting: evt.accounting,
           };
-          renderAccounting(evt.accounting);
         }
       },
       { ...opts, thinking: opts.thinking ?? state.thinking }
@@ -795,6 +796,11 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     setBusy(false);
     renderMessages();
     loadConversations(); // atualiza título/ordem na sidebar
+    try {
+      renderAccounting(await api.conversationAccounting(conversationId));
+    } catch {
+      /* ignora */
+    }
   }
 }
 
@@ -1046,9 +1052,6 @@ async function init() {
     if (state.settings) settingsToForm(state.settings);
     els.dialog.showModal();
   });
-  document.querySelector("#btn-reset")!.addEventListener("click", async () => {
-    renderAccounting(await api.resetAccounting());
-  });
   document.querySelector("#btn-mem-refresh")!.addEventListener("click", refreshMemory);
   document.querySelector("#btn-new-chat")!.addEventListener("click", createConversation);
   els.convSearch.addEventListener("input", onSearch);
@@ -1132,7 +1135,6 @@ async function init() {
 
   try {
     state.settings = await api.getSettings();
-    renderAccounting(await api.getAccounting());
     await refreshMemory();
     await loadConversations();
     if (state.conversations.length === 0) {

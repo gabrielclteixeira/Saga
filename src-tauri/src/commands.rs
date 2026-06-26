@@ -209,6 +209,12 @@ pub fn search_chats(state: State<AppState>, query: String) -> Result<Vec<SearchH
 }
 
 #[tauri::command]
+pub fn get_conversation_accounting(state: State<AppState>, id: i64) -> Result<Accounting, String> {
+    let conn = state.db.lock().unwrap();
+    store::conversation_accounting(&conn, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn list_ollama_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();
     providers::ollama::list_models(&endpoint)
