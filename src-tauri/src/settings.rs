@@ -75,6 +75,16 @@ pub struct Settings {
     pub claude_max_tokens: u32,
     /// Orçamento de tokens para extended thinking (quando ligado no composer).
     pub thinking_budget: u32,
+    /// Provider do slot local: "ollama" | "openai".
+    pub local_provider: String,
+    pub openai_local_endpoint: String,
+    pub openai_local_key: String,
+    pub openai_local_model: String,
+    /// Provider do slot de escalar: "claude" | "openai".
+    pub cloud_provider: String,
+    pub openai_cloud_endpoint: String,
+    pub openai_cloud_key: String,
+    pub openai_cloud_model: String,
     pub routing: RoutingConfig,
     /// Pasta com ficheiros markdown de memória.
     pub memory_dir: String,
@@ -104,6 +114,14 @@ impl Default for Settings {
             claude_cli_path: "claude".into(),
             claude_max_tokens: 2048,
             thinking_budget: 4000,
+            local_provider: "ollama".into(),
+            openai_local_endpoint: "http://localhost:1234/v1".into(),
+            openai_local_key: String::new(),
+            openai_local_model: String::new(),
+            cloud_provider: "claude".into(),
+            openai_cloud_endpoint: "https://api.openai.com/v1".into(),
+            openai_cloud_key: String::new(),
+            openai_cloud_model: "gpt-4o".into(),
             routing: RoutingConfig::default(),
             memory_dir: default_memory_dir().to_string_lossy().to_string(),
             claude_md_path: String::new(),
@@ -134,18 +152,20 @@ pub fn default_memory_dir() -> PathBuf {
 }
 
 const KEYRING_SERVICE: &str = "saga";
-const KEYRING_USER: &str = "anthropic_api_key";
+const KC_ANTHROPIC: &str = "anthropic_api_key";
+const KC_OPENAI_CLOUD: &str = "openai_cloud_key";
+const KC_OPENAI_LOCAL: &str = "openai_local_key";
 
-/// Lê a API key da keychain do SO (string vazia se não existir/erro).
-fn keychain_load() -> String {
-    keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
+/// Lê uma credencial da keychain do SO (string vazia se não existir/erro).
+fn keychain_load(user: &str) -> String {
+    keyring::Entry::new(KEYRING_SERVICE, user)
         .and_then(|e| e.get_password())
         .unwrap_or_default()
 }
 
-/// Guarda (ou apaga, se vazia) a API key na keychain do SO.
-fn keychain_store(key: &str) {
-    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+/// Guarda (ou apaga, se vazia) uma credencial na keychain do SO.
+fn keychain_store(user: &str, key: &str) {
+    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, user) {
         if key.trim().is_empty() {
             let _ = entry.delete_credential();
         } else {
@@ -161,22 +181,36 @@ impl Settings {
             Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
             Err(_) => Settings::default(),
         };
-        let kc = keychain_load();
-        if !kc.is_empty() {
-            s.claude_api_key = kc;
-        } else if !s.claude_api_key.is_empty() {
-            // Migração: key estava em texto simples no settings.json → keychain + limpar json.
-            keychain_store(&s.claude_api_key);
+        // Resolve cada segredo a partir da keychain; migra do json em texto simples se preciso.
+        let mut migrated = false;
+        for (user, field) in [
+            (KC_ANTHROPIC, &mut s.claude_api_key),
+            (KC_OPENAI_CLOUD, &mut s.openai_cloud_key),
+            (KC_OPENAI_LOCAL, &mut s.openai_local_key),
+        ] {
+            let kc = keychain_load(user);
+            if !kc.is_empty() {
+                *field = kc;
+            } else if !field.is_empty() {
+                keychain_store(user, field);
+                migrated = true;
+            }
+        }
+        if migrated {
             let _ = s.save();
         }
         s
     }
 
     pub fn save(&self) -> Result<()> {
-        // O segredo vai para a keychain — nunca para o settings.json.
-        keychain_store(&self.claude_api_key);
+        // Os segredos vão para a keychain — nunca para o settings.json.
+        keychain_store(KC_ANTHROPIC, &self.claude_api_key);
+        keychain_store(KC_OPENAI_CLOUD, &self.openai_cloud_key);
+        keychain_store(KC_OPENAI_LOCAL, &self.openai_local_key);
         let mut to_write = self.clone();
         to_write.claude_api_key = String::new();
+        to_write.openai_cloud_key = String::new();
+        to_write.openai_local_key = String::new();
 
         let path = settings_path();
         if let Some(parent) = path.parent() {

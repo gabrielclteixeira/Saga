@@ -88,7 +88,7 @@ app.innerHTML = `
         </span>
       </div>
       <form class="composer" id="composer">
-        <button type="button" class="attach-btn" id="btn-attach" title="Anexar imagem">📎</button>
+        <button type="button" class="attach-btn" id="btn-attach" title="Anexar imagem" aria-label="Anexar imagem"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
         <input type="file" id="file-input" accept="image/*" multiple hidden />
         <textarea id="input" rows="1" placeholder="Escreve uma mensagem…" autocomplete="off"></textarea>
         <button type="submit" id="send">Enviar</button>
@@ -122,44 +122,70 @@ app.innerHTML = `
       <h2>Definições</h2>
 
       <fieldset>
-        <legend>Modelo local (Ollama)</legend>
-        <label>Endpoint <input name="ollama_endpoint" type="text" /></label>
-        <label>Modelo
-          <span class="row">
-            <input name="ollama_model" type="text" list="ollama-models" />
-            <button type="button" class="ghost" id="btn-list-models">Listar</button>
-            <button type="button" class="ghost" id="btn-pull-model">Puxar</button>
-          </span>
+        <legend>Modelo local</legend>
+        <label>Provider
+          <select name="local_provider" id="local-provider">
+            <option value="ollama">Ollama</option>
+            <option value="openai">OpenAI-compatible</option>
+          </select>
         </label>
-        <datalist id="ollama-models"></datalist>
-        <div class="pull-status" id="pull-status"></div>
-        <label>Modelo de visão (imagens) <input name="ollama_vision_model" type="text" /></label>
+        <div class="field-group" id="ollama-local-fields">
+          <label>Endpoint <input name="ollama_endpoint" type="text" /></label>
+          <label>Modelo
+            <span class="row">
+              <input name="ollama_model" type="text" list="ollama-models" />
+              <button type="button" class="ghost" id="btn-list-models">Listar</button>
+              <button type="button" class="ghost" id="btn-pull-model">Puxar</button>
+            </span>
+          </label>
+          <datalist id="ollama-models"></datalist>
+          <div class="pull-status" id="pull-status"></div>
+          <label>Modelo de visão (imagens) <input name="ollama_vision_model" type="text" /></label>
+        </div>
+        <div class="field-group" id="openai-local-fields" hidden>
+          <label>Endpoint <input name="openai_local_endpoint" type="text" placeholder="http://localhost:1234/v1" /></label>
+          <label>API key (opcional) <input name="openai_local_key" type="password" /></label>
+          <label>Modelo <input name="openai_local_model" type="text" placeholder="ex.: ID do modelo no LM Studio" /></label>
+        </div>
       </fieldset>
 
       <fieldset>
-        <legend>Claude</legend>
-        <label>Modo
-          <select name="claude_mode">
-            <option value="off">Desligado</option>
-            <option value="cli">Claude CLI (subscrição)</option>
-            <option value="api">API (ANTHROPIC_API_KEY)</option>
+        <legend>Cloud (escalar)</legend>
+        <label>Provider
+          <select name="cloud_provider" id="cloud-provider">
+            <option value="claude">Claude</option>
+            <option value="openai">OpenAI-compatible</option>
           </select>
         </label>
-        <label>Modelo
-          <select id="claude-model-preset">
-            <option value="claude-haiku-4-5-20251001">Haiku 4.5 — rápido e barato</option>
-            <option value="claude-sonnet-4-6">Sonnet 4.6 — equilíbrio</option>
-            <option value="claude-opus-4-8">Opus 4.8 — topo</option>
-            <option value="claude-fable-5">Fable 5 — mais capaz</option>
-            <option value="__custom__">Personalizado…</option>
-          </select>
-        </label>
-        <label id="claude-model-custom-wrap" hidden>Modelo (ID personalizado)
-          <input name="claude_model" type="text" />
-        </label>
-        <label>Caminho da CLI <input name="claude_cli_path" type="text" /></label>
-        <label>API key <input name="claude_api_key" type="password" /></label>
-        <label>Max tokens (resposta) <input name="claude_max_tokens" type="number" min="256" /></label>
+        <div class="field-group" id="claude-cloud-fields">
+          <label>Modo
+            <select name="claude_mode">
+              <option value="off">Desligado</option>
+              <option value="cli">Claude CLI (subscrição)</option>
+              <option value="api">API (ANTHROPIC_API_KEY)</option>
+            </select>
+          </label>
+          <label>Modelo
+            <select id="claude-model-preset">
+              <option value="claude-haiku-4-5-20251001">Haiku 4.5 — rápido e barato</option>
+              <option value="claude-sonnet-4-6">Sonnet 4.6 — equilíbrio</option>
+              <option value="claude-opus-4-8">Opus 4.8 — topo</option>
+              <option value="claude-fable-5">Fable 5 — mais capaz</option>
+              <option value="__custom__">Personalizado…</option>
+            </select>
+          </label>
+          <label id="claude-model-custom-wrap" hidden>Modelo (ID personalizado)
+            <input name="claude_model" type="text" />
+          </label>
+          <label>Caminho da CLI <input name="claude_cli_path" type="text" /></label>
+          <label>API key <input name="claude_api_key" type="password" /></label>
+          <label>Max tokens (resposta) <input name="claude_max_tokens" type="number" min="256" /></label>
+        </div>
+        <div class="field-group" id="openai-cloud-fields" hidden>
+          <label>Endpoint <input name="openai_cloud_endpoint" type="text" placeholder="https://api.openai.com/v1" /></label>
+          <label>API key <input name="openai_cloud_key" type="password" /></label>
+          <label>Modelo <input name="openai_cloud_model" type="text" placeholder="ex.: gpt-4o" /></label>
+        </div>
       </fieldset>
 
       <fieldset>
@@ -988,6 +1014,34 @@ function settingsToForm(s: Settings) {
   (f.elements.namedItem("browser_node_path") as HTMLInputElement).value = s.browser_node_path;
   (f.elements.namedItem("browser_user_data_dir") as HTMLInputElement).value =
     s.browser_user_data_dir;
+  (f.elements.namedItem("local_provider") as HTMLSelectElement).value = s.local_provider;
+  (f.elements.namedItem("openai_local_endpoint") as HTMLInputElement).value =
+    s.openai_local_endpoint;
+  (f.elements.namedItem("openai_local_key") as HTMLInputElement).value = s.openai_local_key;
+  (f.elements.namedItem("openai_local_model") as HTMLInputElement).value = s.openai_local_model;
+  (f.elements.namedItem("cloud_provider") as HTMLSelectElement).value = s.cloud_provider;
+  (f.elements.namedItem("openai_cloud_endpoint") as HTMLInputElement).value =
+    s.openai_cloud_endpoint;
+  (f.elements.namedItem("openai_cloud_key") as HTMLInputElement).value = s.openai_cloud_key;
+  (f.elements.namedItem("openai_cloud_model") as HTMLInputElement).value = s.openai_cloud_model;
+  applyProviderFields();
+}
+
+function applyProviderFields() {
+  const lp = (els.form.elements.namedItem("local_provider") as HTMLSelectElement).value;
+  const cp = (els.form.elements.namedItem("cloud_provider") as HTMLSelectElement).value;
+  document.querySelector("#ollama-local-fields")!.toggleAttribute("hidden", lp !== "ollama");
+  document.querySelector("#openai-local-fields")!.toggleAttribute("hidden", lp !== "openai");
+  document.querySelector("#claude-cloud-fields")!.toggleAttribute("hidden", cp !== "claude");
+  document.querySelector("#openai-cloud-fields")!.toggleAttribute("hidden", cp !== "openai");
+}
+
+/** Esconde os toggles só-Claude (🔎/🧩/🧠) quando o cloud não é Claude. */
+function applyComposerToggles() {
+  const isClaude = !state.settings || state.settings.cloud_provider === "claude";
+  els.routeModeBar
+    .querySelector(".composer-toggles")!
+    .toggleAttribute("hidden", !isClaude);
 }
 
 function formToSettings(base: Settings): Settings {
@@ -1015,6 +1069,14 @@ function formToSettings(base: Settings): Settings {
     browser_sidecar_script: val("browser_sidecar_script"),
     browser_node_path: val("browser_node_path"),
     browser_user_data_dir: val("browser_user_data_dir"),
+    local_provider: val("local_provider") as Settings["local_provider"],
+    openai_local_endpoint: val("openai_local_endpoint"),
+    openai_local_key: val("openai_local_key"),
+    openai_local_model: val("openai_local_model"),
+    cloud_provider: val("cloud_provider") as Settings["cloud_provider"],
+    openai_cloud_endpoint: val("openai_cloud_endpoint"),
+    openai_cloud_key: val("openai_cloud_key"),
+    openai_cloud_model: val("openai_cloud_model"),
     routing: {
       enabled: checked("routing_enabled"),
       use_local_classifier: checked("use_local_classifier"),
@@ -1282,15 +1344,19 @@ async function init() {
       try {
         await api.saveSettings(next);
         state.settings = next;
+        applyComposerToggles();
         await refreshMemory();
       } catch (err) {
         alert("Falha a guardar definições: " + err);
       }
     }
   });
+  document.querySelector("#local-provider")!.addEventListener("change", applyProviderFields);
+  document.querySelector("#cloud-provider")!.addEventListener("change", applyProviderFields);
 
   try {
     state.settings = await api.getSettings();
+    applyComposerToggles();
     await refreshMemory();
     await loadConversations();
     if (state.conversations.length === 0) {

@@ -367,9 +367,18 @@ pub async fn send_message_stream(
     .await
     .map_err(|e| e.to_string())?;
 
+    let local_openai = settings.local_provider == "openai";
+    let cloud_openai = settings.cloud_provider == "openai";
+    // Modelo realmente usado (do slot ativo), para badge/contabilidade.
+    let effective_model = match prepared.route {
+        router::Route::Local if local_openai => settings.openai_local_model.clone(),
+        router::Route::Claude if cloud_openai => settings.openai_cloud_model.clone(),
+        _ => prepared.model.clone(),
+    };
+
     let _ = channel.send(StreamEvent::Start {
         route: prepared.route.as_str().to_string(),
-        model: prepared.model.clone(),
+        model: effective_model.clone(),
         reason: prepared.reason.clone(),
     });
 
@@ -382,11 +391,33 @@ pub async fn send_message_stream(
     };
 
     let response = match prepared.route {
+        router::Route::Local if local_openai => {
+            providers::openai_compat::chat_stream(
+                &settings.openai_local_endpoint,
+                &settings.openai_local_key,
+                &settings.openai_local_model,
+                &prepared.full_messages,
+                settings.claude_max_tokens,
+                on_delta,
+            )
+            .await
+        }
         router::Route::Local => {
             providers::ollama::chat_stream(
                 &settings.ollama_endpoint,
                 &prepared.model,
                 &prepared.full_messages,
+                on_delta,
+            )
+            .await
+        }
+        router::Route::Claude if cloud_openai => {
+            providers::openai_compat::chat_stream(
+                &settings.openai_cloud_endpoint,
+                &settings.openai_cloud_key,
+                &settings.openai_cloud_model,
+                &prepared.full_messages,
+                settings.claude_max_tokens,
                 on_delta,
             )
             .await
@@ -518,7 +549,7 @@ pub async fn send_message_stream(
             }
             router::Route::Claude => {
                 acc.record_claude(
-                    &prepared.model,
+                    &effective_model,
                     response.input_tokens,
                     response.output_tokens,
                     response.reported_cost_usd,
@@ -534,7 +565,7 @@ pub async fn send_message_stream(
             response.reported_cost_usd
         } else {
             crate::accounting::cost_usd(
-                &prepared.model,
+                &effective_model,
                 response.input_tokens,
                 response.output_tokens,
             )
@@ -553,7 +584,7 @@ pub async fn send_message_stream(
             &response.text,
             "[]",
             prepared.route.as_str(),
-            &prepared.model,
+            &effective_model,
             response.input_tokens as i64,
             response.output_tokens as i64,
             cost,

@@ -30,6 +30,14 @@ export interface Settings {
   claude_cli_path: string;
   claude_max_tokens: number;
   thinking_budget: number;
+  local_provider: "ollama" | "openai";
+  openai_local_endpoint: string;
+  openai_local_key: string;
+  openai_local_model: string;
+  cloud_provider: "claude" | "openai";
+  openai_cloud_endpoint: string;
+  openai_cloud_key: string;
+  openai_cloud_model: string;
   routing: RoutingConfig;
   memory_dir: string;
   claude_md_path: string;

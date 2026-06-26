@@ -518,14 +518,23 @@ body {
 }
 .attach-btn {
   align-self: flex-end;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 10px;
   height: 42px;
   width: 42px;
   cursor: pointer;
-  font-size: 16px;
+  color: var(--muted);
+}
+.attach-btn:hover {
   color: var(--text);
+  border-color: var(--accent);
+}
+.attach-btn svg {
+  display: block;
 }
 .attach-btn:hover {
   background: var(--bg-3);
@@ -603,7 +612,7 @@ body {
 .route-mode {
   display: flex;
   gap: 4px;
-  padding: 8px 14px 0;
+  padding: 8px 14px 12px;
 }
 .route-mode button {
   background: var(--bg);
@@ -1033,6 +1042,14 @@ dialog::backdrop {
   padding: 8px 10px;
   font: inherit;
   font-size: 13px;
+}
+.settings .field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.settings .field-group[hidden] {
+  display: none;
 }
 .settings .row {
   display: flex;
