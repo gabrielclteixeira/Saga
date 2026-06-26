@@ -39,6 +39,8 @@ pub fn run() {
             commands::search_chats,
             commands::get_conversation_accounting,
             commands::truncate_conversation,
+            commands::get_action_log,
+            commands::approve_action,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

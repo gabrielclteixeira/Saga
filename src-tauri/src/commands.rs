@@ -1,20 +1,23 @@
 //! Comandos Tauri expostos ao frontend.
 
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use rusqlite::Connection;
 use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::State;
+use tokio::sync::oneshot;
 
 use crate::accounting::Accounting;
+use crate::mcp::McpManager;
 use crate::providers::{estimate_tokens, ChatMessage};
 use crate::router;
 use crate::settings::Settings;
-use crate::mcp::McpManager;
 use crate::store::{self, ConversationMeta, SearchHit, StoredMessage};
 use crate::tools::browser::PlaywrightSidecar;
-use crate::tools::dispatch::Dispatcher;
+use crate::tools::dispatch::{ActionGate, ApprovalFut, Approver, ConfirmMode, Dispatcher};
 use crate::{agent, memory, providers};
 
 pub struct AppState {
@@ -25,6 +28,9 @@ pub struct AppState {
     pub browser: tokio::sync::Mutex<Option<PlaywrightSidecar>>,
     /// Servidores MCP ativos, lançados preguiçosamente.
     pub mcp: tokio::sync::Mutex<McpManager>,
+    /// Aprovações de ações pendentes (id → canal de resposta), para o modo "ask".
+    pub pending: tokio::sync::Mutex<HashMap<u64, oneshot::Sender<bool>>>,
+    pub approval_seq: AtomicU64,
 }
 
 impl AppState {
@@ -36,7 +42,31 @@ impl AppState {
             db: Mutex::new(db),
             browser: tokio::sync::Mutex::new(None),
             mcp: tokio::sync::Mutex::new(McpManager::default()),
+            pending: tokio::sync::Mutex::new(HashMap::new()),
+            approval_seq: AtomicU64::new(0),
         }
+    }
+}
+
+/// Implementação de `Approver`: envia um pedido de aprovação à UI e espera a resposta.
+struct ChannelApprover<'a> {
+    channel: Channel<StreamEvent>,
+    state: &'a AppState,
+}
+
+impl Approver for ChannelApprover<'_> {
+    fn request<'a>(&'a self, tool: &'a str, preview: &'a str) -> ApprovalFut<'a> {
+        Box::pin(async move {
+            let id = self.state.approval_seq.fetch_add(1, Ordering::Relaxed) + 1;
+            let (tx, rx) = oneshot::channel();
+            self.state.pending.lock().await.insert(id, tx);
+            let _ = self.channel.send(StreamEvent::ApprovalRequest {
+                id,
+                tool: tool.to_string(),
+                preview: preview.to_string(),
+            });
+            rx.await.unwrap_or(false)
+        })
     }
 }
 
@@ -58,6 +88,11 @@ pub enum StreamEvent {
     ToolStep {
         tool: String,
         detail: String,
+    },
+    ApprovalRequest {
+        id: u64,
+        tool: String,
+        preview: String,
     },
     Done {
         input_tokens: u64,
@@ -223,6 +258,29 @@ pub fn get_conversation_accounting(state: State<AppState>, id: i64) -> Result<Ac
 pub fn truncate_conversation(state: State<AppState>, id: i64, keep: i64) -> Result<(), String> {
     let conn = state.db.lock().unwrap();
     store::truncate_conversation(&conn, id, keep).map_err(|e| e.to_string())
+}
+
+/// Log de ações (tool-calling) de uma conversa, para a vista "Atividade".
+#[tauri::command]
+pub fn get_action_log(
+    state: State<AppState>,
+    conversation_id: i64,
+) -> Result<Vec<store::ActionLogEntry>, String> {
+    let conn = state.db.lock().unwrap();
+    store::get_action_log(&conn, conversation_id).map_err(|e| e.to_string())
+}
+
+/// Resposta a um pedido de aprovação de ação (modo "ask").
+#[tauri::command]
+pub async fn approve_action(
+    state: State<'_, AppState>,
+    id: u64,
+    approved: bool,
+) -> Result<(), String> {
+    if let Some(tx) = state.pending.lock().await.remove(&id) {
+        let _ = tx.send(approved);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -471,6 +529,11 @@ pub async fn send_message_stream(
                     mcp_guard.ensure_ready(&settings.mcp_servers).await;
                 }
 
+                let mode = ConfirmMode::parse(&settings.confirm_mode);
+                let approver = ChannelApprover {
+                    channel: channel.clone(),
+                    state: state.inner(),
+                };
                 let mut dispatcher = Dispatcher {
                     browser: if settings.enable_browser_tools {
                         browser_guard.as_mut()
@@ -478,6 +541,16 @@ pub async fn send_message_stream(
                         None
                     },
                     mcp: if any_mcp { Some(&mut *mcp_guard) } else { None },
+                    gate: ActionGate {
+                        db: Some(&state.db),
+                        conversation_id,
+                        mode,
+                        approver: if mode == ConfirmMode::Ask {
+                            Some(&approver)
+                        } else {
+                            None
+                        },
+                    },
                 };
                 agent::run(
                     &settings.claude_api_key,

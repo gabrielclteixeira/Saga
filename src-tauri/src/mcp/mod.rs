@@ -86,6 +86,7 @@ impl McpManager {
             .collect()
     }
 
+    #[allow(dead_code)]
     pub fn has_tools(&self) -> bool {
         self.servers.values().any(|s| !s.tools.is_empty())
     }

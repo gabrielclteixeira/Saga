@@ -69,6 +69,17 @@ fn init(conn: &Connection) -> Result<()> {
             conversation_id UNINDEXED,
             message_id UNINDEXED
         );
+        CREATE TABLE IF NOT EXISTS action_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL,
+            tool            TEXT NOT NULL,
+            params_json     TEXT NOT NULL DEFAULT '',
+            status          TEXT NOT NULL,
+            detail          TEXT NOT NULL DEFAULT '',
+            error           TEXT NOT NULL DEFAULT '',
+            created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_action_log_conv ON action_log(conversation_id);
         "#,
     )?;
     // Backfill único do índice de pesquisa, se ainda estiver vazio.
@@ -281,6 +292,68 @@ pub fn conversation_accounting(conn: &Connection, conversation_id: i64) -> Resul
         tokens_saved_compression: row.5 as u64,
         claude_cost_usd: row.6,
     })
+}
+
+// ---- Log de ações (tool-calling) ----
+
+#[derive(Serialize)]
+pub struct ActionLogEntry {
+    pub id: i64,
+    pub conversation_id: i64,
+    pub tool: String,
+    pub params_json: String,
+    pub status: String,
+    pub detail: String,
+    pub error: String,
+    pub created_at: String,
+}
+
+/// Insere uma linha no log de ações (hora em UTC) e devolve o id.
+pub fn insert_action(
+    conn: &Connection,
+    conversation_id: i64,
+    tool: &str,
+    params_json: &str,
+    status: &str,
+    detail: &str,
+    error: &str,
+) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO action_log (conversation_id, tool, params_json, status, detail, error)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![conversation_id, tool, params_json, status, detail, error],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Atualiza o estado/detalhe de uma ação já registada (ex.: EM_EXECUCAO → OK).
+pub fn update_action(conn: &Connection, id: i64, status: &str, detail: &str, error: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE action_log SET status = ?2, detail = ?3, error = ?4 WHERE id = ?1",
+        params![id, status, detail, error],
+    )?;
+    Ok(())
+}
+
+/// Devolve o log de ações de uma conversa (mais recentes primeiro).
+pub fn get_action_log(conn: &Connection, conversation_id: i64) -> Result<Vec<ActionLogEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, conversation_id, tool, params_json, status, detail, error, created_at
+         FROM action_log WHERE conversation_id = ?1 ORDER BY id DESC LIMIT 200",
+    )?;
+    let rows = stmt.query_map(params![conversation_id], |r| {
+        Ok(ActionLogEntry {
+            id: r.get(0)?,
+            conversation_id: r.get(1)?,
+            tool: r.get(2)?,
+            params_json: r.get(3)?,
+            status: r.get(4)?,
+            detail: r.get(5)?,
+            error: r.get(6)?,
+            created_at: r.get(7)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
 pub fn rename_conversation(conn: &Connection, id: i64, title: &str) -> Result<()> {

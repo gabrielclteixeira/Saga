@@ -1,8 +1,14 @@
 //! Dispatcher de ferramentas: agrega os schemas das tools disponíveis (browser +
-//! servidores MCP) e encaminha cada chamada pelo prefixo do nome. Substitui o
-//! `match` hardcoded que vivia no loop agêntico.
+//! servidores MCP) e encaminha cada chamada pelo prefixo do nome. Aplica também a
+//! "espinha de segurança": regista cada ação e, conforme o modo, pré-visualiza
+//! (dry-run) ou pede aprovação ao utilizador (ask) antes de executar.
+
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Mutex;
 
 use anyhow::Result;
+use rusqlite::Connection;
 use serde_json::Value;
 
 use crate::mcp::McpManager;
@@ -17,28 +23,92 @@ pub trait ToolHost {
     async fn call(&mut self, name: &str, params: &Value) -> Result<String>;
 }
 
-/// Agregador concreto: browser (opcional) + servidores MCP (opcional).
+/// Modo de confirmação de ações.
+#[derive(Clone, Copy, PartialEq)]
+pub enum ConfirmMode {
+    Off,
+    DryRun,
+    Ask,
+}
+
+impl ConfirmMode {
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "dry_run" => Self::DryRun,
+            "ask" => Self::Ask,
+            _ => Self::Off,
+        }
+    }
+}
+
+/// Futuro devolvido por um `Approver` (boxed para ser usável como `dyn`).
+pub type ApprovalFut<'a> = Pin<Box<dyn Future<Output = bool> + Send + 'a>>;
+
+/// Pede aprovação de uma ação ao utilizador. Implementado em `commands.rs`
+/// (envia um evento à UI e espera a resposta).
+pub trait Approver: Send + Sync {
+    fn request<'a>(&'a self, tool: &'a str, preview: &'a str) -> ApprovalFut<'a>;
+}
+
+/// Regista ações no SQLite e aplica o gate de confirmação.
+pub struct ActionGate<'a> {
+    pub db: Option<&'a Mutex<Connection>>,
+    pub conversation_id: i64,
+    pub mode: ConfirmMode,
+    pub approver: Option<&'a dyn Approver>,
+}
+
+impl ActionGate<'_> {
+    fn insert(&self, tool: &str, params: &Value, status: &str, detail: &str, error: &str) -> i64 {
+        if let Some(db) = self.db {
+            if let Ok(conn) = db.lock() {
+                return crate::store::insert_action(
+                    &conn,
+                    self.conversation_id,
+                    tool,
+                    &params.to_string(),
+                    status,
+                    detail,
+                    error,
+                )
+                .unwrap_or(0);
+            }
+        }
+        0
+    }
+
+    fn finish(&self, id: i64, status: &str, detail: &str, error: &str) {
+        if id == 0 {
+            return;
+        }
+        if let Some(db) = self.db {
+            if let Ok(conn) = db.lock() {
+                let _ = crate::store::update_action(&conn, id, status, detail, error);
+            }
+        }
+    }
+}
+
+/// Ações que mutam estado e por isso passam pelo gate de confirmação.
+/// Leituras/navegação não pedem confirmação (mas são na mesma registadas).
+fn is_action(name: &str) -> bool {
+    if name.starts_with("mcp__") {
+        return true;
+    }
+    matches!(name, "browser_click" | "browser_fill")
+}
+
+/// Agregador concreto: browser (opcional) + servidores MCP (opcional) + gate.
 /// Empresta os recursos por referência para a duração do loop.
 pub struct Dispatcher<'a> {
     pub browser: Option<&'a mut PlaywrightSidecar>,
     pub mcp: Option<&'a mut McpManager>,
+    pub gate: ActionGate<'a>,
 }
 
-impl ToolHost for Dispatcher<'_> {
-    fn schemas(&self) -> Value {
-        let mut arr: Vec<Value> = Vec::new();
-        if self.browser.is_some() {
-            if let Some(a) = browser_tools_schema().as_array() {
-                arr.extend(a.clone());
-            }
-        }
-        if let Some(m) = &self.mcp {
-            arr.extend(m.tools_schema());
-        }
-        Value::Array(arr)
-    }
-
-    async fn call(&mut self, name: &str, params: &Value) -> Result<String> {
+impl Dispatcher<'_> {
+    /// Execução crua, sem gate/log — encaminha pelo nome.
+    async fn exec_raw(&mut self, name: &str, params: &Value) -> Result<String> {
         if name.starts_with("mcp__") {
             return match self.mcp.as_mut() {
                 Some(m) => m.call(name, params).await,
@@ -56,5 +126,55 @@ impl ToolHost for Dispatcher<'_> {
             },
             None => Ok(format!("ferramenta desconhecida: {name}")),
         }
+    }
+}
+
+impl ToolHost for Dispatcher<'_> {
+    fn schemas(&self) -> Value {
+        let mut arr: Vec<Value> = Vec::new();
+        if self.browser.is_some() {
+            if let Some(a) = browser_tools_schema().as_array() {
+                arr.extend(a.clone());
+            }
+        }
+        if let Some(m) = &self.mcp {
+            arr.extend(m.tools_schema());
+        }
+        Value::Array(arr)
+    }
+
+    async fn call(&mut self, name: &str, params: &Value) -> Result<String> {
+        // Gate de confirmação (só para ações).
+        if is_action(name) {
+            match self.gate.mode {
+                ConfirmMode::DryRun => {
+                    let preview = format!("[dry-run] {name} {params}");
+                    self.gate.insert(name, params, "PREVIEW", &preview, "");
+                    return Ok(preview);
+                }
+                ConfirmMode::Ask => {
+                    let preview = format!("{name} {params}");
+                    let approved = match self.gate.approver {
+                        Some(a) => a.request(name, &preview).await,
+                        None => true,
+                    };
+                    if !approved {
+                        self.gate
+                            .insert(name, params, "ERRO", "", "recusada pelo utilizador");
+                        return Ok("ação recusada pelo utilizador".into());
+                    }
+                }
+                ConfirmMode::Off => {}
+            }
+        }
+
+        // Regista início, executa, regista resultado.
+        let log_id = self.gate.insert(name, params, "EM_EXECUCAO", "", "");
+        let res = self.exec_raw(name, params).await;
+        match &res {
+            Ok(detail) => self.gate.finish(log_id, "OK", detail, ""),
+            Err(e) => self.gate.finish(log_id, "ERRO", "", &e.to_string()),
+        }
+        res
     }
 }
