@@ -26,6 +26,9 @@ tauri-plugin-log = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+cron = "0.12"
+chrono = "0.4"
 reqwest = { version = "0.12", features = ["json", "stream"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "sync"] }
 futures-util = "0.3"

@@ -80,6 +80,17 @@ fn init(conn: &Connection) -> Result<()> {
             created_at      TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_action_log_conv ON action_log(conversation_id);
+        CREATE TABLE IF NOT EXISTS schedules (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            name           TEXT NOT NULL,
+            workflow_name  TEXT NOT NULL,
+            arguments      TEXT NOT NULL DEFAULT '',
+            cron           TEXT NOT NULL,
+            enabled        INTEGER NOT NULL DEFAULT 1,
+            last_run_at    TEXT NOT NULL DEFAULT '',
+            next_run_epoch INTEGER NOT NULL DEFAULT 0,
+            created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+        );
         "#,
     )?;
     // Backfill único do índice de pesquisa, se ainda estiver vazio.
@@ -354,6 +365,120 @@ pub fn get_action_log(conn: &Connection, conversation_id: i64) -> Result<Vec<Act
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+// ---- Agendamentos (automações) ----
+
+#[derive(Serialize, Clone)]
+pub struct Schedule {
+    pub id: i64,
+    pub name: String,
+    pub workflow_name: String,
+    pub arguments: String,
+    pub cron: String,
+    pub enabled: bool,
+    pub last_run_at: String,
+    pub next_run_epoch: i64,
+}
+
+fn row_to_schedule(r: &rusqlite::Row) -> rusqlite::Result<Schedule> {
+    Ok(Schedule {
+        id: r.get(0)?,
+        name: r.get(1)?,
+        workflow_name: r.get(2)?,
+        arguments: r.get(3)?,
+        cron: r.get(4)?,
+        enabled: r.get::<_, i64>(5)? != 0,
+        last_run_at: r.get(6)?,
+        next_run_epoch: r.get(7)?,
+    })
+}
+
+const SCHED_COLS: &str =
+    "id, name, workflow_name, arguments, cron, enabled, last_run_at, next_run_epoch";
+
+#[allow(clippy::too_many_arguments)]
+pub fn create_schedule(
+    conn: &Connection,
+    name: &str,
+    workflow_name: &str,
+    arguments: &str,
+    cron: &str,
+    enabled: bool,
+    next_run_epoch: i64,
+) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO schedules (name, workflow_name, arguments, cron, enabled, next_run_epoch)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![name, workflow_name, arguments, cron, enabled as i64, next_run_epoch],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn update_schedule(
+    conn: &Connection,
+    id: i64,
+    name: &str,
+    workflow_name: &str,
+    arguments: &str,
+    cron: &str,
+    enabled: bool,
+    next_run_epoch: i64,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE schedules SET name=?2, workflow_name=?3, arguments=?4, cron=?5, enabled=?6, next_run_epoch=?7 WHERE id=?1",
+        params![id, name, workflow_name, arguments, cron, enabled as i64, next_run_epoch],
+    )?;
+    Ok(())
+}
+
+pub fn delete_schedule(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM schedules WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn list_schedules(conn: &Connection) -> Result<Vec<Schedule>> {
+    let sql = format!("SELECT {SCHED_COLS} FROM schedules ORDER BY id ASC");
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], row_to_schedule)?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_schedule(conn: &Connection, id: i64) -> Result<Option<Schedule>> {
+    let sql = format!("SELECT {SCHED_COLS} FROM schedules WHERE id = ?1");
+    Ok(conn.query_row(&sql, params![id], row_to_schedule).ok())
+}
+
+/// Agendamentos ativos e vencidos (next_run_epoch entre 1 e agora).
+pub fn due_schedules(conn: &Connection, now_epoch: i64) -> Result<Vec<Schedule>> {
+    let sql = format!(
+        "SELECT {SCHED_COLS} FROM schedules
+         WHERE enabled = 1 AND next_run_epoch > 0 AND next_run_epoch <= ?1"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params![now_epoch], row_to_schedule)?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn set_schedule_run(conn: &Connection, id: i64, last_run_at: &str, next_run_epoch: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE schedules SET last_run_at=?2, next_run_epoch=?3 WHERE id=?1",
+        params![id, last_run_at, next_run_epoch],
+    )?;
+    Ok(())
+}
+
+/// Encontra (ou cria) uma conversa pelo título — usada pela Saga "Automações".
+pub fn find_or_create_conversation(conn: &Connection, title: &str) -> Result<i64> {
+    if let Ok(id) = conn.query_row(
+        "SELECT id FROM conversations WHERE title = ?1 ORDER BY id ASC LIMIT 1",
+        params![title],
+        |r| r.get::<_, i64>(0),
+    ) {
+        return Ok(id);
+    }
+    create_conversation(conn, title)
 }
 
 pub fn rename_conversation(conn: &Connection, id: i64, title: &str) -> Result<()> {

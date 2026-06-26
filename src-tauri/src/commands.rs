@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 use serde::Serialize;
 use tauri::ipc::Channel;
-use tauri::State;
+use tauri::{Manager, State};
 use tokio::sync::oneshot;
 
 use crate::accounting::Accounting;
@@ -317,6 +317,72 @@ pub fn get_action_log(
 ) -> Result<Vec<store::ActionLogEntry>, String> {
     let conn = state.db.lock().unwrap();
     store::get_action_log(&conn, conversation_id).map_err(|e| e.to_string())
+}
+
+// ---- Agendamentos (automações) ----
+
+#[tauri::command]
+pub fn list_schedules(state: State<AppState>) -> Result<Vec<store::Schedule>, String> {
+    let conn = state.db.lock().unwrap();
+    store::list_schedules(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn create_schedule(
+    state: State<AppState>,
+    name: String,
+    workflow_name: String,
+    arguments: String,
+    cron: String,
+    enabled: bool,
+) -> Result<i64, String> {
+    let next = if enabled {
+        crate::scheduler::next_epoch(&cron).ok_or("expressão cron inválida")?
+    } else {
+        0
+    };
+    let conn = state.db.lock().unwrap();
+    store::create_schedule(&conn, &name, &workflow_name, &arguments, &cron, enabled, next)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_schedule(
+    state: State<AppState>,
+    id: i64,
+    name: String,
+    workflow_name: String,
+    arguments: String,
+    cron: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let next = if enabled {
+        crate::scheduler::next_epoch(&cron).ok_or("expressão cron inválida")?
+    } else {
+        0
+    };
+    let conn = state.db.lock().unwrap();
+    store::update_schedule(&conn, id, &name, &workflow_name, &arguments, &cron, enabled, next)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_schedule(state: State<AppState>, id: i64) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    store::delete_schedule(&conn, id).map_err(|e| e.to_string())
+}
+
+/// Corre um agendamento imediatamente ("Correr agora").
+#[tauri::command]
+pub async fn run_schedule_now(app: tauri::AppHandle, id: i64) -> Result<String, String> {
+    let sched = {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().unwrap();
+        store::get_schedule(&conn, id).map_err(|e| e.to_string())?
+    };
+    let sched = sched.ok_or_else(|| "agendamento não encontrado".to_string())?;
+    let (status, summary) = crate::scheduler::run_schedule(&app, &sched).await;
+    Ok(format!("{status}: {summary}"))
 }
 
 /// Resposta a um pedido de aprovação de ação (modo "ask").

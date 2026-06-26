@@ -6,6 +6,7 @@ mod memory;
 mod orchestrator;
 mod providers;
 mod router;
+mod scheduler;
 mod settings;
 mod store;
 mod tools;
@@ -20,7 +21,12 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(AppState::new())
+        .setup(|app| {
+            scheduler::spawn_loop(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::save_settings,
@@ -48,6 +54,11 @@ pub fn run() {
             commands::save_workspace_doc,
             commands::delete_workspace_doc,
             commands::export_file,
+            commands::list_schedules,
+            commands::create_schedule,
+            commands::update_schedule,
+            commands::delete_schedule,
+            commands::run_schedule_now,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

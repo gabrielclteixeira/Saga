@@ -71,6 +71,17 @@ export interface WorkspaceIndex {
   workflows: DocMeta[];
 }
 
+export interface Schedule {
+  id: number;
+  name: string;
+  workflow_name: string;
+  arguments: string;
+  cron: string;
+  enabled: boolean;
+  last_run_at: string;
+  next_run_epoch: number;
+}
+
 export interface ActionLogEntry {
   id: number;
   conversation_id: number;
@@ -235,4 +246,38 @@ export const api = {
     invoke<ActionLogEntry[]>("get_action_log", { conversationId }),
   approveAction: (id: number, approved: boolean) =>
     invoke<void>("approve_action", { id, approved }),
+  // Automações agendadas
+  listSchedules: () => invoke<Schedule[]>("list_schedules"),
+  createSchedule: (
+    name: string,
+    workflowName: string,
+    args: string,
+    cron: string,
+    enabled: boolean
+  ) =>
+    invoke<number>("create_schedule", {
+      name,
+      workflowName,
+      arguments: args,
+      cron,
+      enabled,
+    }),
+  updateSchedule: (
+    id: number,
+    name: string,
+    workflowName: string,
+    args: string,
+    cron: string,
+    enabled: boolean
+  ) =>
+    invoke<void>("update_schedule", {
+      id,
+      name,
+      workflowName,
+      arguments: args,
+      cron,
+      enabled,
+    }),
+  deleteSchedule: (id: number) => invoke<void>("delete_schedule", { id }),
+  runScheduleNow: (id: number) => invoke<string>("run_schedule_now", { id }),
 };

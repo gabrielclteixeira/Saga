@@ -18,6 +18,7 @@ import {
   type ConversationMeta,
   type Diagnostics,
   type McpServerConfig,
+  type Schedule,
   type SearchHit,
   type Settings,
   type StoredMessage,
@@ -97,6 +98,7 @@ app.innerHTML = `
       <button type="button" class="rail-btn" data-view="workspace" title="Workspace (skills, playbooks, workflows)"><span class="rail-ico">✦</span><span class="rail-lbl">Workspace</span></button>
       <button type="button" class="rail-btn" data-view="servers" title="Servidores MCP"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><line x1="6.5" y1="7.5" x2="6.5" y2="7.5"/><line x1="6.5" y1="16.5" x2="6.5" y2="16.5"/></svg></span><span class="rail-lbl">Servidores</span></button>
       <button type="button" class="rail-btn" data-view="activity" title="Atividade (ações)"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><line x1="4.5" y1="6" x2="4.5" y2="6"/><line x1="4.5" y1="12" x2="4.5" y2="12"/><line x1="4.5" y1="18" x2="4.5" y2="18"/></svg></span><span class="rail-lbl">Atividade</span></button>
+      <button type="button" class="rail-btn" data-view="automations" title="Automações agendadas"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v4.7l3 1.8"/></svg></span><span class="rail-lbl">Automações</span></button>
     </nav>
     <aside class="sidebar">
       <button class="new-chat" id="btn-new-chat">+ Nova Saga</button>
@@ -346,6 +348,40 @@ app.innerHTML = `
       <menu>
         <button type="button" class="ghost" id="act-refresh">Atualizar</button>
         <button type="button" class="ghost" id="act-close">Fechar</button>
+      </menu>
+    </div>
+  </dialog>
+
+  <dialog id="automations-dialog">
+    <div class="settings">
+      <h2>Automações agendadas</h2>
+      <p class="wiz-intro">Corre um workflow num horário. As ações são <strong>executadas
+      automaticamente</strong> e registadas; o resultado vai para a Saga "Automações" + notificação.
+      Só corre com a app aberta.</p>
+      <div class="mcp-list" id="sched-list"></div>
+      <fieldset>
+        <legend id="sched-form-legend">Novo agendamento</legend>
+        <label>Nome <input id="sched-name" type="text" placeholder="ex.: Login diário" /></label>
+        <label>Workflow <select id="sched-workflow"></select></label>
+        <label>Argumentos <input id="sched-args" type="text" placeholder="(opcional)" /></label>
+        <label>Frequência
+          <select id="sched-preset">
+            <option value="0 0 9 * * *">Todos os dias às 9h</option>
+            <option value="0 0 9 * * Mon-Fri">Dias úteis às 9h</option>
+            <option value="0 0 * * * *">De hora a hora</option>
+            <option value="0 */5 * * * *">A cada 5 minutos</option>
+            <option value="__custom__">Personalizado (cron)…</option>
+          </select>
+        </label>
+        <label>Expressão cron <input id="sched-cron" type="text" value="0 0 9 * * *" /></label>
+        <label class="check"><input id="sched-enabled" type="checkbox" checked /> Ativo</label>
+        <div class="ws-editor-bar">
+          <button type="button" class="ghost" id="sched-add">Guardar agendamento</button>
+        </div>
+        <div class="pull-status" id="sched-status"></div>
+      </fieldset>
+      <menu>
+        <button type="button" class="ghost" id="sched-close">Fechar</button>
       </menu>
     </div>
   </dialog>
@@ -1847,6 +1883,153 @@ async function renderActivity() {
     .join("");
 }
 
+// ---- Automações agendadas ----
+const automationsDialog = document.querySelector<HTMLDialogElement>("#automations-dialog")!;
+let schedEditingId: number | null = null;
+
+async function openAutomations() {
+  schedEditingId = null;
+  // popular o dropdown de workflows
+  const sel = document.querySelector<HTMLSelectElement>("#sched-workflow")!;
+  try {
+    const idx = await api.getWorkspaceIndex();
+    sel.innerHTML = idx.workflows
+      .map((w) => `<option value="${escapeHtml(w.name)}">${escapeHtml(w.name)}</option>`)
+      .join("");
+    if (idx.workflows.length === 0) {
+      sel.innerHTML = `<option value="">(sem workflows — cria um no Workspace)</option>`;
+    }
+  } catch {
+    sel.innerHTML = "";
+  }
+  clearSchedForm();
+  await renderSchedules();
+  automationsDialog.showModal();
+}
+
+function clearSchedForm() {
+  schedEditingId = null;
+  (document.querySelector("#sched-name") as HTMLInputElement).value = "";
+  (document.querySelector("#sched-args") as HTMLInputElement).value = "";
+  (document.querySelector("#sched-preset") as HTMLSelectElement).value = "0 0 9 * * *";
+  (document.querySelector("#sched-cron") as HTMLInputElement).value = "0 0 9 * * *";
+  (document.querySelector("#sched-enabled") as HTMLInputElement).checked = true;
+  document.querySelector("#sched-status")!.textContent = "";
+  document.querySelector("#sched-form-legend")!.textContent = "Novo agendamento";
+}
+
+function fmtEpoch(epoch: number): string {
+  if (!epoch) return "—";
+  return new Date(epoch * 1000).toLocaleString();
+}
+
+async function renderSchedules() {
+  const list = document.querySelector<HTMLDivElement>("#sched-list")!;
+  let rows: Schedule[] = [];
+  try {
+    rows = await api.listSchedules();
+  } catch {
+    rows = [];
+  }
+  if (rows.length === 0) {
+    list.innerHTML = `<div class="empty-sm">Sem agendamentos. Cria um abaixo.</div>`;
+    return;
+  }
+  list.innerHTML = rows
+    .map(
+      (s) => `
+    <div class="mcp-item">
+      <label class="check"><input type="checkbox" data-toggle="${s.id}" ${s.enabled ? "checked" : ""} /> <strong>${escapeHtml(s.name)}</strong></label>
+      <code>${escapeHtml(s.workflow_name)} · ${escapeHtml(s.cron)} · próx: ${escapeHtml(fmtEpoch(s.next_run_epoch))}</code>
+      <div class="mcp-item-actions">
+        <button type="button" class="ghost" data-run="${s.id}">▶</button>
+        <button type="button" class="ghost" data-edit="${s.id}">Editar</button>
+        <button type="button" class="ghost" data-del="${s.id}">✕</button>
+      </div>
+    </div>`
+    )
+    .join("");
+  const byId = new Map(rows.map((s) => [s.id, s]));
+  list.querySelectorAll<HTMLInputElement>("[data-toggle]").forEach((b) =>
+    b.addEventListener("change", () => toggleSchedule(byId.get(parseInt(b.dataset.toggle!))!, b.checked))
+  );
+  list.querySelectorAll<HTMLButtonElement>("[data-edit]").forEach((b) =>
+    b.addEventListener("click", () => editSchedule(byId.get(parseInt(b.dataset.edit!))!))
+  );
+  list.querySelectorAll<HTMLButtonElement>("[data-del]").forEach((b) =>
+    b.addEventListener("click", () => delSchedule(parseInt(b.dataset.del!)))
+  );
+  list.querySelectorAll<HTMLButtonElement>("[data-run]").forEach((b) =>
+    b.addEventListener("click", () => runScheduleNow(parseInt(b.dataset.run!)))
+  );
+}
+
+function editSchedule(s: Schedule) {
+  schedEditingId = s.id;
+  (document.querySelector("#sched-name") as HTMLInputElement).value = s.name;
+  (document.querySelector("#sched-args") as HTMLInputElement).value = s.arguments;
+  (document.querySelector("#sched-cron") as HTMLInputElement).value = s.cron;
+  (document.querySelector("#sched-preset") as HTMLSelectElement).value = "__custom__";
+  (document.querySelector("#sched-enabled") as HTMLInputElement).checked = s.enabled;
+  const sel = document.querySelector<HTMLSelectElement>("#sched-workflow")!;
+  if ([...sel.options].some((o) => o.value === s.workflow_name)) sel.value = s.workflow_name;
+  document.querySelector("#sched-form-legend")!.textContent = "Editar agendamento";
+}
+
+async function addOrUpdateSchedule() {
+  const name = (document.querySelector("#sched-name") as HTMLInputElement).value.trim();
+  const workflow = (document.querySelector("#sched-workflow") as HTMLSelectElement).value;
+  const args = (document.querySelector("#sched-args") as HTMLInputElement).value.trim();
+  const cron = (document.querySelector("#sched-cron") as HTMLInputElement).value.trim();
+  const enabled = (document.querySelector("#sched-enabled") as HTMLInputElement).checked;
+  const status = document.querySelector("#sched-status")!;
+  if (!name || !workflow || !cron) {
+    status.textContent = "Nome, workflow e cron são obrigatórios.";
+    return;
+  }
+  try {
+    if (schedEditingId !== null) {
+      await api.updateSchedule(schedEditingId, name, workflow, args, cron, enabled);
+    } else {
+      await api.createSchedule(name, workflow, args, cron, enabled);
+    }
+    clearSchedForm();
+    await renderSchedules();
+  } catch (e) {
+    status.textContent = "Falha: " + e;
+  }
+}
+
+async function toggleSchedule(s: Schedule, enabled: boolean) {
+  try {
+    await api.updateSchedule(s.id, s.name, s.workflow_name, s.arguments, s.cron, enabled);
+    await renderSchedules();
+  } catch (e) {
+    alert("Falha: " + e);
+  }
+}
+
+async function delSchedule(id: number) {
+  if (!confirm("Remover este agendamento?")) return;
+  try {
+    await api.deleteSchedule(id);
+    await renderSchedules();
+  } catch (e) {
+    alert("Falha: " + e);
+  }
+}
+
+async function runScheduleNow(id: number) {
+  const status = document.querySelector("#sched-status")!;
+  status.textContent = "A correr…";
+  try {
+    status.textContent = await api.runScheduleNow(id);
+    await renderSchedules();
+  } catch (e) {
+    status.textContent = "Falha: " + e;
+  }
+}
+
 function wireWorkspaceUi() {
   wsDialog
     .querySelectorAll<HTMLButtonElement>(".ws-tab")
@@ -1865,12 +2048,20 @@ function wireWorkspaceUi() {
   document.querySelector("#act-refresh")!.addEventListener("click", renderActivity);
   document.querySelector("#act-close")!.addEventListener("click", () => activityDialog.close());
 
+  document.querySelector("#sched-add")!.addEventListener("click", addOrUpdateSchedule);
+  document.querySelector("#sched-close")!.addEventListener("click", () => automationsDialog.close());
+  document.querySelector("#sched-preset")!.addEventListener("change", (e) => {
+    const v = (e.target as HTMLSelectElement).value;
+    if (v !== "__custom__") (document.querySelector("#sched-cron") as HTMLInputElement).value = v;
+  });
+
   document.querySelectorAll<HTMLButtonElement>(".rail-btn").forEach((b) =>
     b.addEventListener("click", () => {
       const v = b.dataset.view;
       if (v === "workspace") openWorkspace();
       else if (v === "servers") openMcp();
       else if (v === "activity") openActivity();
+      else if (v === "automations") openAutomations();
     })
   );
 }
