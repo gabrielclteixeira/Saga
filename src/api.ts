@@ -57,6 +57,9 @@ export interface Settings {
   mcp_servers: McpServerConfig[];
   workspace_dir: string;
   confirm_mode: "off" | "dry_run" | "ask";
+  local_web_search: boolean;
+  web_search_provider: "duckduckgo" | "tavily";
+  web_search_api_key: string;
   onboarding_done: boolean;
 }
 

@@ -239,6 +239,19 @@ app.innerHTML = `
       </fieldset>
 
       <fieldset>
+        <legend>Pesquisa web (modelo local)</legend>
+        <label class="check"><input name="local_web_search" type="checkbox" /> Dar pesquisa web ao modelo local (🔎 corre no Ollama)</label>
+        <p class="wiz-hint">Precisa de um modelo Ollama com suporte a ferramentas (ex.: llama3.1, qwen2.5). Com isto desligado, o 🔎 força o Claude.</p>
+        <label>Motor
+          <select name="web_search_provider">
+            <option value="duckduckgo">DuckDuckGo (sem chave)</option>
+            <option value="tavily">Tavily (chave — melhor qualidade)</option>
+          </select>
+        </label>
+        <label>Chave Tavily (opcional) <input name="web_search_api_key" type="password" /></label>
+      </fieldset>
+
+      <fieldset>
         <legend>Memória</legend>
         <label>Pasta de memória <input name="memory_dir" type="text" /></label>
         <label>Caminho CLAUDE.md (opcional) <input name="claude_md_path" type="text" /></label>
@@ -1091,9 +1104,13 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     research: opts.research ?? state.research,
     subagents: opts.subagents ?? state.subagents,
   };
-  // Pesquisa web e subagentes são caminhos só de Claude API → forçam a rota.
-  if ((sendOpts.research || sendOpts.subagents) && !sendOpts.routeOverride) {
-    sendOpts.routeOverride = "claude";
+  // Subagentes é só Claude. Pesquisa também força Claude, EXCETO se o web search local
+  // estiver ligado (Ollama) — aí o 🔎 pode correr no modelo local.
+  const localWeb =
+    state.settings?.local_provider === "ollama" && !!state.settings?.local_web_search;
+  if (!sendOpts.routeOverride) {
+    if (sendOpts.subagents) sendOpts.routeOverride = "claude";
+    else if (sendOpts.research && !localWeb) sendOpts.routeOverride = "claude";
   }
   const assistant: Item = { role: "assistant", content: "", report: sendOpts.research };
   state.items.push(assistant);
@@ -1445,6 +1462,9 @@ function settingsToForm(s: Settings) {
   (f.elements.namedItem("research_max_rounds") as HTMLInputElement).value = String(
     s.research_max_rounds
   );
+  (f.elements.namedItem("local_web_search") as HTMLInputElement).checked = s.local_web_search;
+  (f.elements.namedItem("web_search_provider") as HTMLSelectElement).value = s.web_search_provider;
+  (f.elements.namedItem("web_search_api_key") as HTMLInputElement).value = s.web_search_api_key;
   (f.elements.namedItem("routing_enabled") as HTMLInputElement).checked = s.routing.enabled;
   (f.elements.namedItem("use_local_classifier") as HTMLInputElement).checked =
     s.routing.use_local_classifier;
@@ -1516,6 +1536,9 @@ function formToSettings(base: Settings): Settings {
     claude_api_key: val("claude_api_key"),
     claude_max_tokens: parseInt(val("claude_max_tokens")) || 2048,
     research_max_rounds: Math.min(5, Math.max(1, parseInt(val("research_max_rounds")) || 3)),
+    local_web_search: checked("local_web_search"),
+    web_search_provider: val("web_search_provider") as Settings["web_search_provider"],
+    web_search_api_key: val("web_search_api_key"),
     memory_dir: val("memory_dir"),
     claude_md_path: val("claude_md_path"),
     enable_browser_tools: checked("enable_browser_tools"),

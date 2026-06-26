@@ -106,6 +106,12 @@ pub struct Settings {
     pub workspace_dir: String,
     /// Confirmação de ações: "off" | "dry_run" | "ask".
     pub confirm_mode: String,
+    /// Pesquisa web para o modelo local (Ollama tool-calling).
+    pub local_web_search: bool,
+    /// Motor de pesquisa: "duckduckgo" (sem chave) | "tavily".
+    pub web_search_provider: String,
+    /// Chave do motor de pesquisa (Tavily) — guardada na keychain.
+    pub web_search_api_key: String,
     /// Onboarding (wizard de 1.º arranque) concluído.
     pub onboarding_done: bool,
 }
@@ -147,6 +153,9 @@ impl Default for Settings {
                 .to_string_lossy()
                 .to_string(),
             confirm_mode: "off".into(),
+            local_web_search: false,
+            web_search_provider: "duckduckgo".into(),
+            web_search_api_key: String::new(),
             onboarding_done: false,
         }
     }
@@ -170,6 +179,7 @@ const KEYRING_SERVICE: &str = "saga";
 const KC_ANTHROPIC: &str = "anthropic_api_key";
 const KC_OPENAI_CLOUD: &str = "openai_cloud_key";
 const KC_OPENAI_LOCAL: &str = "openai_local_key";
+const KC_WEBSEARCH: &str = "web_search_api_key";
 
 /// Nome de utilizador da keychain para o env de um servidor MCP.
 fn mcp_env_user(name: &str) -> String {
@@ -207,6 +217,7 @@ impl Settings {
             (KC_ANTHROPIC, &mut s.claude_api_key),
             (KC_OPENAI_CLOUD, &mut s.openai_cloud_key),
             (KC_OPENAI_LOCAL, &mut s.openai_local_key),
+            (KC_WEBSEARCH, &mut s.web_search_api_key),
         ] {
             let kc = keychain_load(user);
             if !kc.is_empty() {
@@ -243,10 +254,12 @@ impl Settings {
         keychain_store(KC_ANTHROPIC, &self.claude_api_key);
         keychain_store(KC_OPENAI_CLOUD, &self.openai_cloud_key);
         keychain_store(KC_OPENAI_LOCAL, &self.openai_local_key);
+        keychain_store(KC_WEBSEARCH, &self.web_search_api_key);
         let mut to_write = self.clone();
         to_write.claude_api_key = String::new();
         to_write.openai_cloud_key = String::new();
         to_write.openai_local_key = String::new();
+        to_write.web_search_api_key = String::new();
         // Guarda o env de cada servidor MCP na keychain e limpa-o do json.
         for srv in &mut to_write.mcp_servers {
             if srv.name.trim().is_empty() {

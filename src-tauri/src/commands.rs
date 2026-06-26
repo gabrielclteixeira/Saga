@@ -706,13 +706,33 @@ pub async fn send_message_stream(
             .await
         }
         router::Route::Local => {
-            providers::ollama::chat_stream(
-                &settings.ollama_endpoint,
-                &prepared.model,
-                &prepared.full_messages,
-                on_delta,
-            )
-            .await
+            if research && settings.local_web_search {
+                // Loop de tool-calling local com pesquisa web.
+                let tx_t = channel.clone();
+                crate::web_agent::run(
+                    &settings.ollama_endpoint,
+                    &prepared.model,
+                    &settings.web_search_provider,
+                    &settings.web_search_api_key,
+                    &prepared.full_messages,
+                    on_delta,
+                    move |tool, detail| {
+                        let _ = tx_t.send(StreamEvent::ToolStep {
+                            tool: tool.to_string(),
+                            detail: detail.to_string(),
+                        });
+                    },
+                )
+                .await
+            } else {
+                providers::ollama::chat_stream(
+                    &settings.ollama_endpoint,
+                    &prepared.model,
+                    &prepared.full_messages,
+                    on_delta,
+                )
+                .await
+            }
         }
         router::Route::Claude if cloud_openai => {
             providers::openai_compat::chat_stream(

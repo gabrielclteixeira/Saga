@@ -82,6 +82,41 @@ fn to_wire(messages: &[ChatMessage]) -> Vec<WireMessage> {
 }
 
 /// Conversa completa (não-streaming) com um modelo Ollama.
+/// Chamada crua a `/api/chat` (não-stream) com `messages` em JSON e `tools` opcionais.
+/// Devolve o JSON da resposta (para ler `message.content`, `message.tool_calls`, usage).
+/// Usado pelo loop de tool-calling local (`web_agent`).
+pub async fn chat_raw(
+    endpoint: &str,
+    model: &str,
+    messages: serde_json::Value,
+    tools: Option<serde_json::Value>,
+) -> Result<serde_json::Value> {
+    let url = format!("{}/api/chat", endpoint.trim_end_matches('/'));
+    let mut body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "stream": false,
+    });
+    if let Some(t) = tools {
+        body["tools"] = t;
+    }
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| anyhow!("falha a contactar o Ollama em {url}: {e}"))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("Ollama devolveu {status}: {text}"));
+    }
+    resp.json()
+        .await
+        .map_err(|e| anyhow!("resposta do Ollama inválida: {e}"))
+}
+
 pub async fn chat(endpoint: &str, model: &str, messages: &[ChatMessage]) -> Result<LlmResponse> {
     let url = format!("{}/api/chat", endpoint.trim_end_matches('/'));
     let wire = to_wire(messages);

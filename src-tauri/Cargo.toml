@@ -35,6 +35,8 @@ futures-util = "0.3"
 anyhow = "1"
 dirs = "5"
 rusqlite = { version = "0.32", features = ["bundled"] }
+scraper = "0.20"
+urlencoding = "2"
 
 # Keychain do SO para guardar segredos (API key) — backend nativo por plataforma.
 [target.'cfg(windows)'.dependencies]
