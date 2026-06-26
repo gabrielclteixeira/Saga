@@ -2336,9 +2336,12 @@ const CENTER_VIEWS: Record<string, HTMLDialogElement> = {
 
 /** Mostra uma vista no centro (ou o chat, se null/"sagas"). */
 function showView(view: string | null) {
+  const inView = view !== null && view !== "sagas";
   for (const [name, el] of Object.entries(CENTER_VIEWS)) el.open = name === view;
   const chat = document.querySelector<HTMLElement>(".chat")!;
-  chat.hidden = view !== null && view !== "sagas";
+  chat.hidden = inView;
+  // A lista de conversas só faz sentido nas Sagas.
+  els.layout.classList.toggle("viewing", inView);
   const active = view ?? "sagas";
   document
     .querySelectorAll<HTMLButtonElement>(".rail-btn")
