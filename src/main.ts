@@ -1,4 +1,5 @@
 import "./style.css";
+import { caravelLoader } from "./caravel-loader";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { check } from "@tauri-apps/plugin-updater";
@@ -927,7 +928,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   const tb = els.messages.lastElementChild?.querySelector(".bubble") as HTMLDivElement | null;
   if (tb) {
     tb.innerHTML =
-      `<span class="dots"><i></i><i></i><i></i></span> <span class="status-text"></span>`;
+      `<span class="waiting-row">${caravelLoader(30)}<span class="status-text"></span></span>`;
     tb.querySelector(".status-text")!.textContent = waiting;
   }
 
@@ -1841,7 +1842,20 @@ async function init() {
     }
   } catch (e) {
     console.error(e);
+  } finally {
+    hideSplash();
   }
+}
+
+/** Esconde o splash de arranque com fade e remove-o do DOM. */
+function hideSplash() {
+  const splash = document.querySelector<HTMLElement>("#splash");
+  if (!splash) return;
+  // pequena espera para o splash não "piscar" em arranques muito rápidos
+  setTimeout(() => {
+    splash.classList.add("splash-hide");
+    setTimeout(() => splash.remove(), 450);
+  }, 250);
 }
 
 init();
