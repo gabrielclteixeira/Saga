@@ -74,10 +74,10 @@ app.innerHTML = `
   </header>
   <main class="layout">
     <nav class="rail" id="rail">
-      <button type="button" class="rail-btn active" data-view="sagas" title="Sagas"><span class="rail-ico">⛵</span><span class="rail-lbl">Sagas</span></button>
+      <button type="button" class="rail-btn active" data-view="sagas" title="Sagas"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 9 9 0 0 1-3.9-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z"/></svg></span><span class="rail-lbl">Sagas</span></button>
       <button type="button" class="rail-btn" data-view="workspace" title="Workspace (skills, playbooks, workflows)"><span class="rail-ico">✦</span><span class="rail-lbl">Workspace</span></button>
-      <button type="button" class="rail-btn" data-view="servers" title="Servidores MCP"><span class="rail-ico">🔌</span><span class="rail-lbl">Servidores</span></button>
-      <button type="button" class="rail-btn" data-view="activity" title="Atividade (ações)"><span class="rail-ico">📋</span><span class="rail-lbl">Atividade</span></button>
+      <button type="button" class="rail-btn" data-view="servers" title="Servidores MCP"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><line x1="6.5" y1="7.5" x2="6.5" y2="7.5"/><line x1="6.5" y1="16.5" x2="6.5" y2="16.5"/></svg></span><span class="rail-lbl">Servidores</span></button>
+      <button type="button" class="rail-btn" data-view="activity" title="Atividade (ações)"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><line x1="4.5" y1="6" x2="4.5" y2="6"/><line x1="4.5" y1="12" x2="4.5" y2="12"/><line x1="4.5" y1="18" x2="4.5" y2="18"/></svg></span><span class="rail-lbl">Atividade</span></button>
     </nav>
     <aside class="sidebar">
       <button class="new-chat" id="btn-new-chat">+ Nova Saga</button>
@@ -242,6 +242,15 @@ app.innerHTML = `
           </span>
         </label>
         <p class="wiz-hint">Atalhos: <strong>Ctrl/⌘ +</strong>, <strong>Ctrl/⌘ −</strong>, <strong>Ctrl/⌘ 0</strong> (ou Ctrl/⌘ + roda do rato).</p>
+        <label>Tamanho do texto
+          <span class="row zoom-row">
+            <button type="button" class="ghost" id="font-out" aria-label="Texto menor">A−</button>
+            <span class="zoom-val" id="font-val">100%</span>
+            <button type="button" class="ghost" id="font-in" aria-label="Texto maior">A+</button>
+            <button type="button" class="ghost" id="font-reset">Repor</button>
+          </span>
+        </label>
+        <p class="wiz-hint">Ajusta só o texto das mensagens e do compositor (o zoom escala toda a interface).</p>
       </fieldset>
 
       <fieldset>
@@ -1850,6 +1859,27 @@ async function init() {
   document.querySelector("#zoom-in")!.addEventListener("click", () => nudgeZoom(0.1));
   document.querySelector("#zoom-out")!.addEventListener("click", () => nudgeZoom(-0.1));
   document.querySelector("#zoom-reset")!.addEventListener("click", resetZoom);
+
+  // Tamanho do texto do chat (CSS var --font-scale), separado do zoom da interface.
+  const FONT_KEY = "saga.fontScale";
+  const applyFontScale = (s: number): number => {
+    const v = Math.min(1.6, Math.max(0.8, Math.round(s * 20) / 20));
+    document.documentElement.style.setProperty("--font-scale", String(v));
+    localStorage.setItem(FONT_KEY, String(v));
+    const lbl = document.querySelector("#font-val");
+    if (lbl) lbl.textContent = Math.round(v * 100) + "%";
+    return v;
+  };
+  let fontScale = applyFontScale(parseFloat(localStorage.getItem(FONT_KEY) || "1") || 1);
+  document.querySelector("#font-in")!.addEventListener("click", () => {
+    fontScale = applyFontScale(fontScale + 0.1);
+  });
+  document.querySelector("#font-out")!.addEventListener("click", () => {
+    fontScale = applyFontScale(fontScale - 0.1);
+  });
+  document.querySelector("#font-reset")!.addEventListener("click", () => {
+    fontScale = applyFontScale(1);
+  });
 
   try {
     state.settings = await api.getSettings();
