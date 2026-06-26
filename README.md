@@ -59,6 +59,23 @@ A live panel shows **tokens served locally** and **tokens saved by compression**
                           accounting: tokens served local · tokens saved · Claude $
 ```
 
+## Beyond chat — an agentic workspace
+
+Conversations are **Sagas**. A left nav rail opens the workspace surfaces:
+
+- **MCP host** — Saga is a [Model Context Protocol](https://modelcontextprotocol.io) client: point it at any
+  stdio MCP server (filesystem, GitHub, Playwright, your own) and the model can call its tools
+  (`mcp__<server>__<tool>`). Add and test servers under **Servidores**.
+- **Skills & Playbooks** — reusable Markdown in your workspace. Skills auto-surface to the model
+  (`load_skill`); playbooks are pulled on demand (`read_playbook`). The model can **create/edit** them on request.
+- **Workflows** — saved agentic procedures. Type `/<name> args` to run one; it executes step-by-step with the
+  available tools.
+- **Browser tool** — a Playwright session (navigate / read / click / fill / screenshot) driven by tool-calling.
+
+Every tool call is **logged** (per-Saga *Atividade* view), and a **confirmation mode** (off / dry-run / ask)
+can preview or require approval before any action runs. Workspace files live under a configurable folder
+(`skills/`, `playbooks/`, `workflows/`) — editable in-app or in your own editor. Tools require **Claude API mode**.
+
 ## Two ways to reach Claude (user-selectable)
 
 | Mode | How | Pros |
@@ -77,15 +94,17 @@ Switch in **Settings → Claude → Mode**.
 
 ```
 src-tauri/src/
-  providers/   ollama.rs · claude_api.rs · claude_cli.rs   (model backends)
+  providers/   ollama · claude_api · claude_cli · openai_compat   (model backends)
+  mcp/         MCP client + manager (stdio JSON-RPC host)
+  tools/       browser sidecar + dispatcher (ToolHost)
+  agent.rs     tool-use loop      orchestrator.rs  subagents
+  workspace.rs skills / playbooks / workflows
   router.rs    triage → route → context compression
-  memory.rs    read & expose memory / CLAUDE.md
-  accounting.rs token + cost tracking (per-model pricing)
-  settings.rs  persisted config
-  commands.rs  Tauri command surface
+  store.rs     SQLite: Sagas, messages (FTS5), action log
+  memory.rs · accounting.rs · settings.rs · commands.rs
 src/
-  main.ts      UI (chat, token panel, settings)
-  api.ts       typed bindings to the Rust commands
+  main.ts      UI (rail, chat, managers, settings)
+  api.ts       typed bindings   ·   caravel-loader.ts · zoom.ts
 ```
 
 ## Run it
@@ -104,30 +123,23 @@ npm run tauri build    # production bundles for your OS
 In **Settings**, point *Memory folder* at any directory of `.md` files (try `examples/memory/`)
 and optionally a `CLAUDE.md`.
 
-## Releasing & auto-update
+## Releasing
 
-Saga ships with the Tauri **updater** (Settings → Atualizações → *Verificar atualizações*). To cut a
-release that the app can auto-update to:
+Pushing a `v*` tag triggers the GitHub Actions build (macOS Apple Silicon · Windows · Linux), which
+**drafts** a release with the installers (`.dmg`, `.exe`/`.msi`, `.AppImage`/`.deb`/`.rpm`):
 
-1. **Generate your signing key** (keep the private key secret — the committed `pubkey` is a placeholder):
-   ```bash
-   npx @tauri-apps/cli signer generate --write-keys saga-updater.key
-   ```
-   Put the printed **public key** in `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`.
-2. **Add CI secrets** on GitHub: `TAURI_SIGNING_PRIVATE_KEY` (the private key contents) and
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The release workflow then signs the bundles and uploads a
-   `latest.json` the updater endpoint points at.
-3. **Tag a release** (`git tag v0.2.0 && git push --tags`) — CI builds, signs, and drafts the release.
+```bash
+git tag v0.2.3 && git push origin v0.2.3
+```
 
-### Code signing (optional, needs paid certs)
-Unsigned installers trigger "unknown publisher" warnings. To sign:
-- **Windows**: a code-signing certificate (OV/EV); set `bundle.windows.certificateThumbprint` (or CI
-  secrets `WINDOWS_CERTIFICATE`/`WINDOWS_CERTIFICATE_PASSWORD`).
-- **macOS**: an Apple Developer cert + notarization (`APPLE_*` CI secrets).
+When the run is green, **publish the draft** from the Releases page — don't "create a new release" from the
+tag, or you get an empty one without the installers.
 
-### Browser sidecar (not yet bundled)
-The Playwright sidecar still requires a one-time `cd sidecar && npm install && npx playwright install chromium`.
-Bundling Node + Chromium into the installer (hundreds of MB) is a deliberate follow-up.
+Installers are currently **unsigned** (Windows SmartScreen / macOS Gatekeeper will warn — "More info → Run
+anyway" / right-click → Open). To sign and re-enable **in-app auto-update**: set
+`bundle.createUpdaterArtifacts: true`, generate an updater key (`npx @tauri-apps/cli signer generate`), put
+the public key in `tauri.conf.json` → `plugins.updater.pubkey`, and add the `TAURI_SIGNING_PRIVATE_KEY` /
+`_PASSWORD` CI secrets. For full code signing, add OS certs (Windows OV/EV; Apple Developer + notarization).
 
 ## Identity
 
@@ -146,62 +158,26 @@ single ochre accent, the palette of the Age-of-Discovery tile panels. The app de
 The SVG masters are the source of truth — platform icons are regenerated from them with
 `npm run tauri icon`.
 
-## Roadmap (personal/deeper version)
+## Roadmap
 
-`main` is the focused portfolio version (V1). The `v2` branch is a deeper personal build adding:
-real-time streaming, chat history (SQLite), image attachments (vision), and an agentic browser
-tool (Claude tool-calling driving Playwright). Future: deep research, extended thinking, artifacts,
-tasks, chat search, scheduled automations, and **subagent orchestration** — split a complex task into
-isolated phases and run focused subagents (each with only the context it needs) in parallel to finish faster.
+**Done:** local↔Claude router with context compression · real-time streaming · Sagas history + full-text
+search (SQLite/FTS5) · image attachments (vision) · extended thinking & deep research · subagent
+orchestration · agentic **browser tool** · **MCP host** · **skills / playbooks / workflows** · **action log +
+confirm/dry-run** · side rail · interface zoom · OpenAI-compatible providers · in-app model downloader ·
+azulejo identity + animated caravel loader · OS-keychain secrets · CI release builds.
 
-**Side rail & extensibility (beyond chat):** add a left **navigation rail** that turns Saga from a
-single chat window into a workspace. Planned surfaces:
+**Next:**
 
-- **Workflows** — saved multi-step routines that *do things* (open the company site, log in, run a
-  report), not just answer. Triggerable manually or scheduled.
-- **Skills / Playbooks** — reusable, parameterized instructions the agent can load on demand for a
-  domain (e.g. "triage a Bitrix24 deal", "draft a release note"), so behavior is consistent and shareable.
-- **MCP / tool agents** — let Saga drive external **MCP servers** so it can act intelligently against
-  real systems, e.g. the [Bitrix24.MCP.Agents](https://github.com/dev-erp24/Bitrix24.MCP.Agents) tools
-  for CRM automation. The router stays in front; MCP just expands what the cloud/local model can call.
+- **Zero-setup distribution** — bundle/auto-install Ollama as a managed sidecar (auto-pull a small default
+  model on first run), package the Playwright sidecar (`externalBin`) so the browser tool needs no manual
+  install, and round off the first-run wizard. Goal: double-click the installer and it just works.
+- **Signed & auto-updating** — code-sign + notarize installers (drops the "unknown publisher" warnings) and
+  turn the Tauri updater back on.
+- **Local web search** — give the local model web access via Rust-side `web_search`/`web_fetch` tools, so
+  research can run fully local (today web search is Claude-only; enabling 🔎 forces the Claude route).
+- **More** — artifacts, scheduled automations, richer deep-research depth.
 
-**Conversations as "Sagas":** rename chats to **Sagas** throughout the UI (sidebar header, "New Saga",
-empty state) to match the brand — each conversation is its own little voyage.
-
-**Rebranding follow-through (Saga):** finish the visual identity — logo/app icons (regenerate the
-Tauri `icons/` from a real caravel mark via `npm run tauri icon`), a coherent color palette, polished
-copy/README text, and demo GIFs/screenshots for the repo.
-**Visual direction:** Portuguese *azulejo* tilework (blue-and-white) featuring **naus/caravels** — tile
-motifs as accents/empty-states/backgrounds, keeping the current dark UI for the working surface.
-
-**All-in-one / zero-setup distribution** (goal: a non-technical user double-clicks the installer and it just works):
-
-1. **First-run onboarding wizard** — detect what's missing, guide the user through setup, test each
-   connection, and pick a mode. No empty, broken-looking screen on first launch.
-2. **Bundled & managed Ollama** — ship or auto-install Ollama as a managed sidecar; auto-pull a small
-   default model on first run with a progress bar; start/stop it with the app.
-3. **Bundled browser sidecar** — package Node + Chromium as a Tauri sidecar (`externalBin`) so the
-   browser tool needs no manual `npm install` / `playwright install`.
-4. **One-step Claude setup** — paste the API key behind a guided link (or a device/OAuth-style login),
-   stored in the **OS keychain** — not in plaintext `settings.json`.
-5. **Signed & auto-updating** — code-sign + notarize the installers (removes the "unknown publisher"
-   warnings) and add the Tauri updater plugin for in-app updates.
-6. **Zero-config defaults** — usable offline via the local model the moment it finishes downloading;
-   Claude stays optional.
-7. **Secret hardening** — move all credentials to the OS keychain (keyring/Stronghold); no secrets on
-   disk in clear. (Also a security/GDPR win.)
-
-**Model flexibility:**
-
-- **More providers beyond Ollama** — support OpenAI-compatible endpoints, Gemini, Mistral, and local
-  runtimes (llama.cpp / LM Studio), behind the existing provider abstraction so the router can pick any.
-- **In-app model downloader** — browse and pull/download models directly from Saga (with a progress
-  UI), so the user never touches a terminal.
-- **Local web search** — give the local (Ollama) model web access via Rust-side `web_search`/`web_fetch`
-  tools + a tool-calling loop (for tool-capable local models), so research can run fully local/offline-ish.
-  Today web search is Claude-only (API `web_search` / CLI `WebSearch`); enabling 🔎 forces the Claude route.
-
-### Browser tool (v2) setup
+### Browser tool setup
 
 The browser tool runs Playwright in a Node sidecar, kept Node-free in the Rust core:
 
@@ -211,8 +187,8 @@ npm install
 npx playwright install chromium
 ```
 
-Then in **Settings → Browser**: enable the tool, set the sidecar path to `sidecar/index.js`, and
-pick a user-data dir (the browser session/login persists there across runs). Browser tools require
+Then in **Settings → Ferramentas & Workspace**: enable the tool, set the sidecar path to `sidecar/index.js`,
+and pick a user-data dir (the browser session/login persists there across runs). Browser tools require
 **Claude API mode** (the CLI can't do tool-use here). Never hardcode credentials — log in once
 interactively and the persistent context keeps the session.
 
