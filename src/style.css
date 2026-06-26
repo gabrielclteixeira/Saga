@@ -87,6 +87,12 @@ body {
   grid-template-columns: 220px 1fr 320px;
   min-height: 0;
 }
+.layout.panel-collapsed {
+  grid-template-columns: 220px 1fr 0;
+}
+.layout.panel-collapsed .panel {
+  display: none;
+}
 
 /* Sidebar de conversas */
 .sidebar {
@@ -172,21 +178,38 @@ body {
   text-overflow: ellipsis;
   font-size: 13px;
 }
-.conv-del {
+.conv-act {
   visibility: hidden;
   background: transparent;
   border: none;
   color: var(--muted);
   cursor: pointer;
-  font-size: 16px;
+  font-size: 13px;
   line-height: 1;
   padding: 0 2px;
 }
-.conv:hover .conv-del {
+.conv:hover .conv-act {
   visibility: visible;
+}
+.conv-act:hover {
+  color: var(--text);
 }
 .conv-del:hover {
   color: var(--danger);
+}
+.conv-rename {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 3px 6px;
+  min-width: 0;
+}
+.conv-rename:focus {
+  outline: none;
 }
 .chat {
   display: flex;

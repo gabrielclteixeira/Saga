@@ -47,6 +47,7 @@ app.innerHTML = `
   <header class="topbar">
     <div class="brand">⛵ <strong>Saga</strong> <span class="tag">router local ↔ Claude</span></div>
     <div class="mini" id="mini-stats"></div>
+    <button class="icon-btn" id="btn-panel" title="Mostrar/ocultar painel de tokens">📊</button>
     <button class="icon-btn" id="btn-settings" title="Definições">⚙</button>
   </header>
   <main class="layout">
@@ -205,6 +206,7 @@ app.innerHTML = `
 `;
 
 const els = {
+  layout: document.querySelector<HTMLElement>(".layout")!,
   messages: document.querySelector<HTMLDivElement>("#messages")!,
   composer: document.querySelector<HTMLFormElement>("#composer")!,
   input: document.querySelector<HTMLTextAreaElement>("#input")!,
@@ -497,6 +499,30 @@ async function onFilesSelected() {
   renderPendingAttachments();
 }
 
+/** Colar imagens do clipboard (Ctrl+V / prints). */
+async function onPaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  let handled = false;
+  for (const it of Array.from(items)) {
+    if (it.type.startsWith("image/")) {
+      const file = it.getAsFile();
+      if (file) {
+        handled = true;
+        try {
+          state.pendingAttachments.push(await fileToAttachment(file));
+        } catch (err) {
+          console.error("falha a colar imagem", err);
+        }
+      }
+    }
+  }
+  if (handled) {
+    e.preventDefault();
+    renderPendingAttachments();
+  }
+}
+
 // ---- Conversas ----
 function renderSidebar() {
   els.convList.innerHTML = "";
@@ -509,9 +535,22 @@ function renderSidebar() {
     title.textContent = c.title || "Nova conversa";
     title.title = c.title;
     title.addEventListener("click", () => selectConversation(c.id));
+    title.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      startRename(c, row, title);
+    });
+
+    const ren = document.createElement("button");
+    ren.className = "conv-act";
+    ren.textContent = "✎";
+    ren.title = "Renomear";
+    ren.addEventListener("click", (e) => {
+      e.stopPropagation();
+      startRename(c, row, title);
+    });
 
     const del = document.createElement("button");
-    del.className = "conv-del";
+    del.className = "conv-act conv-del";
     del.textContent = "×";
     del.title = "Apagar";
     del.addEventListener("click", (e) => {
@@ -520,9 +559,44 @@ function renderSidebar() {
     });
 
     row.appendChild(title);
+    row.appendChild(ren);
     row.appendChild(del);
     els.convList.appendChild(row);
   }
+}
+
+function startRename(c: ConversationMeta, row: HTMLElement, titleEl: HTMLElement) {
+  const input = document.createElement("input");
+  input.className = "conv-rename";
+  input.value = c.title || "";
+  row.replaceChild(input, titleEl);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const commit = async (save: boolean) => {
+    if (done) return;
+    done = true;
+    const v = input.value.trim();
+    if (save && v && v !== c.title) {
+      try {
+        await api.renameConversation(c.id, v);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    await loadConversations();
+  };
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit(true);
+    } else if (e.key === "Escape") {
+      commit(false);
+    }
+  });
+  input.addEventListener("blur", () => commit(true));
 }
 
 async function loadConversations() {
@@ -971,6 +1045,14 @@ async function init() {
   els.convSearch.addEventListener("input", onSearch);
   document.querySelector("#btn-attach")!.addEventListener("click", () => els.fileInput.click());
   els.fileInput.addEventListener("change", onFilesSelected);
+  els.input.addEventListener("paste", onPaste);
+  if (localStorage.getItem("saga.panelCollapsed") === "1") {
+    els.layout.classList.add("panel-collapsed");
+  }
+  document.querySelector("#btn-panel")!.addEventListener("click", () => {
+    const collapsed = els.layout.classList.toggle("panel-collapsed");
+    localStorage.setItem("saga.panelCollapsed", collapsed ? "1" : "0");
+  });
   document.querySelector("#wiz-test")!.addEventListener("click", runWizardTest);
   document.querySelector("#wiz-finish")!.addEventListener("click", finishWizard);
   document.querySelector("#wiz-skip")!.addEventListener("click", (e) => {
