@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="Saga — marca de caravela em azulejo">
+  <defs>
+    <symbol id="cx" viewBox="-50 -50 100 100">
+      <path d="M -10 -15 L -30 -50 L 30 -50 L 10 -15 L 15 -10 L 50 -30 L 50 30 L 15 10 L 10 15 L 30 50 L -30 50 L -10 15 L -15 10 L -50 30 L -50 -30 L -15 -10 Z" fill="#2f6ea5"/>
+      <path transform="scale(0.46)" d="M -10 -15 L -30 -50 L 30 -50 L 10 -15 L 15 -10 L 50 -30 L 50 30 L 15 10 L 10 15 L 30 50 L -30 50 L -10 15 L -15 10 L -50 30 L -50 -30 L -15 -10 Z" fill="#f4f1e9"/>
+    </symbol>
+  </defs>
+
+  <!-- tile -->
+  <rect x="5" y="5" width="86" height="86" rx="20" fill="#f4f1e9" stroke="#1c3f73" stroke-width="4"/>
+
+  <!-- mast + ochre pennant (the accent) -->
+  <line x1="48" y1="17" x2="48" y2="70" stroke="#1c3f73" stroke-width="3"/>
+  <path d="M48 18 L66 24 L48 30 Z" fill="#d98e3c" stroke="#c8782a" stroke-width="1"/>
+
+  <!-- square sail with Cruz de Cristo -->
+  <path d="M26 30 Q48 38 70 30 L74 60 Q48 70 22 60 Z" fill="#f4f1e9" stroke="#1c3f73" stroke-width="3" stroke-linejoin="round"/>
+  <use href="#cx" x="37" y="38" width="22" height="22"/>
+
+  <!-- hull -->
+  <path d="M22 62 Q48 74 74 62 Q70 78 48 78 Q26 78 22 62 Z" fill="#2f6ea5" stroke="#1c3f73" stroke-width="3" stroke-linejoin="round"/>
+
+  <!-- waves -->
+  <g fill="none" stroke="#1c3f73" stroke-width="3" stroke-linecap="round">
+    <path d="M20 82 q7 -6 14 0 t14 0 t14 0 t14 0"/>
+  </g>
+</svg>
