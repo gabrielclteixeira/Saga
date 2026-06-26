@@ -36,6 +36,29 @@
   box-sizing: border-box;
 }
 
+/* Scrollbars temáticas (azulejo) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+  border-width: 2px;
+}
+
 html,
 body,
 #app {
@@ -684,6 +707,54 @@ body {
   padding: 16px;
   overflow-y: auto;
   background: var(--bg);
+  position: relative;
+}
+.panel-collapse {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.panel-collapse:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+.panel-reopen {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: 9px 0 0 9px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  z-index: 40;
+}
+.panel-reopen:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+.panel-reopen[hidden] {
+  display: none;
 }
 .panel h2 {
   font-size: 13px;

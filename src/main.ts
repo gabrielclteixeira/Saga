@@ -47,7 +47,6 @@ app.innerHTML = `
   <header class="topbar">
     <div class="brand">⛵ <strong>Saga</strong> <span class="tag">router local ↔ Claude</span></div>
     <div class="mini" id="mini-stats"></div>
-    <button class="icon-btn" id="btn-panel" title="Mostrar/ocultar painel de tokens">📊</button>
     <button class="icon-btn" id="btn-settings" title="Definições">⚙</button>
   </header>
   <main class="layout">
@@ -75,6 +74,7 @@ app.innerHTML = `
       </form>
     </section>
     <aside class="panel">
+      <button class="panel-collapse" id="panel-collapse" title="Ocultar painel" aria-label="Ocultar painel">❯</button>
       <h2>Painel de tokens</h2>
       <div class="cards" id="acct-cards"></div>
       <button class="ghost" id="btn-reset">Repor contadores</button>
@@ -83,6 +83,8 @@ app.innerHTML = `
       <button class="ghost" id="btn-mem-refresh">Atualizar pré-visualização</button>
     </aside>
   </main>
+
+  <button class="panel-reopen" id="panel-reopen" hidden title="Mostrar painel" aria-label="Mostrar painel">❮</button>
 
   <aside class="artifact-panel" id="artifact-panel" hidden>
     <header class="artifact-head">
@@ -1053,13 +1055,15 @@ async function init() {
   document.querySelector("#btn-attach")!.addEventListener("click", () => els.fileInput.click());
   els.fileInput.addEventListener("change", onFilesSelected);
   els.input.addEventListener("paste", onPaste);
-  if (localStorage.getItem("saga.panelCollapsed") === "1") {
-    els.layout.classList.add("panel-collapsed");
-  }
-  document.querySelector("#btn-panel")!.addEventListener("click", () => {
-    const collapsed = els.layout.classList.toggle("panel-collapsed");
+  const panelReopen = document.querySelector<HTMLElement>("#panel-reopen")!;
+  const setPanel = (collapsed: boolean) => {
+    els.layout.classList.toggle("panel-collapsed", collapsed);
+    panelReopen.hidden = !collapsed;
     localStorage.setItem("saga.panelCollapsed", collapsed ? "1" : "0");
-  });
+  };
+  document.querySelector("#panel-collapse")!.addEventListener("click", () => setPanel(true));
+  panelReopen.addEventListener("click", () => setPanel(false));
+  setPanel(localStorage.getItem("saga.panelCollapsed") === "1");
   document.querySelector("#wiz-test")!.addEventListener("click", runWizardTest);
   document.querySelector("#wiz-finish")!.addEventListener("click", finishWizard);
   document.querySelector("#wiz-skip")!.addEventListener("click", (e) => {
