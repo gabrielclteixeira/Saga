@@ -1814,7 +1814,10 @@ async function checkForUpdates() {
     status.textContent = "Instalado. A reiniciar…";
     await relaunch();
   } catch (e) {
-    status.textContent = "Atualizações indisponíveis: " + e;
+    const msg = String(e);
+    status.textContent = /release json|404|fetch|endpoint|not found/i.test(msg)
+      ? "Auto-update ainda não está ativo (instaladores sem assinatura). Descarrega a versão mais recente em github.com/gabrielclteixeira/Saga/releases."
+      : "Não foi possível verificar atualizações: " + msg;
   }
 }
 
