@@ -106,7 +106,7 @@ fn is_action(name: &str) -> bool {
     if name.starts_with("mcp__") {
         return true;
     }
-    matches!(name, "browser_click" | "browser_fill")
+    matches!(name, "browser_click" | "browser_fill" | "save_workspace_doc")
 }
 
 /// Agregador concreto: browser (opcional) + servidores MCP (opcional) + gate.
@@ -132,6 +132,19 @@ impl Dispatcher<'_> {
                 _ => ws
                     .and_then(|w| crate::workspace::read_playbook(w.dir, n))
                     .unwrap_or_else(|| format!("playbook '{n}' não encontrado")),
+            });
+        }
+        // Criação/edição de documentos do workspace (ação).
+        if name == "save_workspace_doc" {
+            let kind = params.get("kind").and_then(|x| x.as_str()).unwrap_or("");
+            let n = params.get("name").and_then(|x| x.as_str()).unwrap_or("");
+            let content = params.get("content").and_then(|x| x.as_str()).unwrap_or("");
+            return Ok(match self.workspace.as_ref() {
+                Some(w) => match crate::workspace::write_doc(w.dir, kind, n, content) {
+                    Ok(_) => format!("guardado: {kind} '{n}'"),
+                    Err(e) => format!("ERRO ao guardar: {e}"),
+                },
+                None => "workspace indisponível".into(),
             });
         }
         if name.starts_with("mcp__") {
@@ -180,6 +193,19 @@ impl ToolHost for Dispatcher<'_> {
                     "input_schema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] }
                 }));
             }
+            arr.push(json!({
+                "name": "save_workspace_doc",
+                "description": "Cria ou atualiza um documento do workspace (skill, playbook ou workflow) quando o utilizador o pedir. Skills e workflows devem incluir frontmatter (name, description).",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "kind": { "type": "string", "enum": ["skill", "playbook", "workflow"] },
+                        "name": { "type": "string", "description": "nome sem espaços" },
+                        "content": { "type": "string", "description": "markdown completo" }
+                    },
+                    "required": ["kind", "name", "content"]
+                }
+            }));
         }
         Value::Array(arr)
     }
@@ -204,6 +230,9 @@ impl ToolHost for Dispatcher<'_> {
                 s.push_str(&format!("- {p}\n"));
             }
         }
+        s.push_str(
+            "\nPodes criar ou editar skills, playbooks e workflows com a ferramenta save_workspace_doc quando o utilizador pedir.\n",
+        );
         Some(s)
     }
 

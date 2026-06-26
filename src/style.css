@@ -1293,3 +1293,32 @@ dialog::backdrop {
 #activity-dialog .settings {
   min-width: 520px;
 }
+
+/* Botões fora de <menu> (barras de editor, aprovação, listas) precisam da geometria base. */
+.ws-editor-bar button,
+.approval-bar button {
+  margin-top: 0;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+.ws-editor-bar .primary,
+.approval-bar .primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+.ws-editor-bar .ghost,
+.approval-bar .ghost {
+  background: transparent;
+  color: var(--muted);
+}
+.ws-item-actions button,
+.mcp-item-actions button {
+  margin-top: 0;
+  padding: 4px 9px;
+  font-size: 12px;
+}
