@@ -130,6 +130,7 @@ export const api = {
       modelOverride?: string;
       regenerate?: boolean;
       thinking?: boolean;
+      research?: boolean;
     }
   ): Promise<void> => {
     const channel = new Channel<StreamEvent>();
@@ -142,6 +143,7 @@ export const api = {
       modelOverride: opts?.modelOverride ?? null,
       regenerate: opts?.regenerate ?? false,
       thinking: opts?.thinking ?? false,
+      research: opts?.research ?? false,
     });
   },
   listConversations: () => invoke<ConversationMeta[]>("list_conversations"),

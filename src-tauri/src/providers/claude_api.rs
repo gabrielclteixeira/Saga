@@ -20,6 +20,15 @@ struct MessagesRequest<'a> {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<serde_json::Value>,
+}
+
+/// Ferramenta de pesquisa web server-side da Anthropic (o modelo pesquisa e cita).
+fn web_search_tools() -> serde_json::Value {
+    serde_json::json!([
+        { "type": "web_search_20260318", "name": "web_search", "max_uses": 6 }
+    ])
 }
 
 #[derive(Serialize)]
@@ -117,6 +126,7 @@ pub async fn messages(
         messages: wire,
         stream: false,
         thinking: None,
+        tools: None,
     };
 
     let client = reqwest::Client::new();
@@ -157,14 +167,17 @@ pub async fn messages(
 }
 
 /// Versão em streaming (SSE). Chama `on_delta` para cada fragmento de texto.
-pub async fn messages_stream<F: FnMut(&str), G: FnMut(&str)>(
+#[allow(clippy::too_many_arguments)]
+pub async fn messages_stream<F: FnMut(&str), G: FnMut(&str), H: FnMut(&str, &str)>(
     api_key: &str,
     model: &str,
     max_tokens: u32,
     messages: &[ChatMessage],
     thinking_budget: Option<u32>,
+    web_search: bool,
     mut on_delta: F,
     mut on_thinking: G,
+    mut on_tool: H,
 ) -> Result<LlmResponse> {
     if api_key.trim().is_empty() {
         return Err(anyhow!("ANTHROPIC_API_KEY não configurada (modo API)"));
@@ -186,6 +199,11 @@ pub async fn messages_stream<F: FnMut(&str), G: FnMut(&str)>(
         messages: wire,
         stream: true,
         thinking,
+        tools: if web_search {
+            Some(web_search_tools())
+        } else {
+            None
+        },
     };
 
     let client = reqwest::Client::new();
@@ -238,6 +256,16 @@ pub async fn messages_stream<F: FnMut(&str), G: FnMut(&str)>(
                             .and_then(|x| x.as_u64())
                         {
                             input_tokens = u;
+                        }
+                    }
+                    Some("content_block_start") => {
+                        // Pesquisa web server-side a começar.
+                        if v.pointer("/content_block/type").and_then(|x| x.as_str())
+                            == Some("server_tool_use")
+                            && v.pointer("/content_block/name").and_then(|x| x.as_str())
+                                == Some("web_search")
+                        {
+                            on_tool("web_search", "a pesquisar na web…");
                         }
                     }
                     Some("content_block_delta") => {

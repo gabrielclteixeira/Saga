@@ -31,6 +31,7 @@ const state: {
   pendingAttachments: Attachment[];
   routeMode: "auto" | "local" | "claude";
   thinking: boolean;
+  research: boolean;
 } = {
   items: [],
   settings: null,
@@ -40,6 +41,7 @@ const state: {
   pendingAttachments: [],
   routeMode: "auto",
   thinking: false,
+  research: false,
 };
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -64,7 +66,10 @@ app.innerHTML = `
         <button type="button" data-mode="auto" class="active">Auto</button>
         <button type="button" data-mode="local">Local</button>
         <button type="button" data-mode="claude">Claude</button>
-        <button type="button" id="btn-think" class="think-toggle" title="Extended thinking (raciocínio) — só Claude API">🧠 Think</button>
+        <span class="composer-toggles">
+          <button type="button" id="btn-research" class="chip-toggle" title="Deep research (pesquisa web) — Claude API">🔎 Pesquisar</button>
+          <button type="button" id="btn-think" class="chip-toggle" title="Extended thinking (raciocínio) — Claude API">🧠 Think</button>
+        </span>
       </div>
       <form class="composer" id="composer">
         <button type="button" class="attach-btn" id="btn-attach" title="Anexar imagem">📎</button>
@@ -723,6 +728,7 @@ type SendOpts = {
   modelOverride?: string;
   regenerate?: boolean;
   thinking?: boolean;
+  research?: boolean;
 };
 
 function buildPayload(): ChatMessage[] {
@@ -740,6 +746,13 @@ function routeOptsFromMode(): SendOpts {
 /** Empurra uma bolha de assistente e preenche-a com o streaming. */
 async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   const conversationId = state.currentConversationId!;
+  const sendOpts: SendOpts = {
+    ...opts,
+    thinking: opts.thinking ?? state.thinking,
+    research: opts.research ?? state.research,
+  };
+  // Pesquisa web é uma ferramenta server-side do Claude → força a rota API.
+  if (sendOpts.research && !sendOpts.routeOverride) sendOpts.routeOverride = "claude";
   const assistant: Item = { role: "assistant", content: "" };
   state.items.push(assistant);
   renderMessages();
@@ -787,7 +800,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
           };
         }
       },
-      { ...opts, thinking: opts.thinking ?? state.thinking }
+      sendOpts
     );
   } catch (e) {
     assistant.content = String(e);
@@ -1088,6 +1101,10 @@ async function init() {
   document.querySelector("#btn-think")!.addEventListener("click", (e) => {
     state.thinking = !state.thinking;
     (e.currentTarget as HTMLElement).classList.toggle("active", state.thinking);
+  });
+  document.querySelector("#btn-research")!.addEventListener("click", (e) => {
+    state.research = !state.research;
+    (e.currentTarget as HTMLElement).classList.toggle("active", state.research);
   });
   els.artifactClose.addEventListener("click", closeArtifact);
   els.artifactToggle.addEventListener("click", () => {

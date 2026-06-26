@@ -529,10 +529,12 @@ body {
   color: var(--text);
   border-color: var(--accent);
 }
-.route-mode .think-toggle {
+.route-mode .composer-toggles {
   margin-left: auto;
+  display: flex;
+  gap: 4px;
 }
-.route-mode .think-toggle.active {
+.route-mode .chip-toggle.active {
   border-color: var(--claude);
   color: var(--claude);
 }

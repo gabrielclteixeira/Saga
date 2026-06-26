@@ -285,6 +285,7 @@ pub async fn send_message_stream(
     model_override: Option<String>,
     regenerate: bool,
     thinking: bool,
+    research: bool,
 ) -> Result<(), String> {
     let settings = state.settings.lock().unwrap().clone();
 
@@ -391,16 +392,24 @@ pub async fn send_message_stream(
                     None
                 };
                 let tx_think = channel.clone();
+                let tx_tool = channel.clone();
                 providers::claude_api::messages_stream(
                     &settings.claude_api_key,
                     &prepared.model,
                     settings.claude_max_tokens,
                     &prepared.full_messages,
                     thinking_budget,
+                    research,
                     on_delta,
                     move |th| {
                         let _ = tx_think.send(StreamEvent::Thinking {
                             text: th.to_string(),
+                        });
+                    },
+                    move |tool, detail| {
+                        let _ = tx_tool.send(StreamEvent::ToolStep {
+                            tool: tool.to_string(),
+                            detail: detail.to_string(),
                         });
                     },
                 )
