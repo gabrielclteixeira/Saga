@@ -86,6 +86,8 @@ pub struct Settings {
     pub browser_node_path: String,
     /// Pasta de dados persistente do browser (mantém sessão/login).
     pub browser_user_data_dir: String,
+    /// Onboarding (wizard de 1.º arranque) concluído.
+    pub onboarding_done: bool,
 }
 
 impl Default for Settings {
@@ -109,6 +111,7 @@ impl Default for Settings {
                 .join("browser")
                 .to_string_lossy()
                 .to_string(),
+            onboarding_done: false,
         }
     }
 }

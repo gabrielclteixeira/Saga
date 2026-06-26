@@ -36,6 +36,16 @@ export interface Settings {
   browser_sidecar_script: string;
   browser_node_path: string;
   browser_user_data_dir: string;
+  onboarding_done: boolean;
+}
+
+export interface Diagnostics {
+  ollama_ok: boolean;
+  ollama_models: string[];
+  ollama_model_present: boolean;
+  claude_mode: string;
+  claude_ready: boolean;
+  claude_detail: string;
 }
 
 export interface Accounting {
@@ -99,6 +109,7 @@ export const api = {
   getAccounting: () => invoke<Accounting>("get_accounting"),
   resetAccounting: () => invoke<Accounting>("reset_accounting"),
   getMemoryPreview: () => invoke<string>("get_memory_preview"),
+  diagnostics: () => invoke<Diagnostics>("diagnostics"),
   listOllamaModels: () => invoke<string[]>("list_ollama_models"),
   sendMessage: (messages: ChatMessage[]) =>
     invoke<ChatResponse>("send_message", { messages }),

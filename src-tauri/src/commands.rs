@@ -103,6 +103,69 @@ pub fn get_memory_preview(state: State<AppState>) -> String {
     memory::preview(&settings, 2000)
 }
 
+#[derive(Serialize)]
+pub struct Diagnostics {
+    pub ollama_ok: bool,
+    pub ollama_models: Vec<String>,
+    pub ollama_model_present: bool,
+    pub claude_mode: String,
+    pub claude_ready: bool,
+    pub claude_detail: String,
+}
+
+/// Verifica o que está disponível (Ollama, Claude) para o wizard de 1.º arranque.
+#[tauri::command]
+pub async fn diagnostics(state: State<'_, AppState>) -> Result<Diagnostics, String> {
+    let settings = state.settings.lock().unwrap().clone();
+
+    let (ollama_ok, ollama_models) =
+        match providers::ollama::list_models(&settings.ollama_endpoint).await {
+            Ok(models) => (true, models),
+            Err(_) => (false, Vec::new()),
+        };
+    let cfg = settings.ollama_model.clone();
+    let ollama_model_present = ollama_models
+        .iter()
+        .any(|m| m == &cfg || m.split(':').next() == Some(cfg.as_str()));
+
+    let (claude_ready, claude_detail) = match settings.claude_mode.as_str() {
+        "api" => {
+            if settings.claude_api_key.trim().is_empty() {
+                (false, "API key em falta".into())
+            } else {
+                (true, "API key configurada".into())
+            }
+        }
+        "cli" => {
+            let path = settings.claude_cli_path.clone();
+            let ok = tauri::async_runtime::spawn_blocking(move || {
+                std::process::Command::new(&path)
+                    .arg("--version")
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
+            })
+            .await
+            .unwrap_or(false);
+            if ok {
+                (true, "Claude CLI detetada".into())
+            } else {
+                (false, "Claude CLI não encontrada".into())
+            }
+        }
+        _ => (false, "Claude desligado".into()),
+    };
+
+    Ok(Diagnostics {
+        ollama_ok,
+        ollama_models,
+        ollama_model_present,
+        claude_mode: settings.claude_mode.clone(),
+        claude_ready,
+        claude_detail,
+    })
+}
+
 // ---- Histórico de conversas ----
 
 #[tauri::command]

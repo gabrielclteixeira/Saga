@@ -6,6 +6,7 @@ import {
   type ChatMessage,
   type ChatResponse,
   type ConversationMeta,
+  type Diagnostics,
   type Settings,
   type StoredMessage,
 } from "./api";
@@ -147,6 +148,42 @@ app.innerHTML = `
       </menu>
     </form>
   </dialog>
+
+  <dialog id="wizard-dialog">
+    <div class="settings wizard">
+      <h2>Bem-vindo ao Saga ⛵</h2>
+      <p class="wiz-intro">O Saga corre um modelo local para tarefas leves e escala para o Claude
+      quando compensa. Vamos configurar o que precisas — podes mudar tudo depois nas Definições.</p>
+
+      <fieldset>
+        <legend>Modelo local (Ollama)</legend>
+        <div class="wiz-status" id="wiz-ollama-status">A verificar…</div>
+        <label>Endpoint <input id="w_ollama_endpoint" type="text" /></label>
+        <label>Modelo <input id="w_ollama_model" type="text" list="ollama-models" /></label>
+        <p class="wiz-hint">Sem Ollama? Instala em <strong>ollama.com</strong> e corre
+        <code>ollama pull llama3.2</code>.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Claude</legend>
+        <div class="wiz-status" id="wiz-claude-status">A verificar…</div>
+        <label>Modo
+          <select id="w_claude_mode">
+            <option value="off">Desligado</option>
+            <option value="cli">Claude CLI (subscrição)</option>
+            <option value="api">API (key)</option>
+          </select>
+        </label>
+        <label id="wiz-key-wrap" hidden>API key <input id="w_claude_api_key" type="password" /></label>
+      </fieldset>
+
+      <menu>
+        <button type="button" class="ghost" id="wiz-test">Testar ligações</button>
+        <button type="button" class="primary" id="wiz-finish">Começar a usar</button>
+      </menu>
+      <p class="wiz-skip"><a href="#" id="wiz-skip">Saltar por agora</a></p>
+    </div>
+  </dialog>
 `;
 
 const els = {
@@ -158,6 +195,7 @@ const els = {
   miniStats: document.querySelector<HTMLDivElement>("#mini-stats")!,
   memPreview: document.querySelector<HTMLPreElement>("#mem-preview")!,
   dialog: document.querySelector<HTMLDialogElement>("#settings-dialog")!,
+  wizard: document.querySelector<HTMLDialogElement>("#wizard-dialog")!,
   form: document.querySelector<HTMLFormElement>("#settings-form")!,
   modelsList: document.querySelector<HTMLDataListElement>("#ollama-models")!,
   convList: document.querySelector<HTMLDivElement>("#conv-list")!,
@@ -683,6 +721,79 @@ function autoGrow() {
   els.input.style.height = Math.min(els.input.scrollHeight, 160) + "px";
 }
 
+// ---- Wizard de 1.º arranque ----
+function wizInput(id: string): HTMLInputElement {
+  return document.querySelector<HTMLInputElement>("#" + id)!;
+}
+
+function mergeWizardSettings(base: Settings): Settings {
+  return {
+    ...base,
+    ollama_endpoint: wizInput("w_ollama_endpoint").value,
+    ollama_model: wizInput("w_ollama_model").value,
+    claude_mode: document.querySelector<HTMLSelectElement>("#w_claude_mode")!
+      .value as Settings["claude_mode"],
+    claude_api_key: wizInput("w_claude_api_key").value,
+  };
+}
+
+function renderDiagnostics(d: Diagnostics) {
+  const o = document.querySelector("#wiz-ollama-status")!;
+  if (d.ollama_ok) {
+    o.className = "wiz-status ok";
+    o.textContent =
+      `✓ Ollama ligado — ${d.ollama_models.length} modelo(s)` +
+      (d.ollama_model_present ? "" : " · modelo configurado não encontrado");
+    els.modelsList.innerHTML = d.ollama_models
+      .map((m) => `<option value="${escapeHtml(m)}"></option>`)
+      .join("");
+  } else {
+    o.className = "wiz-status bad";
+    o.textContent = "✗ Ollama não detetado neste endpoint";
+  }
+  const c = document.querySelector("#wiz-claude-status")!;
+  c.className = "wiz-status " + (d.claude_ready ? "ok" : "bad");
+  c.textContent = (d.claude_ready ? "✓ " : "✗ ") + d.claude_detail;
+}
+
+async function runWizardTest() {
+  const next = mergeWizardSettings(state.settings!);
+  try {
+    await api.saveSettings(next);
+    state.settings = next;
+  } catch (e) {
+    console.error(e);
+  }
+  try {
+    renderDiagnostics(await api.diagnostics());
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function openWizard() {
+  const s = state.settings!;
+  wizInput("w_ollama_endpoint").value = s.ollama_endpoint;
+  wizInput("w_ollama_model").value = s.ollama_model;
+  document.querySelector<HTMLSelectElement>("#w_claude_mode")!.value = s.claude_mode;
+  wizInput("w_claude_api_key").value = s.claude_api_key;
+  document.querySelector("#wiz-key-wrap")!.toggleAttribute("hidden", s.claude_mode !== "api");
+  els.wizard.showModal();
+  runWizardTest();
+}
+
+async function finishWizard() {
+  const next = { ...mergeWizardSettings(state.settings!), onboarding_done: true };
+  try {
+    await api.saveSettings(next);
+    state.settings = next;
+  } catch (e) {
+    alert("Falha a guardar definições: " + e);
+  }
+  els.wizard.close();
+  await refreshMemory();
+}
+
 async function init() {
   els.composer.addEventListener("submit", onSubmit);
   els.input.addEventListener("input", autoGrow);
@@ -704,6 +815,16 @@ async function init() {
   document.querySelector("#btn-new-chat")!.addEventListener("click", createConversation);
   document.querySelector("#btn-attach")!.addEventListener("click", () => els.fileInput.click());
   els.fileInput.addEventListener("change", onFilesSelected);
+  document.querySelector("#wiz-test")!.addEventListener("click", runWizardTest);
+  document.querySelector("#wiz-finish")!.addEventListener("click", finishWizard);
+  document.querySelector("#wiz-skip")!.addEventListener("click", (e) => {
+    e.preventDefault();
+    finishWizard();
+  });
+  document.querySelector("#w_claude_mode")!.addEventListener("change", (e) => {
+    const v = (e.target as HTMLSelectElement).value;
+    document.querySelector("#wiz-key-wrap")!.toggleAttribute("hidden", v !== "api");
+  });
   els.routeModeBar.querySelectorAll<HTMLButtonElement>("button").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.routeMode = (btn.dataset.mode as "auto" | "local" | "claude") ?? "auto";
@@ -757,6 +878,9 @@ async function init() {
       await createConversation();
     } else {
       await selectConversation(state.conversations[0].id);
+    }
+    if (state.settings && !state.settings.onboarding_done) {
+      openWizard();
     }
   } catch (e) {
     console.error(e);

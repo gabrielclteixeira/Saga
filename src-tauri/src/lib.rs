@@ -21,6 +21,7 @@ pub fn run() {
             commands::get_accounting,
             commands::reset_accounting,
             commands::get_memory_preview,
+            commands::diagnostics,
             commands::list_ollama_models,
             commands::send_message,
             commands::send_message_stream,
