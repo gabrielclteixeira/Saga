@@ -67,6 +67,10 @@ pub struct Settings {
     pub ollama_model: String,
     /// Modelo de visão local (usado quando há imagens e a rota é local).
     pub ollama_vision_model: String,
+    /// Janela de contexto do Ollama (num_ctx). Maior = lê mais (pesquisa/histórico).
+    pub ollama_num_ctx: u32,
+    /// Temperatura do Ollama (mais baixa = menos alucinação/divagação).
+    pub ollama_temperature: f32,
     /// "api" | "cli" | "off"
     pub claude_mode: String,
     pub claude_api_key: String,
@@ -122,6 +126,8 @@ impl Default for Settings {
             ollama_endpoint: "http://localhost:11434".into(),
             ollama_model: "llama3.2".into(),
             ollama_vision_model: "llama3.2-vision".into(),
+            ollama_num_ctx: 8192,
+            ollama_temperature: 0.4,
             claude_mode: "cli".into(),
             claude_api_key: String::new(),
             claude_model: "claude-haiku-4-5-20251001".into(),

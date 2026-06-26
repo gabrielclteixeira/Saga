@@ -32,6 +32,8 @@ export interface Settings {
   ollama_endpoint: string;
   ollama_model: string;
   ollama_vision_model: string;
+  ollama_num_ctx: number;
+  ollama_temperature: number;
   claude_mode: "off" | "cli" | "api";
   claude_api_key: string;
   claude_model: string;

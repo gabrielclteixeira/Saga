@@ -311,7 +311,13 @@ pub async fn generate_doc(
         _ if settings.local_provider == "openai" => {
             providers::openai_compat::chat(&settings.openai_local_endpoint, &settings.openai_local_key, &settings.openai_local_model, &messages, max).await
         }
-        _ => providers::ollama::chat(&settings.ollama_endpoint, &settings.ollama_model, &messages).await,
+        _ => {
+            let g = providers::ollama::GenOpts {
+                num_ctx: settings.ollama_num_ctx,
+                temperature: settings.ollama_temperature,
+            };
+            providers::ollama::chat(&settings.ollama_endpoint, &settings.ollama_model, &messages, g).await
+        }
     };
     let text = resp.map_err(|e| e.to_string())?.text;
     Ok(strip_fences(&text))
@@ -706,8 +712,12 @@ pub async fn send_message_stream(
             .await
         }
         router::Route::Local => {
-            if research && settings.local_web_search {
-                // Loop de tool-calling local com pesquisa web.
+            let gopts = providers::ollama::GenOpts {
+                num_ctx: settings.ollama_num_ctx,
+                temperature: settings.ollama_temperature,
+            };
+            // Com pesquisa web local ligada, usa sempre o loop (o modelo decide pesquisar).
+            if settings.local_web_search {
                 let tx_t = channel.clone();
                 crate::web_agent::run(
                     &settings.ollama_endpoint,
@@ -715,6 +725,7 @@ pub async fn send_message_stream(
                     &settings.web_search_provider,
                     &settings.web_search_api_key,
                     &prepared.full_messages,
+                    gopts,
                     on_delta,
                     move |tool, detail| {
                         let _ = tx_t.send(StreamEvent::ToolStep {
@@ -729,6 +740,7 @@ pub async fn send_message_stream(
                     &settings.ollama_endpoint,
                     &prepared.model,
                     &prepared.full_messages,
+                    gopts,
                     on_delta,
                 )
                 .await

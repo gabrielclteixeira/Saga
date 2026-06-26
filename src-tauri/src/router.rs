@@ -105,7 +105,7 @@ e podes responder de forma fiável e factual) ou CLAUDE (se precisa de raciocín
 conhecimento externo/atualizado, ou passos específicos de um produto/serviço). \
 Na dúvida, responde CLAUDE.\n\nPedido: {prompt}"
     );
-    let resp = providers::ollama::generate(&settings.ollama_endpoint, &settings.ollama_model, &q)
+    let resp = providers::ollama::generate(&settings.ollama_endpoint, &settings.ollama_model, &q, gopts(settings))
         .await
         .ok()?;
     let answer = resp.text.to_uppercase();
@@ -128,7 +128,7 @@ async fn compress_context(raw: &str, settings: &Settings) -> String {
         "Resume o seguinte contexto em pontos concisos, preservando factos, nomes, \
 caminhos e decisões importantes. Sê telegráfico.\n\n{raw}"
     );
-    match providers::ollama::generate(&settings.ollama_endpoint, &settings.ollama_model, &q).await {
+    match providers::ollama::generate(&settings.ollama_endpoint, &settings.ollama_model, &q, gopts(settings)).await {
         Ok(resp) if !resp.text.trim().is_empty() => resp.text,
         _ => raw.to_string(), // fallback: sem compressão
     }
@@ -170,10 +170,17 @@ fn with_system(context: &str, messages: &[ChatMessage]) -> Vec<ChatMessage> {
     out
 }
 
-const LOCAL_HONESTY: &str = "És um assistente local pequeno. Se não tiveres a certeza, \
-ou se a pergunta precisar de informação externa/atualizada ou de passos específicos de um produto/serviço, \
-diz claramente que não tens a certeza e sugere escalar para o Claude. \
-NUNCA inventes passos, factos, nomes ou definições.";
+/// Opções de geração para a rota local, a partir das definições.
+fn gopts(s: &Settings) -> providers::ollama::GenOpts {
+    providers::ollama::GenOpts {
+        num_ctx: s.ollama_num_ctx,
+        temperature: s.ollama_temperature,
+    }
+}
+
+const LOCAL_HONESTY: &str = "És um assistente local. Sê conciso e direto. NUNCA inventes factos, datas, \
+URLs, números ou nomes. Se a pergunta precisar de informação atual/externa ou não tiveres a certeza, \
+diz-o claramente — sugere ligar o 🔎 (pesquisa) ou escalar para o Claude. Não dês passos inventados.";
 
 /// Mensagens para a rota local: instrução de honestidade + memória (crua, é grátis).
 fn with_system_local(context: &str, messages: &[ChatMessage]) -> Vec<ChatMessage> {
@@ -279,7 +286,7 @@ pub async fn handle(messages: &[ChatMessage], settings: &Settings) -> Result<Out
 
     let response = match p.route {
         Route::Local => {
-            providers::ollama::chat(&settings.ollama_endpoint, &p.model, &p.full_messages).await?
+            providers::ollama::chat(&settings.ollama_endpoint, &p.model, &p.full_messages, gopts(settings)).await?
         }
         Route::Claude => {
             // Imagens exigem API (a CLI não as suporta).

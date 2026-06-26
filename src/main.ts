@@ -252,6 +252,14 @@ app.innerHTML = `
       </fieldset>
 
       <fieldset>
+        <legend>Modelo local (avançado)</legend>
+        <label>Contexto (num_ctx) <input name="ollama_num_ctx" type="number" min="2048" step="1024" /></label>
+        <p class="wiz-hint">Maior = o modelo lê mais (resultados de pesquisa + histórico). 8192 é um bom valor; usa mais RAM.</p>
+        <label>Temperatura <input name="ollama_temperature" type="number" min="0" max="1.5" step="0.1" /></label>
+        <p class="wiz-hint">Mais baixa (~0.4) = respostas mais factuais e menos divagantes.</p>
+      </fieldset>
+
+      <fieldset>
         <legend>Memória</legend>
         <label>Pasta de memória <input name="memory_dir" type="text" /></label>
         <label>Caminho CLAUDE.md (opcional) <input name="claude_md_path" type="text" /></label>
@@ -1454,6 +1462,8 @@ function settingsToForm(s: Settings) {
   (f.elements.namedItem("ollama_endpoint") as HTMLInputElement).value = s.ollama_endpoint;
   (f.elements.namedItem("ollama_model") as HTMLInputElement).value = s.ollama_model;
   (f.elements.namedItem("ollama_vision_model") as HTMLInputElement).value = s.ollama_vision_model;
+  (f.elements.namedItem("ollama_num_ctx") as HTMLInputElement).value = String(s.ollama_num_ctx);
+  (f.elements.namedItem("ollama_temperature") as HTMLInputElement).value = String(s.ollama_temperature);
   (f.elements.namedItem("claude_mode") as HTMLSelectElement).value = s.claude_mode;
   syncClaudeModelControls(s.claude_model);
   (f.elements.namedItem("claude_cli_path") as HTMLInputElement).value = s.claude_cli_path;
@@ -1530,6 +1540,8 @@ function formToSettings(base: Settings): Settings {
     ollama_endpoint: val("ollama_endpoint"),
     ollama_model: val("ollama_model"),
     ollama_vision_model: val("ollama_vision_model"),
+    ollama_num_ctx: Math.max(2048, parseInt(val("ollama_num_ctx")) || 8192),
+    ollama_temperature: Math.min(1.5, Math.max(0, parseFloat(val("ollama_temperature")) || 0.4)),
     claude_mode: val("claude_mode") as Settings["claude_mode"],
     claude_model: val("claude_model"),
     claude_cli_path: val("claude_cli_path"),
@@ -2441,14 +2453,66 @@ async function runScheduleNow(id: number) {
 
 // ---- Hub "Modelos" ----
 const modelsDialog = document.querySelector<HTMLDialogElement>("#models-dialog")!;
-const QUICK_PICKS = [
-  { name: "llama3.2", note: "3B · geral leve" },
-  { name: "qwen2.5", note: "7B · forte" },
-  { name: "phi3.5", note: "3.8B · pequeno" },
-  { name: "gemma2", note: "9B" },
-  { name: "mistral", note: "7B" },
-  { name: "llama3.2-vision", note: "11B · visão" },
+interface CatalogModel {
+  name: string;
+  size: string;
+  tools?: boolean;
+}
+const MODEL_CATALOG: { group: string; models: CatalogModel[] }[] = [
+  {
+    group: "Geral + ferramentas/web",
+    models: [
+      { name: "llama3.1:8b", size: "8B", tools: true },
+      { name: "qwen2.5:7b", size: "7B", tools: true },
+      { name: "qwen2.5:14b", size: "14B", tools: true },
+      { name: "mistral", size: "7B", tools: true },
+      { name: "mistral-nemo", size: "12B", tools: true },
+      { name: "gemma2:9b", size: "9B" },
+    ],
+  },
+  {
+    group: "Pequenos / rápidos",
+    models: [
+      { name: "llama3.2:3b", size: "3B", tools: true },
+      { name: "llama3.2:1b", size: "1B" },
+      { name: "qwen2.5:3b", size: "3B", tools: true },
+      { name: "phi3.5", size: "3.8B" },
+      { name: "gemma2:2b", size: "2B" },
+    ],
+  },
+  {
+    group: "Código",
+    models: [
+      { name: "qwen2.5-coder:7b", size: "7B", tools: true },
+      { name: "deepseek-coder-v2", size: "16B" },
+      { name: "codellama", size: "7B" },
+    ],
+  },
+  {
+    group: "Raciocínio",
+    models: [{ name: "deepseek-r1:8b", size: "8B" }],
+  },
+  {
+    group: "Visão",
+    models: [
+      { name: "llama3.2-vision", size: "11B" },
+      { name: "llava", size: "7B" },
+      { name: "moondream", size: "1.8B" },
+    ],
+  },
 ];
+
+/** Heurística: o modelo ativo é pequeno/fraco em ferramentas? */
+function isWeakModel(name: string): boolean {
+  const n = name.toLowerCase();
+  return (
+    /(^|[^0-9])llama3\.2(:latest)?$/.test(n) ||
+    /:1b|:2b|:3b/.test(n) ||
+    n.includes("phi3") ||
+    n.includes("gemma2:2b") ||
+    n.includes("moondream")
+  );
+}
 
 const hubIn = (id: string) => document.querySelector<HTMLInputElement>(id)!;
 const hubSel = (id: string) => document.querySelector<HTMLSelectElement>(id)!;
@@ -2545,13 +2609,19 @@ async function hubSave() {
 
 async function renderHubStatus() {
   const el = document.querySelector("#hub-status")!;
+  const active = state.settings?.ollama_model ?? "";
+  const warn =
+    state.settings?.local_provider === "ollama" && isWeakModel(active)
+      ? ` ⚠ '${active}' é pequeno — respostas e pesquisa web podem falhar; experimenta llama3.1 ou qwen2.5.`
+      : "";
   try {
     const d = await api.diagnostics();
-    el.textContent = d.ollama_ok
-      ? `Ollama ligado · ${d.ollama_models.length} modelos`
-      : "Ollama não acessível — instala em ollama.com e confirma o endpoint";
+    el.textContent =
+      (d.ollama_ok
+        ? `Ollama ligado · ${d.ollama_models.length} modelos`
+        : "Ollama não acessível — instala em ollama.com e confirma o endpoint") + warn;
   } catch {
-    el.textContent = "—";
+    el.textContent = "—" + warn;
   }
 }
 
@@ -2610,10 +2680,19 @@ async function deleteModelUi(name: string) {
 
 function renderQuickPicks() {
   const box = document.querySelector<HTMLDivElement>("#hub-quickpicks")!;
-  box.innerHTML = QUICK_PICKS.map(
-    (q) =>
-      `<button type="button" class="quickpick" data-pull="${escapeHtml(q.name)}" title="${escapeHtml(q.note)}">${escapeHtml(q.name)}</button>`
-  ).join("");
+  box.innerHTML =
+    `<div class="catalog-title">Catálogo — clica para descarregar</div>` +
+    MODEL_CATALOG.map(
+      (g) =>
+        `<div class="catalog-group">${escapeHtml(g.group)}</div><div class="quickpicks">` +
+        g.models
+          .map(
+            (m) =>
+              `<button type="button" class="quickpick" data-pull="${escapeHtml(m.name)}" title="${escapeHtml(m.name)} · ${m.size}${m.tools ? " · ferramentas/web" : ""}">${escapeHtml(m.name)} <span class="qp-size">${m.size}${m.tools ? " · 🛠" : ""}</span></button>`
+          )
+          .join("") +
+        `</div>`
+    ).join("");
   box
     .querySelectorAll<HTMLButtonElement>("[data-pull]")
     .forEach((b) => b.addEventListener("click", () => pullModelUi(b.dataset.pull!)));

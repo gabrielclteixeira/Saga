@@ -6,11 +6,30 @@ use serde::{Deserialize, Serialize};
 
 use super::{ChatMessage, LlmResponse};
 
+/// Opções de geração do Ollama (contexto + criatividade).
+#[derive(Clone, Copy)]
+pub struct GenOpts {
+    pub num_ctx: u32,
+    pub temperature: f32,
+}
+impl Default for GenOpts {
+    fn default() -> Self {
+        Self {
+            num_ctx: 8192,
+            temperature: 0.4,
+        }
+    }
+}
+fn opts_json(o: GenOpts) -> serde_json::Value {
+    serde_json::json!({ "num_ctx": o.num_ctx, "temperature": o.temperature })
+}
+
 #[derive(Serialize)]
 struct ChatRequest<'a> {
     model: &'a str,
     messages: &'a [WireMessage],
     stream: bool,
+    options: serde_json::Value,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -90,12 +109,14 @@ pub async fn chat_raw(
     model: &str,
     messages: serde_json::Value,
     tools: Option<serde_json::Value>,
+    opts: GenOpts,
 ) -> Result<serde_json::Value> {
     let url = format!("{}/api/chat", endpoint.trim_end_matches('/'));
     let mut body = serde_json::json!({
         "model": model,
         "messages": messages,
         "stream": false,
+        "options": opts_json(opts),
     });
     if let Some(t) = tools {
         body["tools"] = t;
@@ -117,13 +138,19 @@ pub async fn chat_raw(
         .map_err(|e| anyhow!("resposta do Ollama inválida: {e}"))
 }
 
-pub async fn chat(endpoint: &str, model: &str, messages: &[ChatMessage]) -> Result<LlmResponse> {
+pub async fn chat(
+    endpoint: &str,
+    model: &str,
+    messages: &[ChatMessage],
+    opts: GenOpts,
+) -> Result<LlmResponse> {
     let url = format!("{}/api/chat", endpoint.trim_end_matches('/'));
     let wire = to_wire(messages);
     let body = ChatRequest {
         model,
         messages: &wire,
         stream: false,
+        options: opts_json(opts),
     };
 
     let client = reqwest::Client::new();
@@ -159,6 +186,7 @@ pub async fn chat_stream<F: FnMut(&str)>(
     endpoint: &str,
     model: &str,
     messages: &[ChatMessage],
+    opts: GenOpts,
     mut on_delta: F,
 ) -> Result<LlmResponse> {
     let url = format!("{}/api/chat", endpoint.trim_end_matches('/'));
@@ -167,6 +195,7 @@ pub async fn chat_stream<F: FnMut(&str)>(
         model,
         messages: &wire,
         stream: true,
+        options: opts_json(opts),
     };
 
     let client = reqwest::Client::new();
@@ -251,13 +280,18 @@ fn parse_ollama_line<F: FnMut(&str)>(
 }
 
 /// Atalho: um único prompt de utilizador, sem histórico.
-pub async fn generate(endpoint: &str, model: &str, prompt: &str) -> Result<LlmResponse> {
+pub async fn generate(
+    endpoint: &str,
+    model: &str,
+    prompt: &str,
+    opts: GenOpts,
+) -> Result<LlmResponse> {
     let messages = vec![ChatMessage {
         role: "user".into(),
         content: prompt.to_string(),
         attachments: Vec::new(),
     }];
-    chat(endpoint, model, &messages).await
+    chat(endpoint, model, &messages, opts).await
 }
 
 #[derive(Serialize)]

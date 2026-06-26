@@ -5,10 +5,16 @@
 use anyhow::Result;
 use serde_json::{json, Value};
 
-use crate::providers::{ollama, ChatMessage, LlmResponse};
+use crate::providers::ollama::{self, GenOpts};
+use crate::providers::{ChatMessage, LlmResponse};
 use crate::tools::web;
 
 const MAX_TURNS: usize = 5;
+
+const SYSTEM: &str = "Tens acesso à web. Para acontecimentos atuais, datas, tempo/meteorologia, \
+notícias, preços ou resultados, chama SEMPRE web_search primeiro (e web_fetch para ler um resultado em \
+detalhe). Responde APENAS com base nos resultados da pesquisa; se não encontrares, di-lo claramente. \
+NUNCA inventes URLs, datas, números nem factos. Sê conciso.";
 
 fn tools_schema() -> Value {
     json!([
@@ -46,6 +52,7 @@ pub async fn run<D, T>(
     provider: &str,
     api_key: &str,
     full_messages: &[ChatMessage],
+    opts: GenOpts,
     mut on_delta: D,
     mut on_tool: T,
 ) -> Result<LlmResponse>
@@ -53,10 +60,12 @@ where
     D: FnMut(&str),
     T: FnMut(&str, &str),
 {
-    let mut messages: Vec<Value> = full_messages
-        .iter()
-        .map(|m| json!({ "role": m.role, "content": m.content }))
-        .collect();
+    let mut messages: Vec<Value> = vec![json!({ "role": "system", "content": SYSTEM })];
+    messages.extend(
+        full_messages
+            .iter()
+            .map(|m| json!({ "role": m.role, "content": m.content })),
+    );
     let tools = tools_schema();
 
     let mut total_in = 0u64;
@@ -65,7 +74,7 @@ where
     let mut sources: Vec<(String, String)> = Vec::new(); // (title, url)
 
     for _ in 0..MAX_TURNS {
-        let resp = ollama::chat_raw(endpoint, model, json!(messages), Some(tools.clone())).await?;
+        let resp = ollama::chat_raw(endpoint, model, json!(messages), Some(tools.clone()), opts).await?;
         total_in += resp.get("prompt_eval_count").and_then(|x| x.as_u64()).unwrap_or(0);
         total_out += resp.get("eval_count").and_then(|x| x.as_u64()).unwrap_or(0);
 
@@ -122,7 +131,7 @@ where
 
     // Se esgotou os turnos sem texto final, força uma resposta sem ferramentas.
     if final_text.trim().is_empty() {
-        if let Ok(resp) = ollama::chat_raw(endpoint, model, json!(messages), None).await {
+        if let Ok(resp) = ollama::chat_raw(endpoint, model, json!(messages), None, opts).await {
             total_in += resp.get("prompt_eval_count").and_then(|x| x.as_u64()).unwrap_or(0);
             total_out += resp.get("eval_count").and_then(|x| x.as_u64()).unwrap_or(0);
             if let Some(c) = resp.pointer("/message/content").and_then(|x| x.as_str()) {
