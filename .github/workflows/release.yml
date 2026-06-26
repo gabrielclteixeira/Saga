@@ -19,8 +19,8 @@ jobs:
         include:
           - platform: macos-latest # Apple silicon
             args: "--target aarch64-apple-darwin"
-          - platform: macos-13 # Intel
-            args: "--target x86_64-apple-darwin"
+          # macos-13 (Intel) dropped: GitHub's free Intel runners are perpetually
+          # queued and block the run from completing. Intel Mac users can build from source.
           - platform: ubuntu-22.04
             args: ""
           - platform: windows-latest
