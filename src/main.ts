@@ -266,8 +266,15 @@ function renderMessages() {
   if (state.items.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent =
+    const img = document.createElement("img");
+    img.className = "empty-panel";
+    img.src = "/caravel-panel.svg";
+    img.alt = "Saga";
+    const p = document.createElement("p");
+    p.textContent =
       "Faz uma pergunta. Tarefas leves ficam no modelo local; só o que é pesado escala para o Claude.";
+    empty.appendChild(img);
+    empty.appendChild(p);
     els.messages.appendChild(empty);
     return;
   }

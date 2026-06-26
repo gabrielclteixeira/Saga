@@ -253,6 +253,19 @@ body {
   color: var(--muted);
   font-size: 14px;
   line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.empty p {
+  margin: 0;
+}
+.empty-panel {
+  max-height: 300px;
+  width: auto;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(28, 63, 115, 0.25);
 }
 .msg {
   display: flex;
