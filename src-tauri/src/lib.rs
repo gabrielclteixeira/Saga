@@ -36,6 +36,7 @@ pub fn run() {
             commands::get_memory_preview,
             commands::diagnostics,
             commands::list_ollama_models,
+            commands::system_info,
             commands::list_ollama_models_detailed,
             commands::delete_ollama_model,
             commands::test_mcp_server,

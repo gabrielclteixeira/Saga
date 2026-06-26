@@ -462,6 +462,43 @@ pub async fn list_ollama_models(state: State<'_, AppState>) -> Result<Vec<String
         .map_err(|e| e.to_string())
 }
 
+/// Info da máquina + modelo local recomendado (com base na RAM).
+#[derive(Serialize)]
+pub struct SystemInfo {
+    pub total_ram_gb: u64,
+    pub cpu_cores: u32,
+    pub recommended: String,
+    pub note: String,
+}
+
+#[tauri::command]
+pub fn system_info() -> SystemInfo {
+    let mut sys = sysinfo::System::new();
+    sys.refresh_memory();
+    let total_ram_gb =
+        (sys.total_memory() as f64 / 1024.0 / 1024.0 / 1024.0).round().max(0.0) as u64;
+    let cpu_cores = std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(0);
+    let (recommended, why) = if total_ram_gb == 0 {
+        ("qwen2.5:7b", "não consegui ler a RAM — sugestão equilibrada")
+    } else if total_ram_gb < 9 {
+        ("llama3.2:3b", "RAM limitada — modelo pequeno e rápido")
+    } else if total_ram_gb < 18 {
+        ("qwen2.5:7b", "RAM média — 7-8B com ferramentas é confortável")
+    } else if total_ram_gb < 34 {
+        ("qwen2.5:14b", "boa RAM — 14B é viável")
+    } else {
+        ("qwen2.5:14b", "muita RAM — podes ir além (ex.: 32B)")
+    };
+    SystemInfo {
+        total_ram_gb,
+        cpu_cores,
+        recommended: recommended.into(),
+        note: why.into(),
+    }
+}
+
 /// Lista modelos locais com metadados (para o hub "Modelos").
 #[tauri::command]
 pub async fn list_ollama_models_detailed(

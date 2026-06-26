@@ -1565,6 +1565,27 @@ dialog::backdrop {
   margin-top: 6px;
   margin-bottom: 4px;
 }
+.hub-rec {
+  margin: 8px 0 4px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+}
+.hub-rec[hidden] {
+  display: none;
+}
+.hub-rec-line {
+  font-size: 13px;
+}
+.hub-rec-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.hub-rec-actions button {
+  margin-top: 0;
+}
 .catalog-title {
   margin-top: 10px;
   color: var(--muted);

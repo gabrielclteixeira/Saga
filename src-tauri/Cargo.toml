@@ -37,6 +37,7 @@ dirs = "5"
 rusqlite = { version = "0.32", features = ["bundled"] }
 scraper = "0.20"
 urlencoding = "2"
+sysinfo = "0.32"
 
 # Keychain do SO para guardar segredos (API key) — backend nativo por plataforma.
 [target.'cfg(windows)'.dependencies]

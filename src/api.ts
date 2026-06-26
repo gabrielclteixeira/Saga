@@ -106,6 +106,13 @@ export interface OllamaModel {
   quantization: string;
 }
 
+export interface SystemInfo {
+  total_ram_gb: number;
+  cpu_cores: number;
+  recommended: string;
+  note: string;
+}
+
 export interface Diagnostics {
   ollama_ok: boolean;
   ollama_models: string[];
@@ -191,6 +198,7 @@ export const api = {
   getMemoryPreview: () => invoke<string>("get_memory_preview"),
   diagnostics: () => invoke<Diagnostics>("diagnostics"),
   listOllamaModels: () => invoke<string[]>("list_ollama_models"),
+  systemInfo: () => invoke<SystemInfo>("system_info"),
   listOllamaModelsDetailed: () =>
     invoke<OllamaModel[]>("list_ollama_models_detailed"),
   deleteOllamaModel: (model: string) =>

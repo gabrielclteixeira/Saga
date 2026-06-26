@@ -428,6 +428,7 @@ app.innerHTML = `
     <div class="settings">
       <h2>Modelos</h2>
       <div class="pull-status" id="hub-status">—</div>
+      <div class="hub-rec" id="hub-rec" hidden></div>
 
       <fieldset>
         <legend>Provider local</legend>
@@ -2531,6 +2532,34 @@ async function openModels() {
   showView("models");
   void renderHubStatus();
   void renderInstalled();
+  void renderRecommendation();
+}
+
+/** Recomenda um modelo consoante a máquina (RAM/cores). */
+async function renderRecommendation() {
+  const box = document.querySelector<HTMLElement>("#hub-rec")!;
+  let info;
+  try {
+    info = await api.systemInfo();
+  } catch {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML =
+    `<div class="hub-rec-line"><strong>Recomendado para a tua máquina</strong> ` +
+    `(${info.total_ram_gb} GB RAM · ${info.cpu_cores} cores): ` +
+    `<code>${escapeHtml(info.recommended)}</code> — ${escapeHtml(info.note)}</div>` +
+    `<div class="hub-rec-actions">` +
+    `<button type="button" class="ghost" id="rec-pull">Descarregar</button>` +
+    `<button type="button" class="ghost" id="rec-activate">Ativar</button>` +
+    `</div>`;
+  document
+    .querySelector("#rec-pull")!
+    .addEventListener("click", () => pullModelUi(info.recommended));
+  document
+    .querySelector("#rec-activate")!
+    .addEventListener("click", () => setActiveModel(info.recommended));
 }
 
 function hubLoad(s: Settings) {
