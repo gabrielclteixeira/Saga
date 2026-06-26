@@ -175,7 +175,10 @@ azulejo identity + animated caravel loader · OS-keychain secrets · CI release 
   turn the Tauri updater back on.
 - **Local web search** — give the local model web access via Rust-side `web_search`/`web_fetch` tools, so
   research can run fully local (today web search is Claude-only; enabling 🔎 forces the Claude route).
-- **More** — artifacts, scheduled automations, richer deep-research depth.
+- **Compact / clear a Saga** — like Claude Code's `/compact` and `/clear`: summarize old messages with the
+  local model to save context/tokens, or clear the conversation.
+- **In progress** — richer artifacts (Markdown/Mermaid/syntax-highlight, export, gallery), iterative cited
+  deep-research, and scheduled automations.
 
 ### Browser tool setup
 
