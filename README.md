@@ -154,6 +154,20 @@ tool (Claude tool-calling driving Playwright). Future: deep research, extended t
 tasks, chat search, scheduled automations, and **subagent orchestration** — split a complex task into
 isolated phases and run focused subagents (each with only the context it needs) in parallel to finish faster.
 
+**Side rail & extensibility (beyond chat):** add a left **navigation rail** that turns Saga from a
+single chat window into a workspace. Planned surfaces:
+
+- **Workflows** — saved multi-step routines that *do things* (open the company site, log in, run a
+  report), not just answer. Triggerable manually or scheduled.
+- **Skills / Playbooks** — reusable, parameterized instructions the agent can load on demand for a
+  domain (e.g. "triage a Bitrix24 deal", "draft a release note"), so behavior is consistent and shareable.
+- **MCP / tool agents** — let Saga drive external **MCP servers** so it can act intelligently against
+  real systems, e.g. the [Bitrix24.MCP.Agents](https://github.com/dev-erp24/Bitrix24.MCP.Agents) tools
+  for CRM automation. The router stays in front; MCP just expands what the cloud/local model can call.
+
+**Conversations as "Sagas":** rename chats to **Sagas** throughout the UI (sidebar header, "New Saga",
+empty state) to match the brand — each conversation is its own little voyage.
+
 **Rebranding follow-through (Saga):** finish the visual identity — logo/app icons (regenerate the
 Tauri `icons/` from a real caravel mark via `npm run tauri icon`), a coherent color palette, polished
 copy/README text, and demo GIFs/screenshots for the repo.
