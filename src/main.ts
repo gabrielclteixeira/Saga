@@ -82,6 +82,18 @@ app.innerHTML = `
       <button class="ghost" id="btn-mem-refresh">Atualizar pré-visualização</button>
     </aside>
   </main>
+
+  <aside class="artifact-panel" id="artifact-panel" hidden>
+    <header class="artifact-head">
+      <span class="artifact-title" id="artifact-title">Artefacto</span>
+      <span class="artifact-controls">
+        <button type="button" class="ghost" id="artifact-toggle" hidden>Código</button>
+        <button type="button" class="ghost" id="artifact-copy">Copiar</button>
+        <button type="button" class="ghost" id="artifact-close">✕</button>
+      </span>
+    </header>
+    <div class="artifact-body" id="artifact-body"></div>
+  </aside>
   <dialog id="settings-dialog">
     <form method="dialog" class="settings" id="settings-form">
       <h2>Definições</h2>
@@ -209,6 +221,12 @@ const els = {
   attachmentsBar: document.querySelector<HTMLDivElement>("#attachments")!,
   fileInput: document.querySelector<HTMLInputElement>("#file-input")!,
   routeModeBar: document.querySelector<HTMLDivElement>("#route-mode")!,
+  artifactPanel: document.querySelector<HTMLElement>("#artifact-panel")!,
+  artifactTitle: document.querySelector<HTMLSpanElement>("#artifact-title")!,
+  artifactBody: document.querySelector<HTMLDivElement>("#artifact-body")!,
+  artifactToggle: document.querySelector<HTMLButtonElement>("#artifact-toggle")!,
+  artifactCopy: document.querySelector<HTMLButtonElement>("#artifact-copy")!,
+  artifactClose: document.querySelector<HTMLButtonElement>("#artifact-close")!,
   claudeModelPreset: document.querySelector<HTMLSelectElement>("#claude-model-preset")!,
   claudeModelCustomWrap: document.querySelector<HTMLLabelElement>("#claude-model-custom-wrap")!,
 };
@@ -317,6 +335,24 @@ function renderMessages() {
       bits.push(`<span class="reason">${escapeHtml(m.reason)}</span>`);
       meta.innerHTML = bits.join("");
       row.appendChild(meta);
+    }
+
+    // Artefactos: qualquer resposta do assistente com blocos de código/HTML.
+    if (item.role === "assistant" && item.content) {
+      const blocks = extractCodeBlocks(item.content);
+      if (blocks.length) {
+        const arow = document.createElement("div");
+        arow.className = "artifact-actions";
+        blocks.forEach((b, i) => {
+          const btn = document.createElement("button");
+          btn.textContent =
+            `📄 Artefacto${blocks.length > 1 ? " " + (i + 1) : ""}` +
+            (b.lang ? " · " + b.lang : "");
+          btn.addEventListener("click", () => openArtifact(b));
+          arow.appendChild(btn);
+        });
+        row.appendChild(arow);
+      }
     }
 
     // Barra de ações: só na última resposta do assistente e fora de streaming.
@@ -787,6 +823,59 @@ function autoGrow() {
   els.input.style.height = Math.min(els.input.scrollHeight, 160) + "px";
 }
 
+// ---- Artefactos ----
+function extractCodeBlocks(content: string): { lang: string; code: string }[] {
+  const re = /```(\w*)\n([\s\S]*?)```/g;
+  const out: { lang: string; code: string }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    const code = m[2].trim();
+    if (code.length >= 20) out.push({ lang: (m[1] || "").toLowerCase(), code });
+  }
+  return out;
+}
+
+function isHtmlArtifact(a: { lang: string; code: string }): boolean {
+  return a.lang === "html" || /^\s*<!doctype html|^\s*<html[\s>]/i.test(a.code);
+}
+
+let artifactMode: "preview" | "code" = "preview";
+let artifactCurrent: { lang: string; code: string } | null = null;
+
+function renderArtifactBody() {
+  if (!artifactCurrent) return;
+  const body = els.artifactBody;
+  body.innerHTML = "";
+  const html = isHtmlArtifact(artifactCurrent);
+  els.artifactToggle.hidden = !html;
+  els.artifactToggle.textContent = artifactMode === "preview" ? "Código" : "Pré-visualizar";
+  if (html && artifactMode === "preview") {
+    const iframe = document.createElement("iframe");
+    iframe.className = "artifact-frame";
+    iframe.setAttribute("sandbox", "allow-scripts");
+    iframe.srcdoc = artifactCurrent.code;
+    body.appendChild(iframe);
+  } else {
+    const pre = document.createElement("pre");
+    pre.className = "artifact-code";
+    pre.textContent = artifactCurrent.code;
+    body.appendChild(pre);
+  }
+}
+
+function openArtifact(a: { lang: string; code: string }) {
+  artifactCurrent = a;
+  artifactMode = isHtmlArtifact(a) ? "preview" : "code";
+  els.artifactTitle.textContent = "Artefacto" + (a.lang ? ` · ${a.lang}` : "");
+  els.artifactPanel.hidden = false;
+  renderArtifactBody();
+}
+
+function closeArtifact() {
+  els.artifactPanel.hidden = true;
+  artifactCurrent = null;
+}
+
 // ---- Wizard de 1.º arranque ----
 function wizInput(id: string): HTMLInputElement {
   return document.querySelector<HTMLInputElement>("#" + id)!;
@@ -903,6 +992,14 @@ async function init() {
   document.querySelector("#btn-think")!.addEventListener("click", (e) => {
     state.thinking = !state.thinking;
     (e.currentTarget as HTMLElement).classList.toggle("active", state.thinking);
+  });
+  els.artifactClose.addEventListener("click", closeArtifact);
+  els.artifactToggle.addEventListener("click", () => {
+    artifactMode = artifactMode === "preview" ? "code" : "preview";
+    renderArtifactBody();
+  });
+  els.artifactCopy.addEventListener("click", () => {
+    if (artifactCurrent) navigator.clipboard?.writeText(artifactCurrent.code);
   });
   els.claudeModelPreset.addEventListener("change", () => {
     const v = els.claudeModelPreset.value;
