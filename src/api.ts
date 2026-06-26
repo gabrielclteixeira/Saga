@@ -158,4 +158,6 @@ export const api = {
   searchChats: (query: string) => invoke<SearchHit[]>("search_chats", { query }),
   conversationAccounting: (id: number) =>
     invoke<Accounting>("get_conversation_accounting", { id }),
+  truncateConversation: (id: number, keep: number) =>
+    invoke<void>("truncate_conversation", { id, keep }),
 };

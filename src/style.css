@@ -681,6 +681,57 @@ body {
 .msg-actions .model-pick {
   padding: 4px 6px;
 }
+/* Editar a própria mensagem (aparece ao passar o rato) */
+.msg.user .user-actions {
+  visibility: hidden;
+  justify-content: flex-end;
+}
+.msg.user:hover .user-actions {
+  visibility: visible;
+}
+.msg.editing {
+  width: 80%;
+  max-width: 80%;
+  gap: 8px;
+}
+.edit-area {
+  width: 100%;
+  min-height: 70px;
+  resize: vertical;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+}
+.edit-area:focus {
+  outline: none;
+}
+.edit-bar {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.edit-bar button {
+  border-radius: 8px;
+  padding: 7px 14px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+.edit-bar .primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+.edit-bar .ghost {
+  background: transparent;
+  color: var(--muted);
+}
 
 /* Ações de artefacto (dentro das mensagens) */
 .artifact-actions {

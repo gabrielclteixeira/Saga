@@ -205,6 +205,29 @@ pub fn append_message(
     Ok(message_id)
 }
 
+/// Mantém as primeiras `keep` mensagens da conversa e apaga as restantes
+/// (usado ao editar uma mensagem do utilizador: trunca a partir dela).
+pub fn truncate_conversation(conn: &Connection, conversation_id: i64, keep: i64) -> Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM messages WHERE conversation_id = ?1 ORDER BY id ASC LIMIT -1 OFFSET ?2",
+    )?;
+    let ids: Vec<i64> = stmt
+        .query_map(params![conversation_id, keep], |r| r.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    for id in ids {
+        conn.execute("DELETE FROM messages WHERE id = ?1", params![id])?;
+        conn.execute("DELETE FROM messages_fts WHERE message_id = ?1", params![id])
+            .ok();
+    }
+    conn.execute(
+        "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?1",
+        params![conversation_id],
+    )
+    .ok();
+    Ok(())
+}
+
 /// Apaga a última mensagem do assistente de uma conversa (usado ao regenerar).
 pub fn delete_last_assistant(conn: &Connection, conversation_id: i64) -> Result<()> {
     let last_id: Option<i64> = conn

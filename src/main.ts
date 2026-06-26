@@ -397,6 +397,18 @@ function renderMessages() {
       row.appendChild(buildActions());
     }
 
+    // Editar a própria mensagem.
+    if (item.role === "user" && !state.busy) {
+      const actions = document.createElement("div");
+      actions.className = "msg-actions user-actions";
+      const ed = document.createElement("button");
+      ed.textContent = "✎ Editar";
+      ed.title = "Editar e reenviar";
+      ed.addEventListener("click", () => editUserMessage(index));
+      actions.appendChild(ed);
+      row.appendChild(actions);
+    }
+
     els.messages.appendChild(row);
   });
   els.messages.scrollTop = els.messages.scrollHeight;
@@ -874,6 +886,58 @@ async function onSubmit(ev: Event) {
   els.input.style.height = "auto";
 
   await streamAssistant(buildPayload(), routeOptsFromMode());
+}
+
+/** Edita uma mensagem do utilizador: trunca a partir dela e re-gera. */
+async function editUserMessage(index: number) {
+  if (state.busy || state.currentConversationId === null) return;
+  const item = state.items[index];
+  if (!item || item.role !== "user") return;
+  const row = els.messages.children[index] as HTMLElement | undefined;
+  if (!row) return;
+
+  row.className = "msg user editing";
+  row.innerHTML = "";
+  const ta = document.createElement("textarea");
+  ta.className = "edit-area";
+  ta.value = item.content;
+  const bar = document.createElement("div");
+  bar.className = "edit-bar";
+  const cancel = document.createElement("button");
+  cancel.className = "ghost";
+  cancel.textContent = "Cancelar";
+  const save = document.createElement("button");
+  save.className = "primary";
+  save.textContent = "Guardar e reenviar";
+  bar.append(cancel, save);
+  row.append(ta, bar);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+
+  const commit = async () => {
+    const text = ta.value.trim();
+    if (!text) return;
+    const attachments = item.attachments;
+    try {
+      await api.truncateConversation(state.currentConversationId!, index);
+    } catch (e) {
+      console.error(e);
+    }
+    state.items = state.items.slice(0, index);
+    state.items.push({ role: "user", content: text, attachments });
+    renderMessages();
+    await streamAssistant(buildPayload(), routeOptsFromMode());
+  };
+  cancel.addEventListener("click", () => renderMessages());
+  save.addEventListener("click", commit);
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      commit();
+    } else if (e.key === "Escape") {
+      renderMessages();
+    }
+  });
 }
 
 /** Regenera a última resposta do assistente (opcionalmente forçando rota/modelo). */

@@ -215,6 +215,12 @@ pub fn get_conversation_accounting(state: State<AppState>, id: i64) -> Result<Ac
 }
 
 #[tauri::command]
+pub fn truncate_conversation(state: State<AppState>, id: i64, keep: i64) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    store::truncate_conversation(&conn, id, keep).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn list_ollama_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();
     providers::ollama::list_models(&endpoint)
