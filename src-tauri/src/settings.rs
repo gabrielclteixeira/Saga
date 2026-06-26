@@ -133,21 +133,56 @@ pub fn default_memory_dir() -> PathBuf {
     config_dir().join("memory")
 }
 
+const KEYRING_SERVICE: &str = "saga";
+const KEYRING_USER: &str = "anthropic_api_key";
+
+/// Lê a API key da keychain do SO (string vazia se não existir/erro).
+fn keychain_load() -> String {
+    keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
+        .and_then(|e| e.get_password())
+        .unwrap_or_default()
+}
+
+/// Guarda (ou apaga, se vazia) a API key na keychain do SO.
+fn keychain_store(key: &str) {
+    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+        if key.trim().is_empty() {
+            let _ = entry.delete_credential();
+        } else {
+            let _ = entry.set_password(key);
+        }
+    }
+}
+
 impl Settings {
     pub fn load() -> Settings {
         let path = settings_path();
-        match fs::read_to_string(&path) {
+        let mut s: Settings = match fs::read_to_string(&path) {
             Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
             Err(_) => Settings::default(),
+        };
+        let kc = keychain_load();
+        if !kc.is_empty() {
+            s.claude_api_key = kc;
+        } else if !s.claude_api_key.is_empty() {
+            // Migração: key estava em texto simples no settings.json → keychain + limpar json.
+            keychain_store(&s.claude_api_key);
+            let _ = s.save();
         }
+        s
     }
 
     pub fn save(&self) -> Result<()> {
+        // O segredo vai para a keychain — nunca para o settings.json.
+        keychain_store(&self.claude_api_key);
+        let mut to_write = self.clone();
+        to_write.claude_api_key = String::new();
+
         let path = settings_path();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let raw = serde_json::to_string_pretty(self)?;
+        let raw = serde_json::to_string_pretty(&to_write)?;
         fs::write(&path, raw)?;
         Ok(())
     }
