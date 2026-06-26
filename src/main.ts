@@ -7,6 +7,7 @@ import {
   type ChatResponse,
   type ConversationMeta,
   type Diagnostics,
+  type SearchHit,
   type Settings,
   type StoredMessage,
 } from "./api";
@@ -48,6 +49,7 @@ app.innerHTML = `
   <main class="layout">
     <aside class="sidebar">
       <button class="new-chat" id="btn-new-chat">+ Nova conversa</button>
+      <input class="conv-search" id="conv-search" type="search" placeholder="Pesquisar conversas…" autocomplete="off" />
       <div class="conv-list" id="conv-list"></div>
     </aside>
     <section class="chat">
@@ -199,6 +201,7 @@ const els = {
   form: document.querySelector<HTMLFormElement>("#settings-form")!,
   modelsList: document.querySelector<HTMLDataListElement>("#ollama-models")!,
   convList: document.querySelector<HTMLDivElement>("#conv-list")!,
+  convSearch: document.querySelector<HTMLInputElement>("#conv-search")!,
   attachmentsBar: document.querySelector<HTMLDivElement>("#attachments")!,
   fileInput: document.querySelector<HTMLInputElement>("#file-input")!,
   routeModeBar: document.querySelector<HTMLDivElement>("#route-mode")!,
@@ -470,7 +473,48 @@ function renderSidebar() {
 
 async function loadConversations() {
   state.conversations = await api.listConversations();
-  renderSidebar();
+  if (!els.convSearch.value.trim()) renderSidebar();
+}
+
+async function onSearch() {
+  const q = els.convSearch.value.trim();
+  if (!q) {
+    renderSidebar();
+    return;
+  }
+  try {
+    renderSearchResults(await api.searchChats(q));
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function renderSearchResults(hits: SearchHit[]) {
+  els.convList.innerHTML = "";
+  if (!hits.length) {
+    const empty = document.createElement("div");
+    empty.className = "conv-empty";
+    empty.textContent = "Sem resultados";
+    els.convList.appendChild(empty);
+    return;
+  }
+  for (const h of hits) {
+    const row = document.createElement("div");
+    row.className = "conv search-hit";
+    const t = document.createElement("div");
+    t.className = "conv-title";
+    t.textContent = h.title || "Nova conversa";
+    const s = document.createElement("div");
+    s.className = "hit-snippet";
+    s.textContent = h.snippet;
+    row.appendChild(t);
+    row.appendChild(s);
+    row.addEventListener("click", () => {
+      els.convSearch.value = "";
+      selectConversation(h.conversation_id);
+    });
+    els.convList.appendChild(row);
+  }
 }
 
 function storedToItem(m: StoredMessage): Item {
@@ -813,6 +857,7 @@ async function init() {
   });
   document.querySelector("#btn-mem-refresh")!.addEventListener("click", refreshMemory);
   document.querySelector("#btn-new-chat")!.addEventListener("click", createConversation);
+  els.convSearch.addEventListener("input", onSearch);
   document.querySelector("#btn-attach")!.addEventListener("click", () => els.fileInput.click());
   els.fileInput.addEventListener("change", onFilesSelected);
   document.querySelector("#wiz-test")!.addEventListener("click", runWizardTest);

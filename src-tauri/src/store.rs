@@ -63,9 +63,62 @@ fn init(conn: &Connection) -> Result<()> {
             created_at       TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
+        CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+            content,
+            conversation_id UNINDEXED,
+            message_id UNINDEXED
+        );
         "#,
     )?;
+    // Backfill único do índice de pesquisa, se ainda estiver vazio.
+    let fts_count: i64 = conn
+        .query_row("SELECT count(*) FROM messages_fts", [], |r| r.get(0))
+        .unwrap_or(0);
+    let msg_count: i64 = conn
+        .query_row("SELECT count(*) FROM messages", [], |r| r.get(0))
+        .unwrap_or(0);
+    if fts_count == 0 && msg_count > 0 {
+        conn.execute(
+            "INSERT INTO messages_fts(content, conversation_id, message_id)
+             SELECT content, conversation_id, id FROM messages",
+            [],
+        )?;
+    }
     Ok(())
+}
+
+#[derive(Serialize)]
+pub struct SearchHit {
+    pub conversation_id: i64,
+    pub title: String,
+    pub snippet: String,
+}
+
+/// Pesquisa full-text nas mensagens; devolve conversas com um excerto.
+pub fn search_messages(conn: &Connection, query: &str) -> Result<Vec<SearchHit>> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(Vec::new());
+    }
+    // Pesquisa por frase (aspas), escapando aspas para não partir a sintaxe FTS5.
+    let match_expr = format!("\"{}\"", q.replace('"', "\"\""));
+    let mut stmt = conn.prepare(
+        "SELECT f.conversation_id, c.title,
+                snippet(messages_fts, 0, '[', ']', '…', 10) AS snip
+         FROM messages_fts f
+         JOIN conversations c ON c.id = f.conversation_id
+         WHERE messages_fts MATCH ?1
+         ORDER BY rank
+         LIMIT 50",
+    )?;
+    let rows = stmt.query_map(params![match_expr], |r| {
+        Ok(SearchHit {
+            conversation_id: r.get(0)?,
+            title: r.get(1)?,
+            snippet: r.get(2)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
 pub fn create_conversation(conn: &Connection, title: &str) -> Result<i64> {
@@ -137,23 +190,36 @@ pub fn append_message(
             input_tokens, output_tokens, cost_usd, tokens_saved
         ],
     )?;
+    let message_id = conn.last_insert_rowid();
+    // Índice de pesquisa.
+    conn.execute(
+        "INSERT INTO messages_fts(content, conversation_id, message_id) VALUES (?1, ?2, ?3)",
+        params![content, conversation_id, message_id],
+    )
+    .ok();
     conn.execute(
         "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?1",
         params![conversation_id],
     )?;
-    Ok(conn.last_insert_rowid())
+    Ok(message_id)
 }
 
 /// Apaga a última mensagem do assistente de uma conversa (usado ao regenerar).
 pub fn delete_last_assistant(conn: &Connection, conversation_id: i64) -> Result<()> {
-    conn.execute(
-        "DELETE FROM messages WHERE id = (
-            SELECT id FROM messages
-            WHERE conversation_id = ?1 AND role = 'assistant'
-            ORDER BY id DESC LIMIT 1
-        )",
-        params![conversation_id],
-    )?;
+    let last_id: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM messages
+             WHERE conversation_id = ?1 AND role = 'assistant'
+             ORDER BY id DESC LIMIT 1",
+            params![conversation_id],
+            |r| r.get(0),
+        )
+        .ok();
+    if let Some(id) = last_id {
+        conn.execute("DELETE FROM messages WHERE id = ?1", params![id])?;
+        conn.execute("DELETE FROM messages_fts WHERE message_id = ?1", params![id])
+            .ok();
+    }
     Ok(())
 }
 
@@ -166,6 +232,11 @@ pub fn rename_conversation(conn: &Connection, id: i64, title: &str) -> Result<()
 }
 
 pub fn delete_conversation(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute(
+        "DELETE FROM messages_fts WHERE conversation_id = ?1",
+        params![id],
+    )
+    .ok();
     conn.execute("DELETE FROM messages WHERE conversation_id = ?1", params![id])?;
     conn.execute("DELETE FROM conversations WHERE id = ?1", params![id])?;
     Ok(())

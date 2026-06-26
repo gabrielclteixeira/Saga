@@ -11,7 +11,7 @@ use crate::accounting::Accounting;
 use crate::providers::{estimate_tokens, ChatMessage};
 use crate::router;
 use crate::settings::Settings;
-use crate::store::{self, ConversationMeta, StoredMessage};
+use crate::store::{self, ConversationMeta, SearchHit, StoredMessage};
 use crate::tools::browser::PlaywrightSidecar;
 use crate::{agent, memory, providers};
 
@@ -197,6 +197,12 @@ pub fn rename_conversation(state: State<AppState>, id: i64, title: String) -> Re
 pub fn delete_conversation(state: State<AppState>, id: i64) -> Result<(), String> {
     let conn = state.db.lock().unwrap();
     store::delete_conversation(&conn, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn search_chats(state: State<AppState>, query: String) -> Result<Vec<SearchHit>, String> {
+    let conn = state.db.lock().unwrap();
+    store::search_messages(&conn, &query).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

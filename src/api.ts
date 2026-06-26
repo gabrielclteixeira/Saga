@@ -77,6 +77,12 @@ export interface ConversationMeta {
   updated_at: string;
 }
 
+export interface SearchHit {
+  conversation_id: number;
+  title: string;
+  snippet: string;
+}
+
 export interface StoredMessage {
   id: number;
   role: "user" | "assistant";
@@ -141,4 +147,5 @@ export const api = {
   renameConversation: (id: number, title: string) =>
     invoke<void>("rename_conversation", { id, title }),
   deleteConversation: (id: number) => invoke<void>("delete_conversation", { id }),
+  searchChats: (query: string) => invoke<SearchHit[]>("search_chats", { query }),
 };
