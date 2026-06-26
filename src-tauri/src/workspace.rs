@@ -147,3 +147,49 @@ fn sanitize(name: &str) -> String {
         .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
         .collect()
 }
+
+// ---- CRUD de ficheiros do workspace (para o editor da UI) ----
+
+/// Caminho do ficheiro de um documento por tipo: "skill" | "playbook" | "workflow".
+fn doc_path(root: &str, kind: &str, name: &str) -> Option<PathBuf> {
+    let safe = sanitize(name);
+    if safe.is_empty() {
+        return None;
+    }
+    Some(match kind {
+        "skill" => skills_dir(root).join(&safe).join("SKILL.md"),
+        "playbook" => playbooks_dir(root).join(format!("{safe}.md")),
+        "workflow" => workflows_dir(root).join(format!("{safe}.md")),
+        _ => return None,
+    })
+}
+
+/// Lê o conteúdo cru (com frontmatter) de um documento, para edição.
+pub fn read_doc(root: &str, kind: &str, name: &str) -> Option<String> {
+    fs::read_to_string(doc_path(root, kind, name)?).ok()
+}
+
+/// Cria/atualiza um documento do workspace.
+pub fn write_doc(root: &str, kind: &str, name: &str, content: &str) -> anyhow::Result<()> {
+    let path = doc_path(root, kind, name)
+        .ok_or_else(|| anyhow::anyhow!("tipo ou nome inválido"))?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, content)?;
+    Ok(())
+}
+
+/// Apaga um documento do workspace (e a pasta da skill, se for o caso).
+pub fn delete_doc(root: &str, kind: &str, name: &str) -> anyhow::Result<()> {
+    let path = doc_path(root, kind, name)
+        .ok_or_else(|| anyhow::anyhow!("tipo ou nome inválido"))?;
+    if kind == "skill" {
+        if let Some(dir) = path.parent() {
+            fs::remove_dir_all(dir).ok();
+            return Ok(());
+        }
+    }
+    fs::remove_file(path).ok();
+    Ok(())
+}

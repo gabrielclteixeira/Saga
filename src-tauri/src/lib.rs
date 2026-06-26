@@ -43,6 +43,9 @@ pub fn run() {
             commands::get_action_log,
             commands::approve_action,
             commands::get_workspace_index,
+            commands::read_workspace_doc,
+            commands::save_workspace_doc,
+            commands::delete_workspace_doc,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

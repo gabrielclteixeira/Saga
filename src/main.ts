@@ -6,11 +6,13 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import {
   api,
   type Accounting,
+  type ActionLogEntry,
   type Attachment,
   type ChatMessage,
   type ChatResponse,
   type ConversationMeta,
   type Diagnostics,
+  type McpServerConfig,
   type SearchHit,
   type Settings,
   type StoredMessage,
@@ -69,9 +71,15 @@ app.innerHTML = `
     <button class="icon-btn" id="btn-settings" title="Definições">⚙</button>
   </header>
   <main class="layout">
+    <nav class="rail" id="rail">
+      <button type="button" class="rail-btn active" data-view="sagas" title="Sagas"><span class="rail-ico">⛵</span><span class="rail-lbl">Sagas</span></button>
+      <button type="button" class="rail-btn" data-view="workspace" title="Workspace (skills, playbooks, workflows)"><span class="rail-ico">✦</span><span class="rail-lbl">Workspace</span></button>
+      <button type="button" class="rail-btn" data-view="servers" title="Servidores MCP"><span class="rail-ico">🔌</span><span class="rail-lbl">Servidores</span></button>
+      <button type="button" class="rail-btn" data-view="activity" title="Atividade (ações)"><span class="rail-ico">📋</span><span class="rail-lbl">Atividade</span></button>
+    </nav>
     <aside class="sidebar">
-      <button class="new-chat" id="btn-new-chat">+ Nova conversa</button>
-      <input class="conv-search" id="conv-search" type="search" placeholder="Pesquisar conversas…" autocomplete="off" />
+      <button class="new-chat" id="btn-new-chat">+ Nova Saga</button>
+      <input class="conv-search" id="conv-search" type="search" placeholder="Pesquisar Sagas…" autocomplete="off" />
       <div class="conv-list" id="conv-list"></div>
     </aside>
     <section class="chat">
@@ -206,7 +214,15 @@ app.innerHTML = `
       </fieldset>
 
       <fieldset>
-        <legend>Browser (ferramentas — só modo API)</legend>
+        <legend>Ferramentas &amp; Workspace (só modo API)</legend>
+        <label>Pasta do workspace (skills/playbooks/workflows) <input name="workspace_dir" type="text" /></label>
+        <label>Confirmação de ações
+          <select name="confirm_mode">
+            <option value="off">Desligada — executa direto</option>
+            <option value="dry_run">Dry-run — só pré-visualiza</option>
+            <option value="ask">Pedir aprovação a cada ação</option>
+          </select>
+        </label>
         <label class="check"><input name="enable_browser_tools" type="checkbox" /> Ativar ferramentas de browser</label>
         <label>Caminho do sidecar (sidecar/index.js) <input name="browser_sidecar_script" type="text" /></label>
         <label>Executável Node <input name="browser_node_path" type="text" /></label>
@@ -224,6 +240,68 @@ app.innerHTML = `
         <button value="save" id="btn-save" class="primary">Guardar</button>
       </menu>
     </form>
+  </dialog>
+
+  <dialog id="workspace-dialog">
+    <div class="settings ws">
+      <h2>Workspace</h2>
+      <div class="ws-tabs" id="ws-tabs">
+        <button type="button" class="ws-tab active" data-kind="skill">Skills</button>
+        <button type="button" class="ws-tab" data-kind="playbook">Playbooks</button>
+        <button type="button" class="ws-tab" data-kind="workflow">Workflows</button>
+      </div>
+      <div class="ws-body">
+        <div class="ws-list" id="ws-list"></div>
+        <div class="ws-editor" id="ws-editor" hidden>
+          <label>Nome <input id="ws-name" type="text" placeholder="nome-sem-espacos" /></label>
+          <textarea id="ws-content" rows="16" spellcheck="false" placeholder="# Markdown…"></textarea>
+          <div class="ws-editor-bar">
+            <button type="button" class="ghost" id="ws-cancel">Fechar editor</button>
+            <button type="button" class="primary" id="ws-save">Guardar</button>
+          </div>
+        </div>
+      </div>
+      <menu>
+        <button type="button" class="ghost" id="ws-new">+ Novo</button>
+        <button type="button" class="ghost" id="ws-close">Fechar</button>
+      </menu>
+    </div>
+  </dialog>
+
+  <dialog id="mcp-dialog">
+    <div class="settings">
+      <h2>Servidores MCP</h2>
+      <p class="wiz-intro">A Saga liga-se a servidores MCP (stdio) e o modelo pode chamar as ferramentas deles.
+      Os segredos do <em>env</em> são guardados na keychain do sistema.</p>
+      <div class="mcp-list" id="mcp-list"></div>
+      <fieldset>
+        <legend id="mcp-form-legend">Novo servidor</legend>
+        <label>Nome <input id="mcp-name" type="text" placeholder="ex.: filesystem" /></label>
+        <label>Comando <input id="mcp-command" type="text" placeholder="ex.: npx" /></label>
+        <label>Argumentos (um por linha) <textarea id="mcp-args" rows="3" spellcheck="false" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/caminho"></textarea></label>
+        <label>Env (KEY=VALUE, um por linha) <textarea id="mcp-env" rows="2" spellcheck="false" placeholder="TOKEN=abc"></textarea></label>
+        <label class="check"><input id="mcp-enabled" type="checkbox" checked /> Ativo</label>
+        <div class="ws-editor-bar">
+          <button type="button" class="ghost" id="mcp-test">Testar ligação</button>
+          <button type="button" class="primary" id="mcp-add">Guardar servidor</button>
+        </div>
+        <div class="pull-status" id="mcp-status"></div>
+      </fieldset>
+      <menu>
+        <button type="button" class="ghost" id="mcp-close">Fechar</button>
+      </menu>
+    </div>
+  </dialog>
+
+  <dialog id="activity-dialog">
+    <div class="settings">
+      <h2>Atividade desta Saga</h2>
+      <div class="act-list" id="act-list"></div>
+      <menu>
+        <button type="button" class="ghost" id="act-refresh">Atualizar</button>
+        <button type="button" class="ghost" id="act-close">Fechar</button>
+      </menu>
+    </div>
   </dialog>
 
   <dialog id="wizard-dialog">
@@ -873,6 +951,8 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
           assistant.steps.push(`${evt.tool} ${evt.detail}`);
           renderMessages();
           paintBubble();
+        } else if (evt.kind === "ApprovalRequest") {
+          showApproval(evt.id, evt.tool, evt.preview);
         } else if (evt.kind === "Done") {
           assistant.meta = {
             text: assistant.content,
@@ -1022,6 +1102,8 @@ function settingsToForm(s: Settings) {
   (f.elements.namedItem("browser_node_path") as HTMLInputElement).value = s.browser_node_path;
   (f.elements.namedItem("browser_user_data_dir") as HTMLInputElement).value =
     s.browser_user_data_dir;
+  (f.elements.namedItem("workspace_dir") as HTMLInputElement).value = s.workspace_dir;
+  (f.elements.namedItem("confirm_mode") as HTMLSelectElement).value = s.confirm_mode;
   (f.elements.namedItem("local_provider") as HTMLSelectElement).value = s.local_provider;
   (f.elements.namedItem("openai_local_endpoint") as HTMLInputElement).value =
     s.openai_local_endpoint;
@@ -1077,6 +1159,8 @@ function formToSettings(base: Settings): Settings {
     browser_sidecar_script: val("browser_sidecar_script"),
     browser_node_path: val("browser_node_path"),
     browser_user_data_dir: val("browser_user_data_dir"),
+    workspace_dir: val("workspace_dir"),
+    confirm_mode: val("confirm_mode") as Settings["confirm_mode"],
     local_provider: val("local_provider") as Settings["local_provider"],
     openai_local_endpoint: val("openai_local_endpoint"),
     openai_local_key: val("openai_local_key"),
@@ -1244,6 +1328,366 @@ async function checkForUpdates() {
   }
 }
 
+// ---- Aprovação de ações (modo "ask") ----
+function showApproval(id: number, tool: string, preview: string) {
+  const card = document.createElement("div");
+  card.className = "approval-card";
+  card.innerHTML = `
+    <div class="approval-head">Aprovar ação?</div>
+    <div class="approval-tool">${escapeHtml(tool)}</div>
+    <pre class="approval-preview">${escapeHtml(preview)}</pre>
+    <div class="approval-bar">
+      <button type="button" class="ghost" data-ok="0">Recusar</button>
+      <button type="button" class="primary" data-ok="1">Aprovar</button>
+    </div>`;
+  const done = (ok: boolean) => {
+    api.approveAction(id, ok).catch(() => {});
+    card.remove();
+  };
+  card.querySelector('[data-ok="1"]')!.addEventListener("click", () => done(true));
+  card.querySelector('[data-ok="0"]')!.addEventListener("click", () => done(false));
+  els.messages.appendChild(card);
+  els.messages.scrollTop = els.messages.scrollHeight;
+}
+
+// ---- Workspace (skills / playbooks / workflows) ----
+const wsDialog = document.querySelector<HTMLDialogElement>("#workspace-dialog")!;
+let wsKind: "skill" | "playbook" | "workflow" = "skill";
+
+async function openWorkspace() {
+  setWsKind("skill");
+  await wsDialog.showModal();
+}
+
+function setWsKind(kind: "skill" | "playbook" | "workflow") {
+  wsKind = kind;
+  wsDialog
+    .querySelectorAll<HTMLButtonElement>(".ws-tab")
+    .forEach((b) => b.classList.toggle("active", b.dataset.kind === kind));
+  document.querySelector("#ws-editor")!.setAttribute("hidden", "");
+  void renderWorkspaceList();
+}
+
+async function renderWorkspaceList() {
+  const list = document.querySelector<HTMLDivElement>("#ws-list")!;
+  let idx;
+  try {
+    idx = await api.getWorkspaceIndex();
+  } catch {
+    idx = { skills: [], playbooks: [], workflows: [] };
+  }
+  const items =
+    wsKind === "skill"
+      ? idx.skills
+      : wsKind === "workflow"
+        ? idx.workflows
+        : idx.playbooks.map((n) => ({ name: n, description: "" }));
+  if (items.length === 0) {
+    list.innerHTML = `<div class="empty-sm">Nada ainda. Cria o primeiro com “+ Novo”.</div>`;
+    return;
+  }
+  list.innerHTML = items
+    .map(
+      (it) => `
+    <div class="ws-item">
+      <div class="ws-item-main"><strong>${escapeHtml(it.name)}</strong><span>${escapeHtml(it.description)}</span></div>
+      <div class="ws-item-actions">
+        ${wsKind === "workflow" ? `<button type="button" class="ghost" data-run="${escapeHtml(it.name)}">▶ Correr</button>` : ""}
+        <button type="button" class="ghost" data-edit="${escapeHtml(it.name)}">Editar</button>
+        <button type="button" class="ghost" data-del="${escapeHtml(it.name)}">✕</button>
+      </div>
+    </div>`
+    )
+    .join("");
+  list
+    .querySelectorAll<HTMLButtonElement>("[data-edit]")
+    .forEach((b) => b.addEventListener("click", () => editWsDoc(b.dataset.edit!)));
+  list
+    .querySelectorAll<HTMLButtonElement>("[data-del]")
+    .forEach((b) => b.addEventListener("click", () => delWsDoc(b.dataset.del!)));
+  list
+    .querySelectorAll<HTMLButtonElement>("[data-run]")
+    .forEach((b) => b.addEventListener("click", () => runWorkflow(b.dataset.run!)));
+}
+
+function newWsDoc() {
+  const nameEl = document.querySelector("#ws-name") as HTMLInputElement;
+  nameEl.value = "";
+  nameEl.readOnly = false;
+  (document.querySelector("#ws-content") as HTMLTextAreaElement).value =
+    wsKind === "skill"
+      ? '---\nname: nome\ndescription: "Quando usar isto. Triggers: …"\n---\n\n# Instruções\n'
+      : wsKind === "workflow"
+        ? '---\nname: nome\ndescription: "O que faz"\nargument-hint: argumentos\n---\n\nPassos a executar com $ARGUMENTS…\n'
+        : "# Playbook\n\nProcedimento reutilizável…\n";
+  document.querySelector("#ws-editor")!.removeAttribute("hidden");
+}
+
+async function editWsDoc(name: string) {
+  try {
+    const content = await api.readWorkspaceDoc(wsKind, name);
+    const nameEl = document.querySelector("#ws-name") as HTMLInputElement;
+    nameEl.value = name;
+    nameEl.readOnly = true;
+    (document.querySelector("#ws-content") as HTMLTextAreaElement).value = content;
+    document.querySelector("#ws-editor")!.removeAttribute("hidden");
+  } catch (e) {
+    alert("Falha a abrir: " + e);
+  }
+}
+
+async function saveWsDoc() {
+  const name = (document.querySelector("#ws-name") as HTMLInputElement).value.trim();
+  const content = (document.querySelector("#ws-content") as HTMLTextAreaElement).value;
+  if (!name) {
+    alert("Indica um nome (sem espaços).");
+    return;
+  }
+  try {
+    await api.saveWorkspaceDoc(wsKind, name, content);
+    document.querySelector("#ws-editor")!.setAttribute("hidden", "");
+    await renderWorkspaceList();
+  } catch (e) {
+    alert("Falha a guardar: " + e);
+  }
+}
+
+async function delWsDoc(name: string) {
+  if (!confirm(`Apagar “${name}”?`)) return;
+  try {
+    await api.deleteWorkspaceDoc(wsKind, name);
+    await renderWorkspaceList();
+  } catch (e) {
+    alert("Falha a apagar: " + e);
+  }
+}
+
+async function runWorkflow(name: string) {
+  wsDialog.close();
+  if (state.currentConversationId === null) {
+    state.currentConversationId = await api.newConversation();
+    await loadConversations();
+  }
+  els.input.value = `/${name} `;
+  els.input.focus();
+  autoGrow();
+}
+
+// ---- Servidores MCP ----
+const mcpDialog = document.querySelector<HTMLDialogElement>("#mcp-dialog")!;
+let mcpEditingIndex: number | null = null;
+
+function mcpServers(): McpServerConfig[] {
+  return state.settings?.mcp_servers ?? [];
+}
+
+function openMcp() {
+  clearMcpForm();
+  renderMcpList();
+  mcpDialog.showModal();
+}
+
+function renderMcpList() {
+  const list = document.querySelector<HTMLDivElement>("#mcp-list")!;
+  const srvs = mcpServers();
+  if (srvs.length === 0) {
+    list.innerHTML = `<div class="empty-sm">Sem servidores. Adiciona um abaixo.</div>`;
+    return;
+  }
+  list.innerHTML = srvs
+    .map(
+      (s, i) => `
+    <div class="mcp-item">
+      <label class="check"><input type="checkbox" data-toggle="${i}" ${s.enabled ? "checked" : ""} /> <strong>${escapeHtml(s.name)}</strong></label>
+      <code>${escapeHtml(s.command)} ${escapeHtml(s.args.join(" "))}</code>
+      <div class="mcp-item-actions">
+        <button type="button" class="ghost" data-edit="${i}">Editar</button>
+        <button type="button" class="ghost" data-del="${i}">✕</button>
+      </div>
+    </div>`
+    )
+    .join("");
+  list
+    .querySelectorAll<HTMLInputElement>("[data-toggle]")
+    .forEach((b) => b.addEventListener("change", () => toggleMcp(parseInt(b.dataset.toggle!), b.checked)));
+  list
+    .querySelectorAll<HTMLButtonElement>("[data-edit]")
+    .forEach((b) => b.addEventListener("click", () => editMcp(parseInt(b.dataset.edit!))));
+  list
+    .querySelectorAll<HTMLButtonElement>("[data-del]")
+    .forEach((b) => b.addEventListener("click", () => delMcp(parseInt(b.dataset.del!))));
+}
+
+function clearMcpForm() {
+  mcpEditingIndex = null;
+  (document.querySelector("#mcp-name") as HTMLInputElement).value = "";
+  (document.querySelector("#mcp-command") as HTMLInputElement).value = "";
+  (document.querySelector("#mcp-args") as HTMLTextAreaElement).value = "";
+  (document.querySelector("#mcp-env") as HTMLTextAreaElement).value = "";
+  (document.querySelector("#mcp-enabled") as HTMLInputElement).checked = true;
+  document.querySelector("#mcp-status")!.textContent = "";
+  document.querySelector("#mcp-form-legend")!.textContent = "Novo servidor";
+}
+
+function readMcpForm(): McpServerConfig {
+  const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
+  const env = lines((document.querySelector("#mcp-env") as HTMLTextAreaElement).value)
+    .map((l) => {
+      const i = l.indexOf("=");
+      return [l.slice(0, i).trim(), l.slice(i + 1).trim()] as [string, string];
+    })
+    .filter(([k]) => k.length > 0);
+  return {
+    name: (document.querySelector("#mcp-name") as HTMLInputElement).value.trim(),
+    command: (document.querySelector("#mcp-command") as HTMLInputElement).value.trim(),
+    args: lines((document.querySelector("#mcp-args") as HTMLTextAreaElement).value),
+    env,
+    enabled: (document.querySelector("#mcp-enabled") as HTMLInputElement).checked,
+  };
+}
+
+function editMcp(i: number) {
+  const s = mcpServers()[i];
+  if (!s) return;
+  mcpEditingIndex = i;
+  (document.querySelector("#mcp-name") as HTMLInputElement).value = s.name;
+  (document.querySelector("#mcp-command") as HTMLInputElement).value = s.command;
+  (document.querySelector("#mcp-args") as HTMLTextAreaElement).value = s.args.join("\n");
+  (document.querySelector("#mcp-env") as HTMLTextAreaElement).value = s.env
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+  (document.querySelector("#mcp-enabled") as HTMLInputElement).checked = s.enabled;
+  document.querySelector("#mcp-form-legend")!.textContent = "Editar servidor";
+}
+
+async function persistServers(next: McpServerConfig[]) {
+  if (!state.settings) return;
+  const updated = { ...state.settings, mcp_servers: next };
+  await api.saveSettings(updated);
+  state.settings = updated;
+}
+
+async function addOrUpdateMcp() {
+  const cfg = readMcpForm();
+  const status = document.querySelector("#mcp-status")!;
+  if (!cfg.name || !cfg.command) {
+    status.textContent = "Nome e comando são obrigatórios.";
+    return;
+  }
+  const next = mcpServers().slice();
+  if (mcpEditingIndex !== null) next[mcpEditingIndex] = cfg;
+  else next.push(cfg);
+  try {
+    await persistServers(next);
+    clearMcpForm();
+    renderMcpList();
+  } catch (e) {
+    status.textContent = "Falha a guardar: " + e;
+  }
+}
+
+async function toggleMcp(i: number, enabled: boolean) {
+  const next = mcpServers().slice();
+  if (!next[i]) return;
+  next[i] = { ...next[i], enabled };
+  try {
+    await persistServers(next);
+  } catch (e) {
+    alert("Falha: " + e);
+  }
+}
+
+async function delMcp(i: number) {
+  if (!confirm("Remover este servidor?")) return;
+  const next = mcpServers().slice();
+  next.splice(i, 1);
+  try {
+    await persistServers(next);
+    renderMcpList();
+  } catch (e) {
+    alert("Falha: " + e);
+  }
+}
+
+async function testMcp() {
+  const cfg = readMcpForm();
+  const status = document.querySelector("#mcp-status")!;
+  if (!cfg.command) {
+    status.textContent = "Indica o comando.";
+    return;
+  }
+  status.textContent = "A ligar…";
+  try {
+    const tools = await api.testMcpServer(cfg);
+    status.textContent = `✓ ${tools.length} ferramentas: ${tools.join(", ") || "(nenhuma)"}`;
+  } catch (e) {
+    status.textContent = "✗ " + e;
+  }
+}
+
+// ---- Atividade ----
+const activityDialog = document.querySelector<HTMLDialogElement>("#activity-dialog")!;
+async function openActivity() {
+  await renderActivity();
+  activityDialog.showModal();
+}
+async function renderActivity() {
+  const list = document.querySelector<HTMLDivElement>("#act-list")!;
+  if (state.currentConversationId === null) {
+    list.innerHTML = `<div class="empty-sm">Sem Saga selecionada.</div>`;
+    return;
+  }
+  let rows: ActionLogEntry[] = [];
+  try {
+    rows = await api.getActionLog(state.currentConversationId);
+  } catch {
+    rows = [];
+  }
+  if (rows.length === 0) {
+    list.innerHTML = `<div class="empty-sm">Sem ações registadas nesta Saga.</div>`;
+    return;
+  }
+  list.innerHTML = rows
+    .map(
+      (r) => `
+    <div class="act-row status-${escapeHtml(r.status.toLowerCase())}">
+      <span class="act-status">${escapeHtml(r.status)}</span>
+      <span class="act-tool">${escapeHtml(r.tool)}</span>
+      <span class="act-detail">${escapeHtml(r.error || r.detail || r.params_json)}</span>
+      <span class="act-time">${escapeHtml(r.created_at)}</span>
+    </div>`
+    )
+    .join("");
+}
+
+function wireWorkspaceUi() {
+  wsDialog
+    .querySelectorAll<HTMLButtonElement>(".ws-tab")
+    .forEach((b) => b.addEventListener("click", () => setWsKind(b.dataset.kind as typeof wsKind)));
+  document.querySelector("#ws-new")!.addEventListener("click", newWsDoc);
+  document.querySelector("#ws-save")!.addEventListener("click", saveWsDoc);
+  document
+    .querySelector("#ws-cancel")!
+    .addEventListener("click", () => document.querySelector("#ws-editor")!.setAttribute("hidden", ""));
+  document.querySelector("#ws-close")!.addEventListener("click", () => wsDialog.close());
+
+  document.querySelector("#mcp-add")!.addEventListener("click", addOrUpdateMcp);
+  document.querySelector("#mcp-test")!.addEventListener("click", testMcp);
+  document.querySelector("#mcp-close")!.addEventListener("click", () => mcpDialog.close());
+
+  document.querySelector("#act-refresh")!.addEventListener("click", renderActivity);
+  document.querySelector("#act-close")!.addEventListener("click", () => activityDialog.close());
+
+  document.querySelectorAll<HTMLButtonElement>(".rail-btn").forEach((b) =>
+    b.addEventListener("click", () => {
+      const v = b.dataset.view;
+      if (v === "workspace") openWorkspace();
+      else if (v === "servers") openMcp();
+      else if (v === "activity") openActivity();
+    })
+  );
+}
+
 async function init() {
   els.composer.addEventListener("submit", onSubmit);
   els.input.addEventListener("input", autoGrow);
@@ -1380,6 +1824,7 @@ async function init() {
   document.querySelector("#local-provider")!.addEventListener("change", applyProviderFields);
   document.querySelector("#cloud-provider")!.addEventListener("change", applyProviderFields);
   document.querySelector("#btn-check-update")!.addEventListener("click", checkForUpdates);
+  wireWorkspaceUi();
 
   try {
     state.settings = await api.getSettings();

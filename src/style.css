@@ -133,11 +133,11 @@ body {
 .layout {
   flex: 1;
   display: grid;
-  grid-template-columns: 220px 1fr 320px;
+  grid-template-columns: 60px 220px 1fr 320px;
   min-height: 0;
 }
 .layout.panel-collapsed {
-  grid-template-columns: 220px 1fr 0;
+  grid-template-columns: 60px 220px 1fr 0;
 }
 .layout.panel-collapsed .panel {
   display: none;
@@ -1082,4 +1082,214 @@ dialog::backdrop {
   background: var(--accent);
   color: var(--on-accent);
   border-color: var(--accent);
+}
+
+/* ---- Menu lateral (rail) ---- */
+.rail {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 8px 4px;
+  background: var(--bg-3);
+  border-right: 1px solid var(--border);
+}
+.rail-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 2px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.rail-btn:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.rail-btn.active {
+  background: var(--bg-2);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.rail-ico {
+  font-size: 18px;
+  line-height: 1;
+}
+.rail-lbl {
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+
+/* ---- Cartão de aprovação de ação ---- */
+.approval-card {
+  align-self: center;
+  max-width: 80%;
+  margin: 8px auto;
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--claude);
+  border-radius: 12px;
+}
+.approval-head {
+  font-weight: 700;
+  color: var(--claude);
+  margin-bottom: 4px;
+}
+.approval-tool {
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 13px;
+  color: var(--text);
+}
+.approval-preview {
+  margin: 6px 0;
+  padding: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow: auto;
+}
+.approval-bar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---- Workspace / MCP / Atividade ---- */
+.ws-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.ws-tab {
+  padding: 6px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.ws-tab.active {
+  background: var(--bg-3);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.ws-list,
+.mcp-list,
+.act-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+.empty-sm {
+  color: var(--muted);
+  padding: 12px;
+  text-align: center;
+}
+.ws-item,
+.mcp-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.ws-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ws-item-main span,
+.mcp-item code {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ws-item-actions,
+.mcp-item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.ws-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.ws-editor textarea,
+#mcp-args,
+#mcp-env {
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+.ws-editor-bar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.act-row {
+  display: grid;
+  grid-template-columns: 96px 140px 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.act-status {
+  font-weight: 700;
+  color: var(--muted);
+}
+.act-row.status-ok .act-status {
+  color: var(--local);
+}
+.act-row.status-erro .act-status {
+  color: var(--danger);
+}
+.act-row.status-preview .act-status,
+.act-row.status-em_execucao .act-status {
+  color: var(--claude);
+}
+.act-tool {
+  font-family: ui-monospace, "Cascadia Code", monospace;
+}
+.act-detail {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.act-time {
+  color: var(--muted);
+}
+#workspace-dialog .ws,
+#mcp-dialog .settings,
+#activity-dialog .settings {
+  min-width: 520px;
 }

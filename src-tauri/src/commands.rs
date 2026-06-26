@@ -267,6 +267,41 @@ pub fn get_workspace_index(state: State<AppState>) -> crate::workspace::Workspac
     crate::workspace::index(&dir)
 }
 
+/// Conteúdo cru (com frontmatter) de um documento do workspace, para edição.
+#[tauri::command]
+pub fn read_workspace_doc(
+    state: State<AppState>,
+    kind: String,
+    name: String,
+) -> Result<String, String> {
+    let dir = state.settings.lock().unwrap().workspace_dir.clone();
+    crate::workspace::read_doc(&dir, &kind, &name)
+        .ok_or_else(|| "documento não encontrado".to_string())
+}
+
+/// Cria/atualiza um documento do workspace (skill | playbook | workflow).
+#[tauri::command]
+pub fn save_workspace_doc(
+    state: State<AppState>,
+    kind: String,
+    name: String,
+    content: String,
+) -> Result<(), String> {
+    let dir = state.settings.lock().unwrap().workspace_dir.clone();
+    crate::workspace::write_doc(&dir, &kind, &name, &content).map_err(|e| e.to_string())
+}
+
+/// Apaga um documento do workspace.
+#[tauri::command]
+pub fn delete_workspace_doc(
+    state: State<AppState>,
+    kind: String,
+    name: String,
+) -> Result<(), String> {
+    let dir = state.settings.lock().unwrap().workspace_dir.clone();
+    crate::workspace::delete_doc(&dir, &kind, &name).map_err(|e| e.to_string())
+}
+
 /// Log de ações (tool-calling) de uma conversa, para a vista "Atividade".
 #[tauri::command]
 pub fn get_action_log(

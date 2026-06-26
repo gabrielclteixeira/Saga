@@ -20,6 +20,14 @@ export interface RoutingConfig {
   use_local_classifier: boolean;
 }
 
+export interface McpServerConfig {
+  name: string;
+  command: string;
+  args: string[];
+  env: [string, string][];
+  enabled: boolean;
+}
+
 export interface Settings {
   ollama_endpoint: string;
   ollama_model: string;
@@ -45,7 +53,32 @@ export interface Settings {
   browser_sidecar_script: string;
   browser_node_path: string;
   browser_user_data_dir: string;
+  mcp_servers: McpServerConfig[];
+  workspace_dir: string;
+  confirm_mode: "off" | "dry_run" | "ask";
   onboarding_done: boolean;
+}
+
+export interface DocMeta {
+  name: string;
+  description: string;
+}
+
+export interface WorkspaceIndex {
+  skills: DocMeta[];
+  playbooks: string[];
+  workflows: DocMeta[];
+}
+
+export interface ActionLogEntry {
+  id: number;
+  conversation_id: number;
+  tool: string;
+  params_json: string;
+  status: string;
+  detail: string;
+  error: string;
+  created_at: string;
 }
 
 export interface Diagnostics {
@@ -115,6 +148,7 @@ export type StreamEvent =
   | { kind: "Delta"; text: string }
   | { kind: "Thinking"; text: string }
   | { kind: "ToolStep"; tool: string; detail: string }
+  | { kind: "ApprovalRequest"; id: number; tool: string; preview: string }
   | {
       kind: "Done";
       input_tokens: number;
@@ -181,4 +215,20 @@ export const api = {
     invoke<Accounting>("get_conversation_accounting", { id }),
   truncateConversation: (id: number, keep: number) =>
     invoke<void>("truncate_conversation", { id, keep }),
+  // MCP
+  testMcpServer: (config: McpServerConfig) =>
+    invoke<string[]>("test_mcp_server", { config }),
+  // Workspace
+  getWorkspaceIndex: () => invoke<WorkspaceIndex>("get_workspace_index"),
+  readWorkspaceDoc: (kind: string, name: string) =>
+    invoke<string>("read_workspace_doc", { kind, name }),
+  saveWorkspaceDoc: (kind: string, name: string, content: string) =>
+    invoke<void>("save_workspace_doc", { kind, name, content }),
+  deleteWorkspaceDoc: (kind: string, name: string) =>
+    invoke<void>("delete_workspace_doc", { kind, name }),
+  // Atividade + aprovações
+  getActionLog: (conversationId: number) =>
+    invoke<ActionLogEntry[]>("get_action_log", { conversationId }),
+  approveAction: (id: number, approved: boolean) =>
+    invoke<void>("approve_action", { id, approved }),
 };
