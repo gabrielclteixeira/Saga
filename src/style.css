@@ -1379,6 +1379,91 @@ dialog::backdrop {
   border-color: var(--accent);
 }
 
+/* ---- Hub Modelos ---- */
+.models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+.model-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.model-item.active {
+  border-color: var(--accent);
+}
+.model-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.model-main span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.model-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.model-actions button {
+  margin-top: 0;
+  padding: 4px 9px;
+  font-size: 12px;
+}
+.model-badge {
+  font-size: 11px;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.quickpicks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.quickpick {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.quickpick:hover {
+  background: var(--bg-3);
+  color: var(--text);
+  border-color: var(--accent);
+}
+.hub-progress {
+  height: 8px;
+  background: var(--bg-3);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+.hub-bar {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
 /* ---- Realce de sintaxe (highlight.js) — paleta azulejo ---- */
 .hljs-keyword,
 .hljs-literal,

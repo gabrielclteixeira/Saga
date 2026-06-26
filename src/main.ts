@@ -18,6 +18,7 @@ import {
   type ConversationMeta,
   type Diagnostics,
   type McpServerConfig,
+  type OllamaModel,
   type Schedule,
   type SearchHit,
   type Settings,
@@ -99,6 +100,7 @@ app.innerHTML = `
       <button type="button" class="rail-btn" data-view="servers" title="Servidores MCP"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><line x1="6.5" y1="7.5" x2="6.5" y2="7.5"/><line x1="6.5" y1="16.5" x2="6.5" y2="16.5"/></svg></span><span class="rail-lbl">Servidores</span></button>
       <button type="button" class="rail-btn" data-view="activity" title="Atividade (ações)"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><line x1="4.5" y1="6" x2="4.5" y2="6"/><line x1="4.5" y1="12" x2="4.5" y2="12"/><line x1="4.5" y1="18" x2="4.5" y2="18"/></svg></span><span class="rail-lbl">Atividade</span></button>
       <button type="button" class="rail-btn" data-view="automations" title="Automações agendadas"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v4.7l3 1.8"/></svg></span><span class="rail-lbl">Automações</span></button>
+      <button type="button" class="rail-btn" data-view="models" title="Modelos (instalar/configurar)"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span><span class="rail-lbl">Modelos</span></button>
     </nav>
     <aside class="sidebar">
       <button class="new-chat" id="btn-new-chat">+ Nova Saga</button>
@@ -382,6 +384,88 @@ app.innerHTML = `
       </fieldset>
       <menu>
         <button type="button" class="ghost" id="sched-close">Fechar</button>
+      </menu>
+    </div>
+  </dialog>
+
+  <dialog id="models-dialog">
+    <div class="settings">
+      <h2>Modelos</h2>
+      <div class="pull-status" id="hub-status">—</div>
+
+      <fieldset>
+        <legend>Provider local</legend>
+        <label>Provider
+          <select id="hub-local-provider">
+            <option value="ollama">Ollama</option>
+            <option value="openai">OpenAI-compatible (LM Studio)</option>
+          </select>
+        </label>
+        <div class="field-group" id="hub-ollama-fields">
+          <label>Endpoint <input id="hub-ollama-endpoint" type="text" placeholder="http://localhost:11434" /></label>
+          <label>Modelo de visão (imagens) <input id="hub-vision" type="text" list="ollama-models" /></label>
+        </div>
+        <div class="field-group" id="hub-openai-local-fields" hidden>
+          <label>Endpoint <input id="hub-oai-local-endpoint" type="text" placeholder="http://localhost:1234/v1" /></label>
+          <label>API key (opcional) <input id="hub-oai-local-key" type="password" /></label>
+          <label>Modelo <input id="hub-oai-local-model" type="text" placeholder="ex.: ID no LM Studio" /></label>
+        </div>
+      </fieldset>
+
+      <fieldset id="hub-ollama-mgmt">
+        <legend>Modelos Ollama instalados</legend>
+        <div class="models-list" id="hub-installed"></div>
+        <label>Instalar modelo
+          <span class="row">
+            <input id="hub-pull-name" type="text" placeholder="ex.: llama3.2" list="ollama-models" />
+            <button type="button" class="ghost" id="hub-pull-btn">Puxar</button>
+          </span>
+        </label>
+        <div class="hub-progress" id="hub-progress" hidden><div class="hub-bar" id="hub-bar"></div></div>
+        <div class="pull-status" id="hub-pull-status"></div>
+        <div class="quickpicks" id="hub-quickpicks"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Cloud (escalar)</legend>
+        <label>Provider
+          <select id="hub-cloud-provider">
+            <option value="claude">Claude</option>
+            <option value="openai">OpenAI-compatible</option>
+          </select>
+        </label>
+        <div class="field-group" id="hub-claude-fields">
+          <label>Modo
+            <select id="hub-claude-mode">
+              <option value="off">Desligado</option>
+              <option value="cli">Claude CLI (subscrição)</option>
+              <option value="api">API (ANTHROPIC_API_KEY)</option>
+            </select>
+          </label>
+          <label>Modelo
+            <select id="hub-claude-preset">
+              <option value="claude-haiku-4-5-20251001">Haiku 4.5 — rápido e barato</option>
+              <option value="claude-sonnet-4-6">Sonnet 4.6 — equilíbrio</option>
+              <option value="claude-opus-4-8">Opus 4.8 — topo</option>
+              <option value="claude-fable-5">Fable 5 — mais capaz</option>
+              <option value="__custom__">Personalizado…</option>
+            </select>
+          </label>
+          <label id="hub-claude-custom-wrap" hidden>Modelo (ID) <input id="hub-claude-model" type="text" /></label>
+          <label>Caminho da CLI <input id="hub-claude-cli" type="text" /></label>
+          <label>API key <input id="hub-claude-key" type="password" /></label>
+          <label>Max tokens <input id="hub-claude-maxtok" type="number" min="256" /></label>
+        </div>
+        <div class="field-group" id="hub-openai-cloud-fields" hidden>
+          <label>Endpoint <input id="hub-oai-cloud-endpoint" type="text" placeholder="https://api.openai.com/v1" /></label>
+          <label>API key <input id="hub-oai-cloud-key" type="password" /></label>
+          <label>Modelo <input id="hub-oai-cloud-model" type="text" placeholder="ex.: gpt-4o" /></label>
+        </div>
+      </fieldset>
+
+      <menu>
+        <button type="button" class="primary" id="hub-save">Guardar</button>
+        <button type="button" class="ghost" id="hub-close">Fechar</button>
       </menu>
     </div>
   </dialog>
@@ -2030,6 +2114,215 @@ async function runScheduleNow(id: number) {
   }
 }
 
+// ---- Hub "Modelos" ----
+const modelsDialog = document.querySelector<HTMLDialogElement>("#models-dialog")!;
+const QUICK_PICKS = [
+  { name: "llama3.2", note: "3B · geral leve" },
+  { name: "qwen2.5", note: "7B · forte" },
+  { name: "phi3.5", note: "3.8B · pequeno" },
+  { name: "gemma2", note: "9B" },
+  { name: "mistral", note: "7B" },
+  { name: "llama3.2-vision", note: "11B · visão" },
+];
+
+const hubIn = (id: string) => document.querySelector<HTMLInputElement>(id)!;
+const hubSel = (id: string) => document.querySelector<HTMLSelectElement>(id)!;
+
+function fmtSize(b: number): string {
+  if (!b) return "";
+  const gb = b / 1e9;
+  return gb >= 1 ? gb.toFixed(1) + " GB" : (b / 1e6).toFixed(0) + " MB";
+}
+
+async function openModels() {
+  if (!state.settings) return;
+  hubLoad(state.settings);
+  applyHubProviderFields();
+  renderQuickPicks();
+  modelsDialog.showModal();
+  void renderHubStatus();
+  void renderInstalled();
+}
+
+function hubLoad(s: Settings) {
+  hubSel("#hub-local-provider").value = s.local_provider;
+  hubIn("#hub-ollama-endpoint").value = s.ollama_endpoint;
+  hubIn("#hub-vision").value = s.ollama_vision_model;
+  hubIn("#hub-oai-local-endpoint").value = s.openai_local_endpoint;
+  hubIn("#hub-oai-local-key").value = s.openai_local_key;
+  hubIn("#hub-oai-local-model").value = s.openai_local_model;
+  hubSel("#hub-cloud-provider").value = s.cloud_provider;
+  hubSel("#hub-claude-mode").value = s.claude_mode;
+  const preset = hubSel("#hub-claude-preset");
+  const customWrap = document.querySelector<HTMLElement>("#hub-claude-custom-wrap")!;
+  if (CLAUDE_MODEL_PRESETS.includes(s.claude_model)) {
+    preset.value = s.claude_model;
+    customWrap.hidden = true;
+  } else {
+    preset.value = "__custom__";
+    customWrap.hidden = false;
+  }
+  hubIn("#hub-claude-model").value = s.claude_model;
+  hubIn("#hub-claude-cli").value = s.claude_cli_path;
+  hubIn("#hub-claude-key").value = s.claude_api_key;
+  hubIn("#hub-claude-maxtok").value = String(s.claude_max_tokens);
+  hubIn("#hub-oai-cloud-endpoint").value = s.openai_cloud_endpoint;
+  hubIn("#hub-oai-cloud-key").value = s.openai_cloud_key;
+  hubIn("#hub-oai-cloud-model").value = s.openai_cloud_model;
+}
+
+function applyHubProviderFields() {
+  const lp = hubSel("#hub-local-provider").value;
+  const cp = hubSel("#hub-cloud-provider").value;
+  document.querySelector("#hub-ollama-fields")!.toggleAttribute("hidden", lp !== "ollama");
+  document.querySelector("#hub-ollama-mgmt")!.toggleAttribute("hidden", lp !== "ollama");
+  document.querySelector("#hub-openai-local-fields")!.toggleAttribute("hidden", lp !== "openai");
+  document.querySelector("#hub-claude-fields")!.toggleAttribute("hidden", cp !== "claude");
+  document.querySelector("#hub-openai-cloud-fields")!.toggleAttribute("hidden", cp !== "openai");
+}
+
+async function saveModelsSettings(patch: Partial<Settings>) {
+  if (!state.settings) return;
+  const updated = { ...state.settings, ...patch };
+  await api.saveSettings(updated);
+  state.settings = updated;
+  applyComposerToggles();
+}
+
+async function hubSave() {
+  const presetVal = hubSel("#hub-claude-preset").value;
+  const claudeModel =
+    presetVal === "__custom__" ? hubIn("#hub-claude-model").value.trim() : presetVal;
+  try {
+    await saveModelsSettings({
+      local_provider: hubSel("#hub-local-provider").value as Settings["local_provider"],
+      ollama_endpoint: hubIn("#hub-ollama-endpoint").value.trim(),
+      ollama_vision_model: hubIn("#hub-vision").value.trim(),
+      openai_local_endpoint: hubIn("#hub-oai-local-endpoint").value.trim(),
+      openai_local_key: hubIn("#hub-oai-local-key").value,
+      openai_local_model: hubIn("#hub-oai-local-model").value.trim(),
+      cloud_provider: hubSel("#hub-cloud-provider").value as Settings["cloud_provider"],
+      claude_mode: hubSel("#hub-claude-mode").value as Settings["claude_mode"],
+      claude_model: claudeModel,
+      claude_cli_path: hubIn("#hub-claude-cli").value.trim(),
+      claude_api_key: hubIn("#hub-claude-key").value,
+      claude_max_tokens: parseInt(hubIn("#hub-claude-maxtok").value) || 2048,
+      openai_cloud_endpoint: hubIn("#hub-oai-cloud-endpoint").value.trim(),
+      openai_cloud_key: hubIn("#hub-oai-cloud-key").value,
+      openai_cloud_model: hubIn("#hub-oai-cloud-model").value.trim(),
+    });
+    document.querySelector("#hub-status")!.textContent = "✓ Guardado";
+    void renderHubStatus();
+  } catch (e) {
+    alert("Falha a guardar: " + e);
+  }
+}
+
+async function renderHubStatus() {
+  const el = document.querySelector("#hub-status")!;
+  try {
+    const d = await api.diagnostics();
+    el.textContent = d.ollama_ok
+      ? `Ollama ligado · ${d.ollama_models.length} modelos`
+      : "Ollama não acessível — instala em ollama.com e confirma o endpoint";
+  } catch {
+    el.textContent = "—";
+  }
+}
+
+async function renderInstalled() {
+  const list = document.querySelector<HTMLDivElement>("#hub-installed")!;
+  let models: OllamaModel[] = [];
+  try {
+    models = await api.listOllamaModelsDetailed();
+  } catch {
+    models = [];
+  }
+  // alimenta o datalist partilhado (#ollama-models) para os campos com sugestões
+  els.modelsList.innerHTML = models.map((m) => `<option value="${escapeHtml(m.name)}"></option>`).join("");
+  if (models.length === 0) {
+    list.innerHTML = `<div class="empty-sm">Sem modelos. Puxa um abaixo.</div>`;
+    return;
+  }
+  const active = state.settings?.ollama_model;
+  list.innerHTML = models
+    .map(
+      (m) => `
+    <div class="model-item${m.name === active ? " active" : ""}">
+      <div class="model-main">
+        <strong>${escapeHtml(m.name)}</strong>
+        <span>${escapeHtml([m.parameter_size, fmtSize(m.size), m.quantization].filter(Boolean).join(" · "))}</span>
+      </div>
+      <div class="model-actions">
+        ${m.name === active ? `<span class="model-badge">ativo</span>` : `<button type="button" class="ghost" data-activate="${escapeHtml(m.name)}">Ativar</button>`}
+        <button type="button" class="ghost" data-del="${escapeHtml(m.name)}">✕</button>
+      </div>
+    </div>`
+    )
+    .join("");
+  list
+    .querySelectorAll<HTMLButtonElement>("[data-activate]")
+    .forEach((b) => b.addEventListener("click", () => setActiveModel(b.dataset.activate!)));
+  list
+    .querySelectorAll<HTMLButtonElement>("[data-del]")
+    .forEach((b) => b.addEventListener("click", () => deleteModelUi(b.dataset.del!)));
+}
+
+async function setActiveModel(name: string) {
+  await saveModelsSettings({ ollama_model: name, local_provider: "ollama" });
+  await renderInstalled();
+}
+
+async function deleteModelUi(name: string) {
+  if (!confirm(`Apagar o modelo "${name}"?`)) return;
+  try {
+    await api.deleteOllamaModel(name);
+    await renderInstalled();
+  } catch (e) {
+    alert("Falha a apagar: " + e);
+  }
+}
+
+function renderQuickPicks() {
+  const box = document.querySelector<HTMLDivElement>("#hub-quickpicks")!;
+  box.innerHTML = QUICK_PICKS.map(
+    (q) =>
+      `<button type="button" class="quickpick" data-pull="${escapeHtml(q.name)}" title="${escapeHtml(q.note)}">${escapeHtml(q.name)}</button>`
+  ).join("");
+  box
+    .querySelectorAll<HTMLButtonElement>("[data-pull]")
+    .forEach((b) => b.addEventListener("click", () => pullModelUi(b.dataset.pull!)));
+}
+
+async function pullModelUi(name: string) {
+  name = name.trim();
+  if (!name) return;
+  const status = document.querySelector("#hub-pull-status")!;
+  const wrap = document.querySelector<HTMLElement>("#hub-progress")!;
+  const bar = document.querySelector<HTMLElement>("#hub-bar")!;
+  wrap.hidden = false;
+  bar.style.width = "0%";
+  status.textContent = "A iniciar…";
+  try {
+    await api.pullOllamaModel(name, (ev) => {
+      if (ev.kind === "Progress") {
+        if (ev.percent >= 0) bar.style.width = ev.percent.toFixed(0) + "%";
+        status.textContent =
+          ev.percent >= 0 ? `${ev.status} — ${ev.percent.toFixed(0)}%` : ev.status;
+      } else if (ev.kind === "Done") {
+        bar.style.width = "100%";
+        status.textContent = "✓ Descarregado";
+        void renderInstalled();
+        void renderHubStatus();
+      } else {
+        status.textContent = "✗ " + ev.message;
+      }
+    });
+  } catch (e) {
+    status.textContent = "✗ " + e;
+  }
+}
+
 function wireWorkspaceUi() {
   wsDialog
     .querySelectorAll<HTMLButtonElement>(".ws-tab")
@@ -2055,6 +2348,20 @@ function wireWorkspaceUi() {
     if (v !== "__custom__") (document.querySelector("#sched-cron") as HTMLInputElement).value = v;
   });
 
+  // Hub Modelos
+  document.querySelector("#hub-save")!.addEventListener("click", hubSave);
+  document.querySelector("#hub-close")!.addEventListener("click", () => modelsDialog.close());
+  document.querySelector("#hub-local-provider")!.addEventListener("change", applyHubProviderFields);
+  document.querySelector("#hub-cloud-provider")!.addEventListener("change", applyHubProviderFields);
+  document.querySelector("#hub-claude-preset")!.addEventListener("change", () => {
+    const v = hubSel("#hub-claude-preset").value;
+    document.querySelector("#hub-claude-custom-wrap")!.toggleAttribute("hidden", v !== "__custom__");
+    if (v !== "__custom__") hubIn("#hub-claude-model").value = v;
+  });
+  document.querySelector("#hub-pull-btn")!.addEventListener("click", () =>
+    pullModelUi(hubIn("#hub-pull-name").value)
+  );
+
   document.querySelectorAll<HTMLButtonElement>(".rail-btn").forEach((b) =>
     b.addEventListener("click", () => {
       const v = b.dataset.view;
@@ -2062,6 +2369,7 @@ function wireWorkspaceUi() {
       else if (v === "servers") openMcp();
       else if (v === "activity") openActivity();
       else if (v === "automations") openAutomations();
+      else if (v === "models") openModels();
     })
   );
 }

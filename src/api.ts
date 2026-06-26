@@ -93,6 +93,14 @@ export interface ActionLogEntry {
   created_at: string;
 }
 
+export interface OllamaModel {
+  name: string;
+  size: number;
+  family: string;
+  parameter_size: string;
+  quantization: string;
+}
+
 export interface Diagnostics {
   ollama_ok: boolean;
   ollama_models: string[];
@@ -178,6 +186,10 @@ export const api = {
   getMemoryPreview: () => invoke<string>("get_memory_preview"),
   diagnostics: () => invoke<Diagnostics>("diagnostics"),
   listOllamaModels: () => invoke<string[]>("list_ollama_models"),
+  listOllamaModelsDetailed: () =>
+    invoke<OllamaModel[]>("list_ollama_models_detailed"),
+  deleteOllamaModel: (model: string) =>
+    invoke<void>("delete_ollama_model", { model }),
   pullOllamaModel: (
     model: string,
     onEvent: (ev: PullEvent) => void

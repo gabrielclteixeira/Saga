@@ -406,6 +406,26 @@ pub async fn list_ollama_models(state: State<'_, AppState>) -> Result<Vec<String
         .map_err(|e| e.to_string())
 }
 
+/// Lista modelos locais com metadados (para o hub "Modelos").
+#[tauri::command]
+pub async fn list_ollama_models_detailed(
+    state: State<'_, AppState>,
+) -> Result<Vec<providers::ollama::OllamaModel>, String> {
+    let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();
+    providers::ollama::list_models_detailed(&endpoint)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Apaga um modelo local.
+#[tauri::command]
+pub async fn delete_ollama_model(state: State<'_, AppState>, model: String) -> Result<(), String> {
+    let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();
+    providers::ollama::delete_model(&endpoint, &model)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Testa um servidor MCP (handshake + tools/list) e devolve os nomes das tools.
 #[tauri::command]
 pub async fn test_mcp_server(

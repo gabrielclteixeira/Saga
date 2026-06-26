@@ -39,6 +39,30 @@ struct TagsResponse {
 #[derive(Deserialize)]
 struct TagModel {
     name: String,
+    #[serde(default)]
+    size: u64,
+    #[serde(default)]
+    details: TagDetails,
+}
+
+#[derive(Deserialize, Default)]
+struct TagDetails {
+    #[serde(default)]
+    family: String,
+    #[serde(default)]
+    parameter_size: String,
+    #[serde(default)]
+    quantization_level: String,
+}
+
+/// Modelo Ollama com metadados (para o hub "Modelos").
+#[derive(Serialize)]
+pub struct OllamaModel {
+    pub name: String,
+    pub size: u64,
+    pub family: String,
+    pub parameter_size: String,
+    pub quantization: String,
 }
 
 fn to_wire(messages: &[ChatMessage]) -> Vec<WireMessage> {
@@ -280,4 +304,54 @@ pub async fn list_models(endpoint: &str) -> Result<Vec<String>> {
         .await
         .map_err(|e| anyhow!("resposta /api/tags inválida: {e}"))?;
     Ok(parsed.models.into_iter().map(|m| m.name).collect())
+}
+
+/// Lista os modelos locais com metadados (nome, tamanho, parâmetros, quantização).
+pub async fn list_models_detailed(endpoint: &str) -> Result<Vec<OllamaModel>> {
+    let url = format!("{}/api/tags", endpoint.trim_end_matches('/'));
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| anyhow!("falha a contactar o Ollama em {url}: {e}"))?;
+    let parsed: TagsResponse = resp
+        .json()
+        .await
+        .map_err(|e| anyhow!("resposta /api/tags inválida: {e}"))?;
+    Ok(parsed
+        .models
+        .into_iter()
+        .map(|m| OllamaModel {
+            name: m.name,
+            size: m.size,
+            family: m.details.family,
+            parameter_size: m.details.parameter_size,
+            quantization: m.details.quantization_level,
+        })
+        .collect())
+}
+
+/// Apaga um modelo local (DELETE /api/delete).
+pub async fn delete_model(endpoint: &str, name: &str) -> Result<()> {
+    let url = format!("{}/api/delete", endpoint.trim_end_matches('/'));
+    let client = reqwest::Client::new();
+    let send = |body: serde_json::Value| {
+        client.delete(&url).json(&body).send()
+    };
+    let resp = send(serde_json::json!({ "model": name }))
+        .await
+        .map_err(|e| anyhow!("falha a contactar o Ollama em {url}: {e}"))?;
+    if resp.status().is_success() {
+        return Ok(());
+    }
+    // Versões antigas usavam o campo "name".
+    let resp2 = send(serde_json::json!({ "name": name }))
+        .await
+        .map_err(|e| anyhow!("falha a contactar o Ollama em {url}: {e}"))?;
+    if resp2.status().is_success() {
+        Ok(())
+    } else {
+        Err(anyhow!("Ollama recusou apagar '{name}': {}", resp2.status()))
+    }
 }
