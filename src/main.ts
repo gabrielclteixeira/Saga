@@ -305,8 +305,20 @@ app.innerHTML = `
       <div class="ws-body">
         <div class="ws-list" id="ws-list"></div>
         <div class="ws-editor" id="ws-editor" hidden>
+          <div class="ws-gen">
+            <label>✨ Gerar com IA — descreve o que queres
+              <textarea id="ws-gen-prompt" rows="2" placeholder="ex.: uma skill que resume páginas web"></textarea>
+            </label>
+            <button type="button" class="ghost" id="ws-gen-btn">Gerar</button>
+            <span class="pull-status" id="ws-gen-status"></span>
+          </div>
           <label>Nome <input id="ws-name" type="text" placeholder="nome-sem-espacos" /></label>
-          <textarea id="ws-content" rows="16" spellcheck="false" placeholder="# Markdown…"></textarea>
+          <label>Descrição <input id="ws-desc" type="text" placeholder="o que é / quando usar" /></label>
+          <label id="ws-triggers-wrap">Triggers (palavras que ativam) <input id="ws-triggers" type="text" placeholder="resumir, o que diz este link, …" /></label>
+          <label id="ws-arghint-wrap" hidden>Argumentos esperados <input id="ws-arghint" type="text" placeholder="ex.: o URL a abrir" /></label>
+          <label id="ws-body-label">Corpo (markdown)
+            <textarea id="ws-content" rows="12" spellcheck="false" placeholder="# Instruções…"></textarea>
+          </label>
           <div class="ws-editor-bar">
             <button type="button" class="ghost" id="ws-cancel">Fechar editor</button>
             <button type="button" class="primary" id="ws-save">Guardar</button>
@@ -1719,42 +1731,158 @@ async function renderWorkspaceList() {
     .forEach((b) => b.addEventListener("click", () => runWorkflow(b.dataset.run!)));
 }
 
+interface DocFields {
+  name: string;
+  desc: string;
+  triggers: string;
+  arghint: string;
+  body: string;
+}
+
+const wsq = <T extends HTMLElement>(id: string) => document.querySelector<T>(id)!;
+
+/** Mostra/esconde os campos do editor conforme o tipo e ajusta o rótulo do corpo. */
+function applyDocKindFields() {
+  const isSkill = wsKind === "skill";
+  const isWorkflow = wsKind === "workflow";
+  const isPlaybook = wsKind === "playbook";
+  wsq("#ws-triggers-wrap").toggleAttribute("hidden", !isSkill);
+  wsq("#ws-arghint-wrap").toggleAttribute("hidden", !isWorkflow);
+  (wsq<HTMLInputElement>("#ws-desc").closest("label") as HTMLElement).toggleAttribute(
+    "hidden",
+    isPlaybook
+  );
+  const bl = wsq("#ws-body-label").childNodes[0];
+  if (bl)
+    bl.nodeValue = isPlaybook
+      ? "Procedimento (markdown)"
+      : isWorkflow
+        ? "Passos (markdown — usa $ARGUMENTS)"
+        : "Instruções (markdown)";
+}
+
+/** Parser simples de frontmatter (espelha workspace.rs). */
+function tsFrontmatter(raw: string): { fm: Record<string, string>; body: string } {
+  const t = raw.replace(/^﻿/, "");
+  const m = t.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
+  if (!m) return { fm: {}, body: t.trim() };
+  const fm: Record<string, string> = {};
+  for (const line of m[1].split("\n")) {
+    const i = line.indexOf(":");
+    if (i > 0) fm[line.slice(0, i).trim()] = line.slice(i + 1).trim().replace(/^["']|["']$/g, "");
+  }
+  return { fm, body: t.slice(m[0].length).trim() };
+}
+
+function parseDocFields(kind: "skill" | "playbook" | "workflow", raw: string): DocFields {
+  const { fm, body } = tsFrontmatter(raw);
+  let desc = fm["description"] || "";
+  let triggers = "";
+  if (kind === "skill") {
+    const idx = desc.search(/triggers:/i);
+    if (idx >= 0) {
+      triggers = desc.slice(idx).replace(/triggers:/i, "").trim();
+      desc = desc.slice(0, idx).replace(/[.\s]+$/, "").trim();
+    }
+  }
+  return { name: fm["name"] || "", desc, triggers, arghint: fm["argument-hint"] || "", body };
+}
+
+function assembleDoc(kind: "skill" | "playbook" | "workflow", f: DocFields): string {
+  if (kind === "playbook") return f.body.trim() + "\n";
+  const esc = (s: string) => s.replace(/"/g, '\\"');
+  const lines = ["---", `name: ${f.name}`];
+  if (kind === "skill") {
+    const d = f.triggers ? `${f.desc} Triggers: ${f.triggers}` : f.desc;
+    lines.push(`description: "${esc(d)}"`);
+  } else {
+    lines.push(`description: "${esc(f.desc)}"`, `argument-hint: ${f.arghint}`);
+  }
+  lines.push("---", "", f.body.trim(), "");
+  return lines.join("\n");
+}
+
+function fillEditorFields(f: Partial<DocFields>) {
+  wsq<HTMLInputElement>("#ws-desc").value = f.desc || "";
+  wsq<HTMLInputElement>("#ws-triggers").value = f.triggers || "";
+  wsq<HTMLInputElement>("#ws-arghint").value = f.arghint || "";
+  wsq<HTMLTextAreaElement>("#ws-content").value = f.body || "";
+}
+
+function readEditorFields(): DocFields {
+  return {
+    name: wsq<HTMLInputElement>("#ws-name").value.trim(),
+    desc: wsq<HTMLInputElement>("#ws-desc").value.trim(),
+    triggers: wsq<HTMLInputElement>("#ws-triggers").value.trim(),
+    arghint: wsq<HTMLInputElement>("#ws-arghint").value.trim(),
+    body: wsq<HTMLTextAreaElement>("#ws-content").value,
+  };
+}
+
 function newWsDoc() {
-  const nameEl = document.querySelector("#ws-name") as HTMLInputElement;
+  const nameEl = wsq<HTMLInputElement>("#ws-name");
   nameEl.value = "";
   nameEl.readOnly = false;
-  (document.querySelector("#ws-content") as HTMLTextAreaElement).value =
-    wsKind === "skill"
-      ? '---\nname: nome\ndescription: "Quando usar isto. Triggers: …"\n---\n\n# Instruções\n'
-      : wsKind === "workflow"
-        ? '---\nname: nome\ndescription: "O que faz"\nargument-hint: argumentos\n---\n\nPassos a executar com $ARGUMENTS…\n'
-        : "# Playbook\n\nProcedimento reutilizável…\n";
-  document.querySelector("#ws-editor")!.removeAttribute("hidden");
+  fillEditorFields({
+    body:
+      wsKind === "workflow"
+        ? "Passos a executar (usa $ARGUMENTS para os argumentos)…"
+        : wsKind === "skill"
+          ? "Instruções passo a passo…"
+          : "Procedimento reutilizável…",
+  });
+  wsq<HTMLTextAreaElement>("#ws-gen-prompt").value = "";
+  wsq("#ws-gen-status").textContent = "";
+  applyDocKindFields();
+  wsq("#ws-editor").removeAttribute("hidden");
 }
 
 async function editWsDoc(name: string) {
   try {
     const content = await api.readWorkspaceDoc(wsKind, name);
-    const nameEl = document.querySelector("#ws-name") as HTMLInputElement;
+    const nameEl = wsq<HTMLInputElement>("#ws-name");
     nameEl.value = name;
     nameEl.readOnly = true;
-    (document.querySelector("#ws-content") as HTMLTextAreaElement).value = content;
-    document.querySelector("#ws-editor")!.removeAttribute("hidden");
+    fillEditorFields(parseDocFields(wsKind, content));
+    wsq<HTMLTextAreaElement>("#ws-gen-prompt").value = "";
+    wsq("#ws-gen-status").textContent = "";
+    applyDocKindFields();
+    wsq("#ws-editor").removeAttribute("hidden");
   } catch (e) {
     alert("Falha a abrir: " + e);
   }
 }
 
+async function genWsDoc() {
+  const prompt = wsq<HTMLTextAreaElement>("#ws-gen-prompt").value.trim();
+  const status = wsq("#ws-gen-status");
+  if (!prompt) {
+    status.textContent = "Descreve o que queres.";
+    return;
+  }
+  status.textContent = "A gerar…";
+  try {
+    const md = await api.generateDoc(wsKind, prompt);
+    const f = parseDocFields(wsKind, md);
+    const nameEl = wsq<HTMLInputElement>("#ws-name");
+    if (f.name && !nameEl.value.trim()) nameEl.value = f.name;
+    fillEditorFields(f);
+    applyDocKindFields();
+    status.textContent = "✓ Gerado — revê e guarda";
+  } catch (e) {
+    status.textContent = "✗ " + e;
+  }
+}
+
 async function saveWsDoc() {
-  const name = (document.querySelector("#ws-name") as HTMLInputElement).value.trim();
-  const content = (document.querySelector("#ws-content") as HTMLTextAreaElement).value;
-  if (!name) {
+  const f = readEditorFields();
+  if (!f.name) {
     alert("Indica um nome (sem espaços).");
     return;
   }
   try {
-    await api.saveWorkspaceDoc(wsKind, name, content);
-    document.querySelector("#ws-editor")!.setAttribute("hidden", "");
+    await api.saveWorkspaceDoc(wsKind, f.name, assembleDoc(wsKind, f));
+    wsq("#ws-editor").setAttribute("hidden", "");
     await renderWorkspaceList();
   } catch (e) {
     alert("Falha a guardar: " + e);
@@ -2364,6 +2492,7 @@ function wireWorkspaceUi() {
     .forEach((b) => b.addEventListener("click", () => setWsKind(b.dataset.kind as typeof wsKind)));
   document.querySelector("#ws-new")!.addEventListener("click", newWsDoc);
   document.querySelector("#ws-save")!.addEventListener("click", saveWsDoc);
+  document.querySelector("#ws-gen-btn")!.addEventListener("click", genWsDoc);
   document
     .querySelector("#ws-cancel")!
     .addEventListener("click", () => document.querySelector("#ws-editor")!.setAttribute("hidden", ""));

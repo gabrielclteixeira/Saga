@@ -267,6 +267,50 @@ pub fn export_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
 
+/// Remove cercas de código ```…``` se o modelo as colocar à volta da resposta.
+fn strip_fences(s: &str) -> String {
+    let t = s.trim();
+    if let Some(rest) = t.strip_prefix("```") {
+        let after_lang = rest.splitn(2, '\n').nth(1).unwrap_or("");
+        return after_lang.trim_end().trim_end_matches("```").trim().to_string();
+    }
+    t.to_string()
+}
+
+/// Gera um documento de workspace (skill | playbook | workflow) a partir de uma descrição,
+/// usando o provider configurado (preferindo o cloud). Devolve o markdown.
+#[tauri::command]
+pub async fn generate_doc(
+    state: State<'_, AppState>,
+    kind: String,
+    instruction: String,
+) -> Result<String, String> {
+    let settings = state.settings.lock().unwrap().clone();
+    let sys = match kind.as_str() {
+        "skill" => "Escreve uma SKILL.md para a Saga. Formato EXATO:\n---\nname: <slug-sem-espacos>\ndescription: \"<uma frase sobre quando usar>. Triggers: <palavras/expressões que ativam>\"\n---\n\n# <título>\n<instruções claras, passo a passo, em markdown>\n\nResponde APENAS com o markdown final — sem cercas de código nem comentários.",
+        "workflow" => "Escreve um workflow em markdown para a Saga. Formato EXATO:\n---\nname: <slug-sem-espacos>\ndescription: \"<o que faz>\"\nargument-hint: <que argumentos espera>\n---\n\n<procedimento passo-a-passo; usa $ARGUMENTS onde os argumentos do utilizador entram>\n\nResponde APENAS com o markdown final — sem cercas nem comentários.",
+        _ => "Escreve um playbook em markdown simples (sem frontmatter): um título e um procedimento reutilizável e claro. Responde APENAS com o markdown — sem cercas nem comentários.",
+    };
+    let messages = vec![
+        ChatMessage { role: "system".into(), content: sys.into(), attachments: Vec::new() },
+        ChatMessage { role: "user".into(), content: instruction, attachments: Vec::new() },
+    ];
+    let max = settings.claude_max_tokens.max(2048);
+    let resp = if settings.cloud_provider == "openai" && !settings.openai_cloud_key.trim().is_empty() {
+        providers::openai_compat::chat(&settings.openai_cloud_endpoint, &settings.openai_cloud_key, &settings.openai_cloud_model, &messages, max).await
+    } else if settings.cloud_provider == "claude" && settings.claude_mode == "api" && !settings.claude_api_key.trim().is_empty() {
+        providers::claude_api::messages(&settings.claude_api_key, &settings.claude_model, max, &messages, false).await
+    } else if settings.cloud_provider == "claude" && settings.claude_mode == "cli" {
+        providers::claude_cli::run(&settings.claude_cli_path, &settings.claude_model, &messages, &[]).await
+    } else if settings.local_provider == "openai" {
+        providers::openai_compat::chat(&settings.openai_local_endpoint, &settings.openai_local_key, &settings.openai_local_model, &messages, max).await
+    } else {
+        providers::ollama::chat(&settings.ollama_endpoint, &settings.ollama_model, &messages).await
+    };
+    let text = resp.map_err(|e| e.to_string())?.text;
+    Ok(strip_fences(&text))
+}
+
 /// Índice do workspace (skills, playbooks, workflows) para a UI e o disparo de workflows.
 #[tauri::command]
 pub fn get_workspace_index(state: State<AppState>) -> crate::workspace::WorkspaceIndex {

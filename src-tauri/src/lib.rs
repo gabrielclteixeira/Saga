@@ -55,6 +55,7 @@ pub fn run() {
             commands::read_workspace_doc,
             commands::save_workspace_doc,
             commands::delete_workspace_doc,
+            commands::generate_doc,
             commands::export_file,
             commands::list_schedules,
             commands::create_schedule,
