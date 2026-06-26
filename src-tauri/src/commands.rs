@@ -47,6 +47,9 @@ pub enum StreamEvent {
     Delta {
         text: String,
     },
+    Thinking {
+        text: String,
+    },
     ToolStep {
         tool: String,
         detail: String,
@@ -275,6 +278,7 @@ pub async fn send_message_stream(
     route_override: Option<String>,
     model_override: Option<String>,
     regenerate: bool,
+    thinking: bool,
 ) -> Result<(), String> {
     let settings = state.settings.lock().unwrap().clone();
 
@@ -375,12 +379,24 @@ pub async fn send_message_stream(
                 )
                 .await
             } else if use_api {
+                let thinking_budget = if thinking {
+                    Some(settings.thinking_budget)
+                } else {
+                    None
+                };
+                let tx_think = channel.clone();
                 providers::claude_api::messages_stream(
                     &settings.claude_api_key,
                     &prepared.model,
                     settings.claude_max_tokens,
                     &prepared.full_messages,
+                    thinking_budget,
                     on_delta,
+                    move |th| {
+                        let _ = tx_think.send(StreamEvent::Thinking {
+                            text: th.to_string(),
+                        });
+                    },
                 )
                 .await
             } else {

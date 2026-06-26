@@ -18,6 +18,8 @@ struct MessagesRequest<'a> {
     system: Option<&'a str>,
     messages: Vec<WireMessage>,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -114,6 +116,7 @@ pub async fn messages(
         system: system.as_deref(),
         messages: wire,
         stream: false,
+        thinking: None,
     };
 
     let client = reqwest::Client::new();
@@ -154,24 +157,35 @@ pub async fn messages(
 }
 
 /// Versão em streaming (SSE). Chama `on_delta` para cada fragmento de texto.
-pub async fn messages_stream<F: FnMut(&str)>(
+pub async fn messages_stream<F: FnMut(&str), G: FnMut(&str)>(
     api_key: &str,
     model: &str,
     max_tokens: u32,
     messages: &[ChatMessage],
+    thinking_budget: Option<u32>,
     mut on_delta: F,
+    mut on_thinking: G,
 ) -> Result<LlmResponse> {
     if api_key.trim().is_empty() {
         return Err(anyhow!("ANTHROPIC_API_KEY não configurada (modo API)"));
     }
 
     let (system, wire) = split_messages(messages);
+    // Com thinking, max_tokens tem de ser > budget_tokens.
+    let (thinking, effective_max) = match thinking_budget {
+        Some(b) => (
+            Some(serde_json::json!({ "type": "enabled", "budget_tokens": b })),
+            b + max_tokens,
+        ),
+        None => (None, max_tokens),
+    };
     let body = MessagesRequest {
         model,
-        max_tokens,
+        max_tokens: effective_max,
         system: system.as_deref(),
         messages: wire,
         stream: true,
+        thinking,
     };
 
     let client = reqwest::Client::new();
@@ -230,6 +244,10 @@ pub async fn messages_stream<F: FnMut(&str)>(
                         if let Some(t) = v.pointer("/delta/text").and_then(|x| x.as_str()) {
                             on_delta(t);
                             full.push_str(t);
+                        } else if let Some(th) =
+                            v.pointer("/delta/thinking").and_then(|x| x.as_str())
+                        {
+                            on_thinking(th);
                         }
                     }
                     Some("message_delta") => {

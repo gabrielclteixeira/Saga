@@ -73,6 +73,8 @@ pub struct Settings {
     pub claude_model: String,
     pub claude_cli_path: String,
     pub claude_max_tokens: u32,
+    /// Orçamento de tokens para extended thinking (quando ligado no composer).
+    pub thinking_budget: u32,
     pub routing: RoutingConfig,
     /// Pasta com ficheiros markdown de memória.
     pub memory_dir: String,
@@ -101,6 +103,7 @@ impl Default for Settings {
             claude_model: "claude-haiku-4-5-20251001".into(),
             claude_cli_path: "claude".into(),
             claude_max_tokens: 2048,
+            thinking_budget: 4000,
             routing: RoutingConfig::default(),
             memory_dir: default_memory_dir().to_string_lossy().to_string(),
             claude_md_path: String::new(),

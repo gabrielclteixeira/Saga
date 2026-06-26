@@ -19,6 +19,7 @@ interface Item {
   error?: boolean;
   attachments?: Attachment[];
   steps?: string[];
+  thinking?: string;
 }
 
 const state: {
@@ -29,6 +30,7 @@ const state: {
   currentConversationId: number | null;
   pendingAttachments: Attachment[];
   routeMode: "auto" | "local" | "claude";
+  thinking: boolean;
 } = {
   items: [],
   settings: null,
@@ -37,6 +39,7 @@ const state: {
   currentConversationId: null,
   pendingAttachments: [],
   routeMode: "auto",
+  thinking: false,
 };
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -61,6 +64,7 @@ app.innerHTML = `
         <button type="button" data-mode="auto" class="active">Auto</button>
         <button type="button" data-mode="local">Local</button>
         <button type="button" data-mode="claude">Claude</button>
+        <button type="button" id="btn-think" class="think-toggle" title="Extended thinking (raciocínio) — só Claude API">🧠 Think</button>
       </div>
       <form class="composer" id="composer">
         <button type="button" class="attach-btn" id="btn-attach" title="Anexar imagem">📎</button>
@@ -272,6 +276,20 @@ function renderMessages() {
         steps.appendChild(line);
       }
       row.appendChild(steps);
+    }
+
+    if (item.thinking) {
+      const det = document.createElement("details");
+      det.className = "thinking-block";
+      det.open = index === state.items.length - 1 && state.busy;
+      const sum = document.createElement("summary");
+      sum.textContent = "🧠 raciocínio";
+      const body = document.createElement("div");
+      body.className = "thinking-body";
+      body.textContent = item.thinking;
+      det.appendChild(sum);
+      det.appendChild(body);
+      row.appendChild(det);
     }
 
     if (item.content !== "" || item.role === "assistant") {
@@ -583,6 +601,7 @@ type SendOpts = {
   routeOverride?: "local" | "claude";
   modelOverride?: string;
   regenerate?: boolean;
+  thinking?: boolean;
 };
 
 function buildPayload(): ChatMessage[] {
@@ -625,6 +644,9 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
         } else if (evt.kind === "Delta") {
           assistant.content += evt.text;
           paintBubble();
+        } else if (evt.kind === "Thinking") {
+          assistant.thinking = (assistant.thinking ?? "") + evt.text;
+          renderMessages();
         } else if (evt.kind === "ToolStep") {
           assistant.steps = assistant.steps ?? [];
           assistant.steps.push(`${evt.tool} ${evt.detail}`);
@@ -645,7 +667,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
           renderAccounting(evt.accounting);
         }
       },
-      opts
+      { ...opts, thinking: opts.thinking ?? state.thinking }
     );
   } catch (e) {
     assistant.content = String(e);
@@ -870,13 +892,17 @@ async function init() {
     const v = (e.target as HTMLSelectElement).value;
     document.querySelector("#wiz-key-wrap")!.toggleAttribute("hidden", v !== "api");
   });
-  els.routeModeBar.querySelectorAll<HTMLButtonElement>("button").forEach((btn) => {
+  els.routeModeBar.querySelectorAll<HTMLButtonElement>("button[data-mode]").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.routeMode = (btn.dataset.mode as "auto" | "local" | "claude") ?? "auto";
       els.routeModeBar
-        .querySelectorAll("button")
+        .querySelectorAll("button[data-mode]")
         .forEach((b) => b.classList.toggle("active", b === btn));
     });
+  });
+  document.querySelector("#btn-think")!.addEventListener("click", (e) => {
+    state.thinking = !state.thinking;
+    (e.currentTarget as HTMLElement).classList.toggle("active", state.thinking);
   });
   els.claudeModelPreset.addEventListener("change", () => {
     const v = els.claudeModelPreset.value;

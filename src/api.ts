@@ -29,6 +29,7 @@ export interface Settings {
   claude_model: string;
   claude_cli_path: string;
   claude_max_tokens: number;
+  thinking_budget: number;
   routing: RoutingConfig;
   memory_dir: string;
   claude_md_path: string;
@@ -99,6 +100,7 @@ export interface StoredMessage {
 export type StreamEvent =
   | { kind: "Start"; route: "local" | "claude"; model: string; reason: string }
   | { kind: "Delta"; text: string }
+  | { kind: "Thinking"; text: string }
   | { kind: "ToolStep"; tool: string; detail: string }
   | {
       kind: "Done";
@@ -127,6 +129,7 @@ export const api = {
       routeOverride?: "local" | "claude";
       modelOverride?: string;
       regenerate?: boolean;
+      thinking?: boolean;
     }
   ): Promise<void> => {
     const channel = new Channel<StreamEvent>();
@@ -138,6 +141,7 @@ export const api = {
       routeOverride: opts?.routeOverride ?? null,
       modelOverride: opts?.modelOverride ?? null,
       regenerate: opts?.regenerate ?? false,
+      thinking: opts?.thinking ?? false,
     });
   },
   listConversations: () => invoke<ConversationMeta[]>("list_conversations"),
