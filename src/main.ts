@@ -545,10 +545,15 @@ app.innerHTML = `
         <fieldset>
           <legend>${t("Otimizar o Ollama (servidor)")}</legend>
           <p class="wiz-hint">${t("Acelera o Ollama e poupa VRAM (flash attention + cache KV menor — permite contexto maior na tua GPU). Define no servidor do Ollama e reinicia-o.")}</p>
-          <pre class="opt-cmds" id="opt-cmds"></pre>
           <div class="opt-actions">
-            <button type="button" class="primary" id="opt-apply" hidden>${t("Otimizar")}</button>
-            <button type="button" class="ghost" id="opt-copy">${t("Copiar comandos")}</button>
+            <div class="split-btn" id="opt-split" hidden>
+              <button type="button" class="primary" id="opt-apply">${t("Otimizar")}</button>
+              <button type="button" class="primary split-caret" id="opt-more" title="${t("Mais opções")}" aria-label="${t("Mais opções")}" aria-haspopup="true">${icon("chevron")}</button>
+              <div class="split-menu" id="opt-menu" hidden>
+                <button type="button" id="opt-copy">${t("Copiar comandos")}</button>
+              </div>
+            </div>
+            <button type="button" class="ghost" id="opt-copy-plain" hidden>${t("Copiar comandos")}</button>
           </div>
         </fieldset>
 
@@ -4005,7 +4010,6 @@ async function openModels() {
   applyHubProviderFields();
   renderQuickPicks();
   void renderInstalled();
-  renderOptCommands();
   showView("models");
   void renderHubStatus();
   void renderRecommendation();
@@ -4561,11 +4565,6 @@ function ollamaOptCommands(): string {
   ].join("\n");
 }
 
-function renderOptCommands() {
-  const el = document.querySelector("#opt-cmds");
-  if (el) el.textContent = ollamaOptCommands();
-}
-
 // ---- Aviso de recursos ao instalar (não bloqueia) ----
 let sysInfoCache: import("./api").SystemInfo | null = null;
 async function getSysInfo() {
@@ -4730,14 +4729,15 @@ function wireWorkspaceUi() {
     const auto = (e.target as HTMLInputElement).checked;
     document.querySelector("#hub-temp-wrap")!.toggleAttribute("hidden", auto);
   });
-  document.querySelector("#opt-copy")!.addEventListener("click", () => {
+  const copyOptCmds = () => {
     navigator.clipboard?.writeText(ollamaOptCommands());
     showHint(t("Comandos copiados."));
-  });
-  // Botão "Otimizar" (aplica + reinicia o Ollama) só no Windows; nos outros, fica o Copiar.
-  const optApply = document.querySelector<HTMLButtonElement>("#opt-apply");
-  if (optApply && /Windows/i.test(navigator.userAgent)) {
-    optApply.hidden = false;
+  };
+  document.querySelector("#opt-copy")!.addEventListener("click", copyOptCmds);
+  if (/Windows/i.test(navigator.userAgent)) {
+    // Windows: split button — "Otimizar" + caret (▼) com "Copiar comandos".
+    document.querySelector("#opt-split")!.removeAttribute("hidden");
+    const optApply = document.querySelector<HTMLButtonElement>("#opt-apply")!;
     optApply.addEventListener("click", async () => {
       optApply.disabled = true;
       const label = optApply.textContent;
@@ -4746,8 +4746,8 @@ function wireWorkspaceUi() {
         const restarted = await api.optimizeOllama();
         showHint(
           restarted
-            ? t("Otimizações aplicadas e Ollama reiniciado. ✓")
-            : t("Otimizações aplicadas. Fecha e reabre o Ollama (tray) para terem efeito.")
+            ? t("Otimizações aplicadas e Ollama reiniciado em segundo plano. ✓")
+            : t("Otimizações aplicadas. Fecha e reabre o Ollama para terem efeito.")
         );
       } catch (e) {
         showHint(t("Não foi possível otimizar: ") + String(e));
@@ -4756,6 +4756,17 @@ function wireWorkspaceUi() {
         optApply.textContent = label;
       }
     });
+    const menu = document.querySelector<HTMLElement>("#opt-menu")!;
+    document.querySelector("#opt-more")!.addEventListener("click", (e) => {
+      e.stopPropagation();
+      menu.toggleAttribute("hidden");
+    });
+    document.addEventListener("click", () => menu.setAttribute("hidden", ""));
+  } else {
+    // Outros SO: só o "Copiar comandos" (não dá para reiniciar o Ollama de forma fiável).
+    const plain = document.querySelector<HTMLButtonElement>("#opt-copy-plain")!;
+    plain.removeAttribute("hidden");
+    plain.addEventListener("click", copyOptCmds);
   }
 
   document.querySelectorAll<HTMLButtonElement>(".rail-btn").forEach((b) =>

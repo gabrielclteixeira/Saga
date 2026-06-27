@@ -540,10 +540,12 @@ const EN: Record<string, string> = {
   "Sem modelos. Instala um acima.": "No models. Install one above.",
   "Usar como modelo de visão": "Use as vision model",
   "Otimizar": "Optimize",
+  "Mais opções": "More options",
   "A otimizar…": "Optimizing…",
-  "Otimizações aplicadas e Ollama reiniciado. ✓": "Optimizations applied and Ollama restarted. ✓",
-  "Otimizações aplicadas. Fecha e reabre o Ollama (tray) para terem efeito.":
-    "Optimizations applied. Quit and reopen Ollama (tray) for them to take effect.",
+  "Otimizações aplicadas e Ollama reiniciado em segundo plano. ✓":
+    "Optimizations applied and Ollama restarted in the background. ✓",
+  "Otimizações aplicadas. Fecha e reabre o Ollama para terem efeito.":
+    "Optimizations applied. Quit and reopen Ollama for them to take effect.",
   "Não foi possível otimizar: ": "Couldn't optimize: ",
   "Nenhum dos modelos instalados lê imagens. Instala um modelo com visão (ex.: gemma4) para poderes anexar imagens.":
     "None of the installed models can read images. Install a model with vision (e.g. gemma4) to attach images.",
