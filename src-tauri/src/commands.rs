@@ -611,6 +611,16 @@ pub async fn search_ollama_registry(
         .map_err(|e| e.to_string())
 }
 
+/// Todas as variantes (tags) de um modelo do ollama.com, com tamanho/contexto.
+#[tauri::command]
+pub async fn ollama_registry_tags(
+    model: String,
+) -> Result<Vec<crate::ollama_registry::RegistryTag>, String> {
+    crate::ollama_registry::fetch_tags(&model)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Lista modelos locais com metadados (para o hub "Modelos").
 #[tauri::command]
 pub async fn list_ollama_models_detailed(

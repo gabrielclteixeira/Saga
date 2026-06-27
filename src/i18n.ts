@@ -376,6 +376,10 @@ const EN: Record<string, string> = {
   "Tamanhos": "Sizes",
   "Clica num tamanho para instalar:": "Click a size to install:",
   "Usar id": "Use id",
+  "Todas as variantes": "All variants",
+  "A carregar…": "Loading…",
+  "Sem variantes.": "No variants.",
+  "Não foi possível obter as variantes.": "Couldn't load variants.",
   "Pesquisa o catálogo do LM Studio (lmstudio.ai) ou instala por id abaixo.":
     "Search the LM Studio catalog (lmstudio.ai), or install by id below.",
   "Abre a página para confirmar o id; “Usar id” preenche o campo de instalação abaixo.":

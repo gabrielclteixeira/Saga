@@ -107,6 +107,12 @@ export interface RegistryModel {
   updated: string;
 }
 
+export interface RegistryTag {
+  name: string; // nome completo, ex.: "gemma4:26b-a4b-it-qat"
+  size: string; // ex.: "16GB" (vazio para tags cloud)
+  context: string; // ex.: "256K"
+}
+
 export interface LmModel {
   id: string;
   kind: string;
@@ -230,6 +236,8 @@ export const api = {
     invoke<OllamaModel[]>("list_ollama_models_detailed"),
   searchOllamaRegistry: (query: string) =>
     invoke<RegistryModel[]>("search_ollama_registry", { query }),
+  ollamaRegistryTags: (model: string) =>
+    invoke<RegistryTag[]>("ollama_registry_tags", { model }),
   lmstudioList: () => invoke<LmModel[]>("lmstudio_list"),
   lmstudioSearch: (query: string) =>
     invoke<LmCatalogModel[]>("lmstudio_search", { query }),

@@ -3598,6 +3598,45 @@ function wireModelCards(box: HTMLElement) {
   box
     .querySelectorAll<HTMLButtonElement>("[data-pull]")
     .forEach((b) => b.addEventListener("click", () => pullModelUi(b.dataset.pull!)));
+  // "Todas as variantes": lazy-fetch da lista completa de tags (com tamanhos), cache por cartão.
+  box.querySelectorAll<HTMLButtonElement>("[data-all-tags]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const model = b.dataset.allTags!;
+      const list = b.closest(".reg-card")?.querySelector<HTMLElement>(".reg-tag-list");
+      if (!list) return;
+      if (list.dataset.loaded === "1") {
+        list.toggleAttribute("hidden");
+        b.classList.toggle("open", !list.hasAttribute("hidden"));
+        return;
+      }
+      list.hidden = false;
+      b.classList.add("open");
+      list.innerHTML = `<div class="reg-loading">${t("A carregar…")}</div>`;
+      try {
+        const tags = await api.ollamaRegistryTags(model);
+        if (!tags.length) {
+          list.innerHTML = `<div class="empty-sm">${t("Sem variantes.")}</div>`;
+          return;
+        }
+        list.innerHTML = tags
+          .map((tg) => {
+            const meta = [tg.size || "—", tg.context].filter(Boolean).join(" · ");
+            return `<div class="reg-tag-row">
+              <span class="reg-tag-name">${escapeHtml(tg.name)}</span>
+              <span class="reg-tag-meta">${escapeHtml(meta)}</span>
+              <button type="button" class="size-pill" data-pull="${escapeHtml(tg.name)}">${icon("download")}<span>${t("Instalar")}</span></button>
+            </div>`;
+          })
+          .join("");
+        list.dataset.loaded = "1";
+        list
+          .querySelectorAll<HTMLButtonElement>("[data-pull]")
+          .forEach((p) => p.addEventListener("click", () => pullModelUi(p.dataset.pull!)));
+      } catch {
+        list.innerHTML = `<div class="empty-sm">${t("Não foi possível obter as variantes.")}</div>`;
+      }
+    })
+  );
 }
 
 /** Cartão de modelo do ollama.com (estilo navegador): nome + caps, descrição, métricas e tamanhos. */
@@ -3625,6 +3664,8 @@ function ollamaCard(m: RegistryModel): string {
     <div class="reg-card-sizes" hidden>
       <div class="reg-sizes-label">${t("Clica num tamanho para instalar:")}</div>
       <div class="reg-sizes">${pills}</div>
+      <button type="button" class="reg-all-btn" data-all-tags="${escapeHtml(m.name)}">${t("Todas as variantes")}</button>
+      <div class="reg-tag-list" hidden></div>
     </div>
   </div>`;
 }

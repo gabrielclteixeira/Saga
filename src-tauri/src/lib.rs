@@ -115,6 +115,7 @@ pub fn run() {
             commands::list_ollama_models,
             commands::system_info,
             commands::search_ollama_registry,
+            commands::ollama_registry_tags,
             commands::lmstudio_list,
             commands::lmstudio_search,
             commands::lmstudio_download,

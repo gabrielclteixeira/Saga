@@ -2321,6 +2321,59 @@ dialog::backdrop {
   flex-wrap: wrap;
   gap: 6px;
 }
+/* "Todas as variantes" — toggle + lista completa de tags (com tamanhos) */
+.reg-all-btn {
+  margin-top: 10px;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.reg-all-btn::before {
+  content: "▸ ";
+}
+.reg-all-btn.open::before {
+  content: "▾ ";
+}
+.reg-tag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.reg-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.reg-tag-name {
+  font-size: 12.5px;
+  font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+  word-break: break-all;
+  min-width: 0;
+  flex: 1;
+}
+.reg-tag-meta {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.reg-tag-row .size-pill {
+  padding: 4px 9px;
+}
 /* Pill de instalação (download) — usado em cartões de pesquisa e no catálogo */
 .size-pill {
   display: inline-flex;
