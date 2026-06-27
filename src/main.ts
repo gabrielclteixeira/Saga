@@ -107,6 +107,8 @@ const ICON_PATHS: Record<string, string> = {
   escalate: `<line x1="7" y1="17" x2="17" y2="7"/><polyline points="8 7 17 7 17 16"/>`,
   pencil: `<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>`,
   doc: `<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/>`,
+  play: `<polygon points="6 4 20 12 6 20 6 4"/>`,
+  sparkles: `<path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7z"/><path d="M18 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>`,
 };
 function icon(name: string): string {
   const p = ICON_PATHS[name];
@@ -264,7 +266,7 @@ app.innerHTML = `
         <div class="ws-list" id="ws-list"></div>
         <div class="ws-editor" id="ws-editor" hidden>
           <div class="ws-gen">
-            <label>${t("✨ Gerar com IA — descreve o que queres")}
+            <label>${icon("sparkles")} ${t("Gerar com IA — descreve o que queres")}
               <textarea id="ws-gen-prompt" rows="2" placeholder="${t("ex.: uma skill que resume páginas web")}"></textarea>
             </label>
             <button type="button" class="ghost" id="ws-gen-btn">${t("Gerar")}</button>
@@ -653,7 +655,7 @@ function renderMessages() {
       det.className = "thinking-block";
       det.open = index === state.items.length - 1 && state.busy;
       const sum = document.createElement("summary");
-      sum.textContent = t("🧠 raciocínio");
+      sum.innerHTML = `${icon("brain")}<span>${escapeHtml(t("raciocínio"))}</span>`;
       const body = document.createElement("div");
       body.className = "thinking-body";
       body.textContent = item.thinking;
@@ -721,9 +723,10 @@ function renderMessages() {
         }
         blocks.forEach((b, i) => {
           const btn = document.createElement("button");
-          btn.textContent =
-            `📄 ${t(KIND_LABEL[b.kind])}${blocks.length > 1 ? " " + (i + 1) : ""}` +
+          const label =
+            `${t(KIND_LABEL[b.kind])}${blocks.length > 1 ? " " + (i + 1) : ""}` +
             (b.lang ? " · " + b.lang : "");
+          btn.innerHTML = `${icon("doc")}<span>${escapeHtml(label)}</span>`;
           btn.addEventListener("click", () => openArtifact(b));
           arow.appendChild(btn);
         });
@@ -2143,7 +2146,7 @@ async function renderWorkspaceList() {
     <div class="ws-item">
       <div class="ws-item-main"><strong>${escapeHtml(it.name)}</strong><span>${escapeHtml(it.description)}</span></div>
       <div class="ws-item-actions">
-        ${wsKind === "workflow" ? `<button type="button" class="ghost" data-run="${escapeHtml(it.name)}">${t("▶ Correr")}</button>` : ""}
+        ${wsKind === "workflow" ? `<button type="button" class="ghost" data-run="${escapeHtml(it.name)}">${icon("play")}<span>${t("Correr")}</span></button>` : ""}
         <button type="button" class="ghost" data-edit="${escapeHtml(it.name)}">${t("Editar")}</button>
         <button type="button" class="ghost" data-del="${escapeHtml(it.name)}">✕</button>
       </div>
@@ -2839,7 +2842,7 @@ async function renderRecommendation() {
     machine +
     `<div class="hub-rec-sub">${t("Escolhe pela memória da tua placa gráfica (VRAM) — ou pela RAM se não tiveres GPU:")}</div>` +
     tiers +
-    `<div class="rec-tip">${t("🛠 faz pesquisa web · 🧠 raciocínio (não pesquisa) · 👁 lê imagens. Para o 🔎 funcionar, escolhe um modelo 🛠.")}</div>`;
+    `<div class="rec-tip">${icon("tool")} ${t("faz pesquisa web")} · ${icon("brain")} ${t("raciocínio (não pesquisa)")} · ${icon("eye")} ${t("lê imagens")}. ${t("Para pesquisar, escolhe um modelo com ferramentas.")}</div>`;
   box.querySelectorAll<HTMLButtonElement>(".rec-use").forEach((b) =>
     b.addEventListener("click", () => {
       const m = b.dataset.model!;
@@ -3288,7 +3291,7 @@ function renderQuickPicks() {
   const box = document.querySelector<HTMLDivElement>("#hub-quickpicks")!;
   box.innerHTML =
     `<div class="catalog-title">${t("Catálogo — clica para descarregar")}</div>` +
-    `<div class="catalog-legend">${t("🛠 ferramentas/web · 👁 visão · 🧠 raciocínio")}</div>` +
+    `<div class="catalog-legend">${icon("tool")} ${t("ferramentas/web")} · ${icon("eye")} ${t("visão")} · ${icon("brain")} ${t("raciocínio")}</div>` +
     MODEL_CATALOG.map(
       (g) =>
         `<div class="catalog-group">${escapeHtml(t(g.group))}</div><div class="quickpicks">` +
