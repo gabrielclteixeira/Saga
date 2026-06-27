@@ -665,6 +665,17 @@ function fmtInt(n: number): string {
 }
 
 function renderMessages() {
+  try {
+    renderMessagesInner();
+  } catch (e) {
+    // Regista falhas de render (ex.: markdown/imagem) no log — senão passam despercebidas.
+    void api
+      .logFrontend("error", `renderMessages: ${(e as Error)?.stack ?? String(e)}`)
+      .catch(() => {});
+  }
+}
+
+function renderMessagesInner() {
   // Só "cola" ao fundo se o utilizador já lá estava (senão respeita onde ele leu).
   const stick = isChatNearBottom();
   els.messages.innerHTML = "";
@@ -1567,8 +1578,17 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   } catch (e) {
     assistant.content = String(e);
     assistant.error = true;
+    void api.logFrontend("warn", `stream erro: ${String(e)}`).catch(() => {});
   } finally {
     setBusy(false);
+    // Breadcrumb: última ação antes de um eventual crash do renderer (render pesado com imagem).
+    const hasImg = state.items.some((i) => i.attachments && i.attachments.length);
+    void api
+      .logFrontend(
+        "info",
+        `turn done: a renderizar ${state.items.length} msgs (img=${hasImg}, content=${assistant.content.length}c, thinking=${(assistant.thinking ?? "").length}c)`
+      )
+      .catch(() => {});
     renderMessages();
     loadConversations(); // atualiza título/ordem na sidebar
     try {

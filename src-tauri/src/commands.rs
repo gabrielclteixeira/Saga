@@ -980,9 +980,10 @@ pub async fn send_message_stream(
                 temperature: settings.ollama_temp_opt(),
             };
             // Corre o loop de ferramentas (pesquisa web) quando a Pesquisa web local está
-            // sempre-ligada OU quando o 🔎/agente pediu pesquisa neste pedido — exceto se há
-            // imagens (aí vai direto à visão, sem tools).
-            if (settings.local_web_search || research) && !prepared.has_images {
+            // sempre-ligada OU quando o 🔎/agente pediu pesquisa. Funciona mesmo com imagens no
+            // histórico — o web_agent passa as imagens (modelos com visão veem-nas E pesquisam).
+            // Sem pesquisa pedida, segue para o caminho de visão direta (chat_stream) abaixo.
+            if settings.local_web_search || research {
                 let tx_t = channel.clone();
                 // Conta as pesquisas web feitas neste pedido (para o medidor de uso mensal).
                 let searches = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
