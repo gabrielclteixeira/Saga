@@ -1996,6 +1996,11 @@ dialog::backdrop {
   align-items: center;
   gap: 8px;
 }
+.settings .field-hint {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
 .settings input[type="text"],
 .settings input[type="password"],
 .settings input[type="number"],

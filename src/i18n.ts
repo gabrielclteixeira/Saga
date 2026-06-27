@@ -536,6 +536,9 @@ const EN: Record<string, string> = {
   "Texto extraído": "Extracted text",
   "Ver PDF": "View PDF",
   "Ver documento": "View document",
+  "— Nenhum —": "— None —",
+  "Usado quando o modelo ativo não vê imagens. Escolhe um dos modelos de visão instalados abaixo.":
+    "Used when the active model can't see images. Pick one of the installed vision models below.",
   "+ Ficheiro": "+ File",
   "documento": "document",
   "Tipo de ficheiro não suportado: {name}": "Unsupported file type: {name}",

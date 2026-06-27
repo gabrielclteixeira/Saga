@@ -442,7 +442,8 @@ app.innerHTML = `
         </label>
         <div class="field-group" id="hub-ollama-fields">
           <label>${t("Endpoint")} <input id="hub-ollama-endpoint" type="text" placeholder="http://localhost:11434" /></label>
-          <label>${t("Modelo de visão (imagens)")} <input id="hub-vision" type="text" list="ollama-models" /></label>
+          <label>${t("Modelo de visão (imagens)")} <select id="hub-vision"></select></label>
+          <div class="field-hint">${t("Usado quando o modelo ativo não vê imagens. Escolhe um dos modelos de visão instalados abaixo.")}</div>
         </div>
         <div class="field-group" id="hub-openai-local-fields" hidden>
           <label>${t("Endpoint")} <input id="hub-oai-local-endpoint" type="text" placeholder="http://localhost:1234/v1" /></label>
@@ -4033,7 +4034,7 @@ async function renderRecommendation(targetSel = "#hub-rec") {
 function hubLoad(s: Settings) {
   hubSel("#hub-local-provider").value = s.local_provider;
   hubIn("#hub-ollama-endpoint").value = s.ollama_endpoint;
-  hubIn("#hub-vision").value = s.ollama_vision_model;
+  // #hub-vision é um <select> populado por renderInstalled() (modelos de visão instalados).
   hubIn("#hub-oai-local-endpoint").value = s.openai_local_endpoint;
   hubIn("#hub-oai-local-key").value = s.openai_local_key;
   hubIn("#hub-oai-local-model").value = s.openai_local_model;
@@ -4223,6 +4224,7 @@ async function renderInstalled() {
   }
   // alimenta o datalist partilhado (#ollama-models) para os campos com sugestões
   els.modelsList.innerHTML = models.map((m) => `<option value="${escapeHtml(m.name)}"></option>`).join("");
+  populateVisionSelect(models);
   if (models.length === 0) {
     list.innerHTML = `<div class="empty-sm">${t("Sem modelos. Puxa um abaixo.")}</div>`;
     return;
@@ -4249,6 +4251,22 @@ async function renderInstalled() {
   list
     .querySelectorAll<HTMLButtonElement>("[data-del]")
     .forEach((b) => b.addEventListener("click", () => deleteModelUi(b.dataset.del!)));
+}
+
+/** Popula o seletor de modelo de visão com os modelos de visão instalados (+ "nenhum").
+ *  Preserva o valor atual mesmo que não esteja instalado, para não perder a definição. */
+function populateVisionSelect(models: OllamaModel[]) {
+  const sel = document.querySelector<HTMLSelectElement>("#hub-vision");
+  if (!sel) return;
+  const current = state.settings?.ollama_vision_model?.trim() ?? "";
+  const names = [...new Set(models.filter((m) => modelCapabilities(m.name).vision).map((m) => m.name))];
+  if (current && !names.includes(current)) names.unshift(current); // não perde a definição atual
+  sel.innerHTML =
+    `<option value="">${t("— Nenhum —")}</option>` +
+    names.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
+  sel.value = current;
+  // Auto-guarda à mudança (consistente com o "Ativar" dos modelos — sem botão Guardar à parte).
+  sel.onchange = () => void saveModelsSettings({ ollama_vision_model: sel.value });
 }
 
 async function setActiveModel(name: string) {
