@@ -466,6 +466,7 @@ app.innerHTML = `
         <div class="pull-status" id="hub-pull-status"></div>
 
         <div class="hub-subtitle">${t("Instalados")}</div>
+        <div class="hub-vision-warn" id="hub-vision-warn" hidden>${icon("eye")}<span>${t("Nenhum dos modelos instalados lê imagens. Instala um modelo com visão (ex.: gemma4) para poderes anexar imagens.")}</span></div>
         <div class="models-list" id="hub-installed"></div>
       </fieldset>
 
@@ -4234,6 +4235,9 @@ async function renderInstalled() {
   }
   // alimenta o datalist partilhado (#ollama-models) para os campos com sugestões
   els.modelsList.innerHTML = models.map((m) => `<option value="${escapeHtml(m.name)}"></option>`).join("");
+  // Aviso: nenhum modelo instalado lê imagens → não dá para anexar imagens com nenhum.
+  const anyVision = models.some((m) => modelCapabilities(m.name).vision);
+  document.querySelector("#hub-vision-warn")?.toggleAttribute("hidden", models.length === 0 || anyVision);
   if (models.length === 0) {
     list.innerHTML = `<div class="empty-sm">${t("Sem modelos. Instala um acima.")}</div>`;
     return;

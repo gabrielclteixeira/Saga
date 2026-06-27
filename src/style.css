@@ -2467,6 +2467,30 @@ dialog::backdrop {
   width: 16px;
   height: 16px;
 }
+/* Aviso quando nenhum modelo instalado lê imagens */
+.hub-vision-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px 11px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+  background: color-mix(in srgb, var(--claude) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--claude) 45%, transparent);
+  border-radius: 8px;
+}
+.hub-vision-warn[hidden] {
+  display: none;
+}
+.hub-vision-warn .ic {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--claude);
+}
 /* Secção "Avançado" colapsável no hub Modelos. */
 .hub-advanced {
   border: 1px solid var(--border);

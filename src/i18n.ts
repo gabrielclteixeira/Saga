@@ -539,6 +539,8 @@ const EN: Record<string, string> = {
   "— Nenhum —": "— None —",
   "Sem modelos. Instala um acima.": "No models. Install one above.",
   "Usar como modelo de visão": "Use as vision model",
+  "Nenhum dos modelos instalados lê imagens. Instala um modelo com visão (ex.: gemma4) para poderes anexar imagens.":
+    "None of the installed models can read images. Install a model with vision (e.g. gemma4) to attach images.",
   "Modelo de visão atual (clica para remover)": "Current vision model (click to remove)",
   "O modelo de visão não carregou no Ollama. Escolhe outro em Modelos → Modelo de visão (ex.: gemma4).":
     "The vision model failed to load in Ollama. Pick another in Models → Vision model (e.g. gemma4).",
