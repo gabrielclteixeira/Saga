@@ -1503,6 +1503,16 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     if (stick) els.messages.scrollTop = els.messages.scrollHeight;
     else updateScrollBtn();
   };
+  // Atualiza só o texto do bloco de raciocínio (NÃO re-renderiza tudo — modelos que pensam
+  // emitem centenas de fragmentos; um renderMessages() por fragmento congelava a UI).
+  const paintThinking = () => {
+    const stick = isChatNearBottom();
+    const body = els.messages.lastElementChild?.querySelector(
+      ".thinking-block .thinking-body"
+    ) as HTMLElement | null;
+    if (body) body.textContent = assistant.thinking ?? "";
+    if (stick) els.messages.scrollTop = els.messages.scrollHeight;
+  };
 
   let start: { route: "local" | "claude"; model: string; reason: string } | null = null;
 
@@ -1517,8 +1527,11 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
           assistant.content += evt.text;
           paintBubble();
         } else if (evt.kind === "Thinking") {
+          const firstChunk = !assistant.thinking;
           assistant.thinking = (assistant.thinking ?? "") + evt.text;
-          renderMessages();
+          // 1.º fragmento → cria o bloco (1 render); seguintes → atualização incremental barata.
+          if (firstChunk) renderMessages();
+          else paintThinking();
         } else if (evt.kind === "ToolStep") {
           assistant.steps = assistant.steps ?? [];
           assistant.steps.push(formatToolStep(evt.tool, evt.detail));
