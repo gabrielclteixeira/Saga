@@ -165,6 +165,7 @@ export interface ChatResponse {
   tokens_saved: number;
   cost_usd: number;
   reason: string;
+  gen_ms?: number;
   accounting: Accounting;
 }
 
@@ -203,6 +204,7 @@ export interface StoredMessage {
   output_tokens: number;
   cost_usd: number;
   tokens_saved: number;
+  gen_ms: number;
 }
 
 export type PullEvent =
@@ -222,6 +224,7 @@ export type StreamEvent =
       output_tokens: number;
       tokens_saved: number;
       cost_usd: number;
+      gen_ms: number;
       accounting: Accounting;
     };
 

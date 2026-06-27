@@ -123,6 +123,7 @@ pub enum StreamEvent {
         output_tokens: u64,
         tokens_saved: u64,
         cost_usd: f64,
+        gen_ms: i64,
         accounting: Accounting,
     },
 }
@@ -1080,6 +1081,7 @@ pub async fn send_message_stream(
         });
     };
 
+    let gen_start = std::time::Instant::now();
     let response = match prepared.route {
         router::Route::Local if local_openai => {
             providers::openai_compat::chat_stream(
@@ -1348,6 +1350,7 @@ pub async fn send_message_stream(
         }
     }
     .map_err(|e| e.to_string())?;
+    let gen_ms = gen_start.elapsed().as_millis() as i64;
 
     // Pesquisa numa só passagem (sem subagentes): acrescenta as fontes capturadas.
     let mut response = response;
@@ -1402,10 +1405,10 @@ pub async fn send_message_stream(
         0.0
     };
 
-    // Persistir a resposta do assistente.
+    // Persistir a resposta do assistente (+ tempo de geração).
     {
         let conn = state.db.lock().unwrap();
-        let _ = store::append_message(
+        if let Ok(mid) = store::append_message(
             &conn,
             conversation_id,
             "assistant",
@@ -1417,7 +1420,9 @@ pub async fn send_message_stream(
             response.output_tokens as i64,
             cost,
             prepared.tokens_saved as i64,
-        );
+        ) {
+            let _ = store::set_message_gen_ms(&conn, mid, gen_ms);
+        }
     }
 
     let _ = channel.send(StreamEvent::Done {
@@ -1425,6 +1430,7 @@ pub async fn send_message_stream(
         output_tokens: response.output_tokens,
         tokens_saved: prepared.tokens_saved,
         cost_usd: cost,
+        gen_ms,
         accounting: snapshot,
     });
 

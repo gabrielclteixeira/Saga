@@ -1014,6 +1014,7 @@ function renderMessagesInner() {
         `<span>${escapeHtml(m.model)}</span>`,
         `<span>${fmtInt(m.input_tokens)}↓ / ${fmtInt(m.output_tokens)}↑ tok</span>`,
       ];
+      if (m.gen_ms && m.gen_ms > 0) bits.push(`<span>${fmtDuration(m.gen_ms)}</span>`);
       if (m.route === "claude") {
         bits.push(`<span>${fmtUsd(m.cost_usd)}</span>`);
         if (m.tokens_saved > 0)
@@ -1778,6 +1779,7 @@ function storedToItem(m: StoredMessage): Item {
         tokens_saved: m.tokens_saved,
         cost_usd: m.cost_usd,
         reason: "",
+        gen_ms: m.gen_ms,
         accounting: {} as Accounting,
       },
     };
@@ -1969,6 +1971,15 @@ function fmtElapsed(ms: number): string {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}`;
 }
 
+/** Duração de geração para o rodapé da mensagem (1 casa decimal abaixo de 10s). */
+function fmtDuration(ms: number): string {
+  if (ms < 60000) {
+    const s = ms / 1000;
+    return `${s.toFixed(s < 10 ? 1 : 0)}s`;
+  }
+  return fmtElapsed(ms);
+}
+
 /** Atualiza a mensagem + contador da bolha de espera; pára-se sozinho quando esta desaparece. */
 function paintWait() {
   const row = els.messages.lastElementChild?.querySelector(".waiting-row");
@@ -2110,6 +2121,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
             tokens_saved: evt.tokens_saved,
             cost_usd: evt.cost_usd,
             reason: start?.reason ?? "",
+            gen_ms: evt.gen_ms,
             accounting: evt.accounting,
           };
         }

@@ -27,6 +27,8 @@ pub struct StoredMessage {
     pub output_tokens: i64,
     pub cost_usd: f64,
     pub tokens_saved: i64,
+    /// Tempo de geração da resposta (ms). 0 = desconhecido (ex.: mensagens do utilizador).
+    pub gen_ms: i64,
 }
 
 /// Abre (ou cria) a base de dados em `<config>/saga/saga.db` e garante o schema.
@@ -110,6 +112,12 @@ fn init(conn: &Connection) -> Result<()> {
         [],
     )
     .ok();
+    // Migração: tempo de geração por mensagem (ms).
+    conn.execute(
+        "ALTER TABLE messages ADD COLUMN gen_ms INTEGER NOT NULL DEFAULT 0",
+        [],
+    )
+    .ok();
     // Backfill único do índice de pesquisa, se ainda estiver vazio.
     let fts_count: i64 = conn
         .query_row("SELECT count(*) FROM messages_fts", [], |r| r.get(0))
@@ -186,7 +194,7 @@ pub fn list_conversations(conn: &Connection) -> Result<Vec<ConversationMeta>> {
 
 pub fn get_messages(conn: &Connection, conversation_id: i64) -> Result<Vec<StoredMessage>> {
     let mut stmt = conn.prepare(
-        "SELECT id, role, content, attachments_json, route, model, input_tokens, output_tokens, cost_usd, tokens_saved
+        "SELECT id, role, content, attachments_json, route, model, input_tokens, output_tokens, cost_usd, tokens_saved, gen_ms
          FROM messages WHERE conversation_id = ?1 ORDER BY id ASC",
     )?;
     let rows = stmt.query_map(params![conversation_id], |r| {
@@ -201,6 +209,7 @@ pub fn get_messages(conn: &Connection, conversation_id: i64) -> Result<Vec<Store
             output_tokens: r.get(7)?,
             cost_usd: r.get(8)?,
             tokens_saved: r.get(9)?,
+            gen_ms: r.get(10)?,
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -242,6 +251,15 @@ pub fn append_message(
         params![conversation_id],
     )?;
     Ok(message_id)
+}
+
+/// Regista o tempo de geração (ms) de uma mensagem já inserida.
+pub fn set_message_gen_ms(conn: &Connection, message_id: i64, gen_ms: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE messages SET gen_ms = ?1 WHERE id = ?2",
+        params![gen_ms, message_id],
+    )?;
+    Ok(())
 }
 
 /// Mantém as primeiras `keep` mensagens da conversa e apaga as restantes
