@@ -1904,7 +1904,7 @@ function stopWaitTicker() {
 // Pré-aquecimento do modelo local: carrega-o em VRAM antes do 1.º envio para a resposta
 // não ter de esperar pelo cold-start. Throttle por modelo (o keep_alive mantém-no residente).
 let lastWarm = { model: "", at: 0 };
-function warmLocalModel(model?: string) {
+function warmLocalModel(model?: string, force = false) {
   if (state.busy) return; // já está a gerar (modelo carregado)
   if (state.routeMode === "claude") return; // só faz sentido para o modelo local
   const s = state.settings;
@@ -1912,7 +1912,9 @@ function warmLocalModel(model?: string) {
   const m = model || s.ollama_model;
   if (!m) return;
   const now = Date.now();
-  if (m === lastWarm.model && now - lastWarm.at < 60_000) return; // no máx. 1×/min por modelo
+  // `force` ignora o throttle (ex.: acabou de instalar → queremos aquecer já, mesmo que
+  // uma tentativa anterior — falhada por o modelo ainda não existir — tenha marcado o tempo).
+  if (!force && m === lastWarm.model && now - lastWarm.at < 60_000) return; // no máx. 1×/min
   lastWarm = { model: m, at: now };
   void api.warmModel(m).catch(() => {});
 }
@@ -4505,6 +4507,8 @@ async function pullModelUi(name: string, sizeStr?: string) {
         label.textContent = `✓ ${name} ${t("descarregado")}`;
         void renderInstalled();
         void renderHubStatus();
+        // Acabou de instalar: se for o modelo ativo, aquece-o já (1.ª conversa sem cold-start).
+        if (name === state.settings?.ollama_model) warmLocalModel(name, true);
         hideSoon(2500);
       } else {
         label.textContent = "✗ " + ev.message;
