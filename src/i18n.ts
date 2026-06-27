@@ -466,6 +466,12 @@ const EN: Record<string, string> = {
     "🔎 will use Claude. To search with the local model, enable Web search in Models → Advanced.",
   "🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1.":
     "🔎 may not search: '{m}' can't call tools — use qwen3/llama3.1.",
+  "🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3 ou llama3.1.":
+    "🔎 may not search: '{m}' can't call tools — use qwen3 or llama3.1.",
+  "🔎 o Gemma chama ferramentas de forma inconsistente — pode responder sem pesquisar. Para pesquisa fiável, usa qwen3 ou llama3.1.":
+    "🔎 Gemma calls tools inconsistently — it may answer without searching. For reliable search, use qwen3 or llama3.1.",
+  "🔎 sem fontes: o modelo respondeu sem pesquisar (modelos médios nem sempre chamam ferramentas). Para pesquisa fiável, usa qwen3/llama3.1 ou adiciona uma chave de motor.":
+    "🔎 no sources: the model answered without searching (mid-size models don't always call tools). For reliable search, use qwen3/llama3.1 or add an engine key.",
   "🔎 não pesquisa com o LM Studio — usa o Ollama ou ativa o Claude.":
     "🔎 can't search with LM Studio — use Ollama or enable Claude.",
   "🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1/gemma4.":

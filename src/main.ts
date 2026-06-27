@@ -1555,6 +1555,18 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
       /* ignora */
     }
   }
+  // Pediste pesquisa mas a resposta local não traz fontes → o modelo não chamou a ferramenta
+  // (ou a pesquisa veio vazia). Diz porquê, em vez de deixar parecer que pesquisou.
+  if (
+    sendOpts.research &&
+    !assistant.error &&
+    (assistant.meta?.route ?? "local") === "local" &&
+    parseSources(assistant.content).sources.length === 0
+  ) {
+    showHint(
+      t("🔎 sem fontes: o modelo respondeu sem pesquisar (modelos médios nem sempre chamam ferramentas). Para pesquisa fiável, usa qwen3/llama3.1 ou adiciona uma chave de motor.")
+    );
+  }
 }
 
 // ---- Menu "/" (comandos + definições) ----
@@ -2045,7 +2057,13 @@ function maybeWarnSearch() {
     return;
   }
   if (!modelHasTools(s.ollama_model)) {
-    showHint(t("🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1/gemma4.", { m: s.ollama_model }));
+    showHint(t("🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3 ou llama3.1.", { m: s.ollama_model }));
+    return;
+  }
+  // Gemma tem "tools" mas chama-as de forma inconsistente no Ollama (costuma responder de
+  // memória). Avisa proativamente — os mais fiáveis a pesquisar são o qwen3 e o llama3.1.
+  if (/gemma/.test(s.ollama_model.toLowerCase())) {
+    showHint(t("🔎 o Gemma chama ferramentas de forma inconsistente — pode responder sem pesquisar. Para pesquisa fiável, usa qwen3 ou llama3.1."));
     return;
   }
   // DuckDuckGo é keyless e funciona (com limites de ritmo) → sem aviso.
