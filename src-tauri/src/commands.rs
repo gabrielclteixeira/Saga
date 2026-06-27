@@ -20,6 +20,27 @@ use crate::tools::browser::PlaywrightSidecar;
 use crate::tools::dispatch::{ActionGate, ApprovalFut, Approver, ConfirmMode, Dispatcher};
 use crate::{agent, memory, providers};
 
+/// Calcula a janela de contexto efetiva para um pedido local.
+///
+/// No Ollama, `num_ctx` é a janela TOTAL (prompt + resposta). Com um prompt grande
+/// (ex.: um PDF anexado), a janela fixa enche-se e quase não sobra espaço para a
+/// resposta — o modelo pára a meio. Aqui subimos a janela para caber o prompt + uma
+/// folga para a resposta, arredondando para múltiplos de 1024 e limitando por um teto
+/// (para não rebentar a VRAM). Nunca descemos abaixo do valor configurado pelo utilizador.
+fn effective_num_ctx(base: u32, messages: &[ChatMessage]) -> u32 {
+    const RESERVE: u64 = 2048; // espaço reservado para a resposta
+    const CAP: u64 = 32768; // teto para limitar o uso de VRAM/latência
+    let prompt: u64 = messages
+        .iter()
+        .map(|m| estimate_tokens(&m.content))
+        .sum();
+    let needed = prompt + RESERVE;
+    // Arredonda para cima ao próximo múltiplo de 1024.
+    let rounded = needed.div_ceil(1024) * 1024;
+    let target = rounded.min(CAP).max(base as u64);
+    target as u32
+}
+
 pub struct AppState {
     pub settings: Mutex<Settings>,
     pub accounting: Mutex<Accounting>,
@@ -394,7 +415,7 @@ pub async fn generate_doc(
         }
         _ => {
             let g = providers::ollama::GenOpts {
-                num_ctx: settings.ollama_num_ctx,
+                num_ctx: effective_num_ctx(settings.ollama_num_ctx, &messages),
                 temperature: settings.ollama_temp_opt(),
             };
             providers::ollama::chat(&settings.ollama_endpoint, &settings.ollama_model, &messages, g).await
@@ -1041,8 +1062,15 @@ pub async fn send_message_stream(
             .await
         }
         router::Route::Local => {
+            // Janela adaptativa: garante espaço para a resposta mesmo com prompts grandes
+            // (ex.: documentos anexados). Senão a resposta corta-se a meio.
+            let num_ctx = effective_num_ctx(settings.ollama_num_ctx, &prepared.full_messages);
+            log::info!(
+                "local num_ctx base={} efetivo={num_ctx}",
+                settings.ollama_num_ctx
+            );
             let gopts = providers::ollama::GenOpts {
-                num_ctx: settings.ollama_num_ctx,
+                num_ctx,
                 temperature: settings.ollama_temp_opt(),
             };
             // Corre o loop de ferramentas (pesquisa web) quando a Pesquisa web local está
