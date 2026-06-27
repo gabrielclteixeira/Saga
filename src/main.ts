@@ -1376,9 +1376,14 @@ function routeOptsFromMode(): SendOpts {
 function cloudEnabled(): boolean {
   const s = state.settings;
   if (!s) return false;
-  return s.cloud_provider === "claude"
-    ? s.claude_mode !== "off"
-    : !!s.openai_cloud_endpoint?.trim();
+  if (s.cloud_provider === "claude") {
+    if (s.claude_mode === "off") return false;
+    // Modo API precisa mesmo de uma chave — senão escalar (subagentes/pesquisa) falha com
+    // "ANTHROPIC_API_KEY não configurada". CLI usa a subscrição, não precisa de chave aqui.
+    if (s.claude_mode === "api") return !!s.claude_api_key?.trim();
+    return true;
+  }
+  return !!s.openai_cloud_endpoint?.trim();
 }
 
 /** Empurra uma bolha de assistente e preenche-a com o streaming. */
@@ -1394,7 +1399,8 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   // estiver ligado (Ollama) — aí o 🔎 pode correr no modelo local.
   const localWeb =
     state.settings?.local_provider === "ollama" && !!state.settings?.local_web_search;
-  if (!sendOpts.routeOverride) {
+  // Só escala para o Claude se ele estiver mesmo utilizável (evita o erro de chave em falta).
+  if (!sendOpts.routeOverride && cloudEnabled()) {
     if (sendOpts.subagents) sendOpts.routeOverride = "claude";
     else if (sendOpts.research && !localWeb) sendOpts.routeOverride = "claude";
   }
@@ -1869,9 +1875,11 @@ async function setActiveAgent(name: string | null) {
     const raw = await api.readWorkspaceDoc("agent", name);
     const f = parseDocFields("agent", raw);
     state.activeAgent = { name: f.name || name, system: f.body };
-    // Aplica as predefinições sugeridas pelo agente.
+    // Aplica as predefinições sugeridas pelo agente — só ativa o que é realmente utilizável
+    // (subagentes/pesquisa profunda precisam do Claude; pesquisa local precisa do web search).
+    const localWeb = state.settings?.local_provider === "ollama" && !!state.settings?.local_web_search;
     setRouteMode(f.agentRoute === "claude" && cloudEnabled() ? "claude" : "local");
-    setToggle("research", !!f.agentResearch);
+    setToggle("research", !!f.agentResearch && (localWeb || cloudEnabled()));
     setToggle("subagents", !!f.agentSubagents && cloudEnabled());
     updateAgentChip();
     showHint(t("Agente ativo: {n}", { n: state.activeAgent.name }));
@@ -4126,6 +4134,8 @@ async function init() {
   try {
     state.settings = await api.getSettings();
     applyComposerToggles();
+    // Semeia/atualiza os defaults do workspace no idioma da UI (skill pdf + agentes).
+    api.ensureWorkspaceDefaults(getLang()).catch(() => {});
     await refreshMemory();
     await loadConversations();
     if (state.conversations.length === 0) {

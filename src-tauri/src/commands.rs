@@ -404,6 +404,14 @@ pub async fn generate_doc(
     Ok(strip_fences(&text))
 }
 
+/// Semeia os defaults do workspace (skill pdf + agentes) no idioma da UI. Idempotente:
+/// não sobrescreve docs editados. Chamado pelo frontend no arranque.
+#[tauri::command]
+pub fn ensure_workspace_defaults(state: State<AppState>, lang: String) {
+    let dir = state.settings.lock().unwrap().workspace_dir.clone();
+    crate::workspace::seed_defaults(&dir, &lang);
+}
+
 /// Índice do workspace (skills, playbooks, workflows) para a UI e o disparo de workflows.
 #[tauri::command]
 pub fn get_workspace_index(state: State<AppState>) -> crate::workspace::WorkspaceIndex {

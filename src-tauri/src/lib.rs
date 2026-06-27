@@ -55,12 +55,8 @@ pub fn run() {
         .manage(AppState::new())
         .setup(|app| {
             scheduler::spawn_loop(app.handle().clone());
-            // Semeia skills embutidas por defeito (ex.: pdf) se o workspace estiver definido.
-            {
-                let state = app.state::<AppState>();
-                let dir = state.settings.lock().unwrap().workspace_dir.clone();
-                workspace::seed_defaults(&dir);
-            }
+            // Os defaults do workspace (skill pdf + agentes) são semeados pelo frontend, no
+            // arranque, com o idioma da UI (comando `ensure_workspace_defaults`).
 
             // Ícone na bandeja do sistema: clique mostra a janela; menu Mostrar/Sair.
             let show_i = MenuItem::with_id(app, "show", "Mostrar Saga", true, None::<&str>)?;
@@ -138,6 +134,7 @@ pub fn run() {
             commands::compact_conversation,
             commands::get_action_log,
             commands::approve_action,
+            commands::ensure_workspace_defaults,
             commands::get_workspace_index,
             commands::read_workspace_doc,
             commands::save_workspace_doc,

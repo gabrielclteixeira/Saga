@@ -24,12 +24,17 @@ fn opts_json(o: GenOpts) -> serde_json::Value {
     serde_json::json!({ "num_ctx": o.num_ctx, "temperature": o.temperature })
 }
 
+/// Mantém o modelo carregado em memória entre pedidos (evita o cold-start de recarregar
+/// a cada mensagem). Ollama por omissão descarrega ao fim de ~5 min.
+const KEEP_ALIVE: &str = "30m";
+
 #[derive(Serialize)]
 struct ChatRequest<'a> {
     model: &'a str,
     messages: &'a [WireMessage],
     stream: bool,
     options: serde_json::Value,
+    keep_alive: &'a str,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -117,6 +122,7 @@ pub async fn chat_raw(
         "messages": messages,
         "stream": false,
         "options": opts_json(opts),
+        "keep_alive": KEEP_ALIVE,
     });
     if let Some(t) = tools {
         body["tools"] = t;
@@ -151,6 +157,7 @@ pub async fn chat(
         messages: &wire,
         stream: false,
         options: opts_json(opts),
+        keep_alive: KEEP_ALIVE,
     };
 
     let client = reqwest::Client::new();
@@ -196,6 +203,7 @@ pub async fn chat_stream<F: FnMut(&str)>(
         messages: &wire,
         stream: true,
         options: opts_json(opts),
+        keep_alive: KEEP_ALIVE,
     };
 
     let client = reqwest::Client::new();

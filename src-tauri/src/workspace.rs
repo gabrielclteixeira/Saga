@@ -279,34 +279,185 @@ pedido (formal, próximo, técnico). Quando reescreves, preservas o sentido e me
 legibilidade. Se o pedido for ambíguo, fazes uma pergunta curta antes de escrever.
 "#;
 
-/// Escreve as skills/agentes embutidos por defeito que ainda não existam
-/// (não sobrescreve edições do utilizador).
-pub fn seed_defaults(root: &str) {
+// ---- Variantes em inglês (seleção por idioma da UI) ----
+
+const PDF_SKILL_EN: &str = r#"---
+name: pdf
+description: "Create a PDF from a document or report. Triggers: pdf, create pdf, export pdf, generate report, make a document"
+---
+
+# Create PDF
+
+When the user asks for a PDF, report or document:
+
+1. Write a well-structured, complete document on the requested topic (headings, sections,
+   lists and tables where they help). Be clear and direct.
+2. **If the `create_pdf` tool is available** (API mode with browser tools), call it with
+   `title` (the document title) and `html` (the body as simple HTML: `<h1>`, `<h2>`, `<p>`,
+   `<ul>`, `<ol>`, `<table>`, `<pre>`, `<strong>`…). It writes the file and returns the path.
+3. **Otherwise**, return the document as a markdown (```markdown) or HTML (```html) code block —
+   it opens as an artifact — and tell the user to click **PDF** in the artifact panel to save it.
+
+Don't make up data; if information is missing, ask the user or clearly flag the gaps.
+"#;
+
+const AGENT_ENGINEER_EN: &str = r#"---
+name: Software Engineer
+description: "Experienced developer: writes, reviews and explains code with rigor."
+tools: true
+subagents: false
+research: false
+route: local
+---
+
+You are a senior software engineer. You write correct, readable and idiomatic code, following
+the conventions of the language and the project at hand. Before proposing a solution, you think
+about edge cases and failure modes. When you show code, keep it minimal and focused; explain the
+important decisions in a few lines. When you're unsure about an API or version, say so instead of
+inventing it. You prefer clarity over cleverness.
+"#;
+
+const AGENT_RESEARCHER_EN: &str = r#"---
+name: Web Researcher
+description: "Searches online, cross-checks sources and answers with references."
+tools: true
+research: true
+subagents: false
+route: local
+---
+
+You are an expert web researcher. For any factual or current question, you **search online**
+before answering, cross-check several sources and distrust unsupported claims. Your answer
+clearly separates what is confirmed from what is uncertain. You always end with a list of the
+sources (titles + URLs) you used. If sources contradict each other, you say so. Never invent
+a reference.
+"#;
+
+const AGENT_WRITER_EN: &str = r#"---
+name: Writer
+description: "Writes and improves text: clear, direct and in the right tone."
+tools: false
+research: false
+subagents: false
+route: local
+---
+
+You are a professional writer. You write clearly, directly and appropriately for the audience and
+goal. You use active voice, sentences with rhythm, and cut whatever doesn't add value. You adapt
+the tone to the request (formal, friendly, technical). When you rewrite, you preserve the meaning
+and improve readability. If the request is ambiguous, you ask one short question before writing.
+"#;
+
+/// Um documento embutido com variantes PT/EN (o ficheiro de agente usa o nome como identidade).
+struct Seed {
+    name_pt: &'static str,
+    name_en: &'static str,
+    body_pt: &'static str,
+    body_en: &'static str,
+    /// slug da 1.ª versão (só agentes), para migrar ficheiros antigos.
+    legacy_slug: &'static str,
+}
+
+const AGENT_SEEDS: &[Seed] = &[
+    Seed {
+        name_pt: "Engenheiro de Software",
+        name_en: "Software Engineer",
+        body_pt: AGENT_ENGINEER,
+        body_en: AGENT_ENGINEER_EN,
+        legacy_slug: "engenheiro-de-software",
+    },
+    Seed {
+        name_pt: "Investigador Web",
+        name_en: "Web Researcher",
+        body_pt: AGENT_RESEARCHER,
+        body_en: AGENT_RESEARCHER_EN,
+        legacy_slug: "investigador-web",
+    },
+    Seed {
+        name_pt: "Redator",
+        name_en: "Writer",
+        body_pt: AGENT_WRITER,
+        body_en: AGENT_WRITER_EN,
+        legacy_slug: "redator",
+    },
+];
+
+/// Escreve as skills/agentes embutidos no idioma da UI (`lang` = "pt"|"en"). Não sobrescreve
+/// edições do utilizador: um default só é (re)traduzido se o ficheiro em disco for ainda um
+/// default não modificado (de qualquer idioma).
+pub fn seed_defaults(root: &str, lang: &str) {
     if root.trim().is_empty() {
         return;
     }
-    let pdf = skills_dir(root).join("pdf").join("SKILL.md");
-    if !pdf.exists() {
-        let _ = write_doc(root, "skill", "pdf", PDF_SKILL);
+    let en = lang.eq_ignore_ascii_case("en");
+
+    // Skill PDF — nome de ficheiro estável ("pdf"); só o conteúdo muda com o idioma.
+    let pdf_want = if en { PDF_SKILL_EN } else { PDF_SKILL };
+    let pdf_path = skills_dir(root).join("pdf").join("SKILL.md");
+    match fs::read_to_string(&pdf_path) {
+        Err(_) => {
+            let _ = write_doc(root, "skill", "pdf", pdf_want);
+        }
+        Ok(cur) => {
+            // Re-traduz só se for um default não modificado.
+            if (cur == PDF_SKILL || cur == PDF_SKILL_EN) && cur != pdf_want {
+                let _ = write_doc(root, "skill", "pdf", pdf_want);
+            }
+        }
     }
-    // O identificador de um agente é o seu NOME DE EXIBIÇÃO; o ficheiro é `sanitize(nome).md`
-    // (igual a skills/workflows criados na UI), para que picker/leitura/edição resolvam o mesmo
-    // caminho. (nome de exibição, slug da 1.ª versão, corpo)
-    for (display, legacy_slug, body) in [
-        ("Engenheiro de Software", "engenheiro-de-software", AGENT_ENGINEER),
-        ("Investigador Web", "investigador-web", AGENT_RESEARCHER),
-        ("Redator", "redator", AGENT_WRITER),
-    ] {
-        let Some(canonical) = doc_path(root, "agent", display) else {
+
+    // Agentes — identidade = nome de exibição (ficheiro = sanitize(nome).md).
+    for s in AGENT_SEEDS {
+        let (want_name, want_body) = if en {
+            (s.name_en, s.body_en)
+        } else {
+            (s.name_pt, s.body_pt)
+        };
+        let Some(want_path) = doc_path(root, "agent", want_name) else {
             continue;
         };
-        // Migra ficheiros da 1.ª versão (nome-slug ≠ sanitize(nome)) sem perder edições.
-        let legacy = agents_dir(root).join(format!("{legacy_slug}.md"));
-        if legacy.exists() && !canonical.exists() {
-            let _ = fs::rename(&legacy, &canonical);
+        // Migra o ficheiro da 1.ª versão (nome-slug) para o nome canónico PT, preservando
+        // edições — depois a normalização por idioma trata do resto.
+        let legacy_path = agents_dir(root).join(format!("{}.md", s.legacy_slug));
+        if let Some(pt_path) = doc_path(root, "agent", s.name_pt) {
+            if legacy_path.exists() && legacy_path != pt_path && !pt_path.exists() {
+                let _ = fs::rename(&legacy_path, &pt_path);
+            }
         }
-        if !canonical.exists() {
-            let _ = write_doc(root, "agent", display, body);
+        let known = [s.body_pt, s.body_en];
+        // Ficheiros candidatos: variante PT, variante EN e o slug da 1.ª versão.
+        let candidates = [
+            doc_path(root, "agent", s.name_pt),
+            doc_path(root, "agent", s.name_en),
+            Some(agents_dir(root).join(format!("{}.md", s.legacy_slug))),
+        ];
+        let mut edited = false;
+        let mut defaults_on_disk: Vec<std::path::PathBuf> = Vec::new();
+        for c in candidates.into_iter().flatten() {
+            if !c.exists() {
+                continue;
+            }
+            match fs::read_to_string(&c) {
+                Ok(content) if known.contains(&content.as_str()) => {
+                    if !defaults_on_disk.contains(&c) {
+                        defaults_on_disk.push(c);
+                    }
+                }
+                Ok(_) => edited = true, // o utilizador editou — não mexer
+                Err(_) => {}
+            }
+        }
+        if edited {
+            continue;
+        }
+        // Normaliza para o idioma atual: remove defaults de outro idioma, garante o pretendido.
+        for p in &defaults_on_disk {
+            if p != &want_path {
+                let _ = fs::remove_file(p);
+            }
+        }
+        if !want_path.exists() {
+            let _ = write_doc(root, "agent", want_name, want_body);
         }
     }
 }

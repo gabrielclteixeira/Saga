@@ -312,6 +312,8 @@ export const api = {
   exportFile: (path: string, content: string) =>
     invoke<void>("export_file", { path, content }),
   // Workspace
+  ensureWorkspaceDefaults: (lang: string) =>
+    invoke<void>("ensure_workspace_defaults", { lang }),
   getWorkspaceIndex: () => invoke<WorkspaceIndex>("get_workspace_index"),
   readWorkspaceDoc: (kind: string, name: string) =>
     invoke<string>("read_workspace_doc", { kind, name }),
