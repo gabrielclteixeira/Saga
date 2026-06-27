@@ -95,9 +95,10 @@ pub async fn run(
         tools.push("Read".into()); // necessário para a CLI conseguir abrir as imagens
     }
 
+    // O prompt vai por STDIN (não como argumento): conversas grandes excediam o limite da linha
+    // de comandos do Windows (os error 206 "filename or extension is too long").
     let mut args: Vec<String> = vec![
         "-p".into(),
-        prompt,
         "--output-format".into(),
         "json".into(),
         "--model".into(),
@@ -111,8 +112,20 @@ pub async fn run(
 
     let path_msg = cli_path.clone();
     // Command é síncrono — corre num thread de blocking para não travar o runtime async.
-    let output = tauri::async_runtime::spawn_blocking(move || {
-        Command::new(&cli_path).args(&args).output()
+    let output = tauri::async_runtime::spawn_blocking(move || -> std::io::Result<std::process::Output> {
+        use std::io::Write;
+        use std::process::Stdio;
+        let mut child = Command::new(&cli_path)
+            .args(&args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        // Escreve o prompt e fecha o stdin (a CLI lê tudo até EOF antes de responder).
+        if let Some(mut sin) = child.stdin.take() {
+            sin.write_all(prompt.as_bytes())?;
+        }
+        child.wait_with_output()
     })
     .await
     .map_err(|e| anyhow!("falha a lançar a Claude CLI: {e}"))?
