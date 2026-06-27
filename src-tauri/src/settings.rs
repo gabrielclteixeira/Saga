@@ -73,7 +73,10 @@ impl Default for Settings {
         Self {
             ollama_endpoint: "http://localhost:11434".into(),
             ollama_model: "llama3.2".into(),
-            ollama_vision_model: "llama3.2-vision".into(),
+            // Sem fallback de visão por omissão: os modelos de arranque recomendados (gemma) já veem,
+            // e o antigo default (llama3.2-vision / mllama) muitas vezes nem carrega. O utilizador
+            // escolhe um modelo de visão instalado no seletor das Definições se precisar.
+            ollama_vision_model: String::new(),
             ollama_num_ctx: 8192,
             ollama_temperature: 0.4,
             ollama_temperature_auto: true,

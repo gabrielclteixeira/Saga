@@ -1894,9 +1894,20 @@ function isCompacted(i: Item): boolean {
 }
 
 function buildPayload(): ChatMessage[] {
-  const kept = state.items
-    .filter((i) => !isCompacted(i))
-    .map((i) => ({ role: i.role, content: i.content, attachments: i.attachments }));
+  const live = state.items.filter((i) => !isCompacted(i));
+  // Os bytes (data_base64) dos documentos só são precisos no anexo novo (persistência) e no visor
+  // (que lê de state.items, não daqui). Reenviar ~25 MB de base64 do histórico a cada turno é puro
+  // desperdício → tira-os de todas as mensagens menos a última do utilizador. O texto extraído fica.
+  const lastUserIdx = live.map((i) => i.role).lastIndexOf("user");
+  const kept = live.map((i, idx) => {
+    let attachments = i.attachments;
+    if (attachments && idx !== lastUserIdx && attachments.some((a) => a.kind === "document")) {
+      attachments = attachments.map((a) =>
+        a.kind === "document" ? { ...a, data_base64: "" } : a
+      );
+    }
+    return { role: i.role, content: i.content, attachments };
+  });
   const msgs: ChatMessage[] = [];
   // Agente ativo → injeta o seu system prompt à frente de tudo.
   if (state.activeAgent?.system.trim()) {
@@ -2117,6 +2128,14 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     assistant.content = String(e);
     assistant.error = true;
     void api.logFrontend("warn", `stream erro: ${String(e)}`).catch(() => {});
+    // Falha a carregar o modelo de visão (ex.: arquitetura mllama do llama3.2-vision que o Ollama
+    // não suporta) numa conversa com imagens → dica acionável em vez de só o 500 cru.
+    const hasImg = state.items.some((i) => i.attachments?.some((a) => a.kind === "image"));
+    if (hasImg && /loading model|architecture|mllama|terminated/i.test(String(e))) {
+      showHint(
+        t("O modelo de visão não carregou no Ollama. Escolhe outro em Modelos → Modelo de visão (ex.: gemma4).")
+      );
+    }
   } finally {
     setBusy(false);
     stopWaitTicker();

@@ -192,9 +192,19 @@ pub async fn prepare(
     model_override: Option<&str>,
 ) -> Result<Prepared> {
     // Só imagens forçam o caminho de visão; documentos são texto e seguem o caminho normal.
+    // `has_images` (qualquer mensagem): usado para a decisão Claude-API (precisa de enviar as imagens).
     let has_images = messages
         .iter()
         .any(|m| m.attachments.iter().any(|a| a.kind == "image"));
+    // `latest_has_image`: só o turno ATUAL conta para escolher o modelo de visão local — senão uma
+    // imagem antiga arrastava todos os turnos seguintes (texto/docs) para o modelo de visão (e podia
+    // ficar refém de um vision model que nem carrega, ex.: mllama → 500).
+    let latest_has_image = messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map(|m| m.attachments.iter().any(|a| a.kind == "image"))
+        .unwrap_or(false);
     // Dobra o texto dos documentos anexados no conteúdo da mensagem (uma só vez, aqui no
     // router; a persistência guarda o conteúdo original, sem o preâmbulo).
     let folded = fold_documents(messages);
@@ -212,9 +222,9 @@ pub async fn prepare(
     match route {
         Route::Local => {
             let model = model_override.map(str::to_string).unwrap_or_else(|| {
-                // Só troca para o modelo de visão se o modelo ativo NÃO vê imagens
+                // Só troca para o modelo de visão se o turno ATUAL traz imagem e o modelo ativo NÃO vê
                 // (ex.: gemma4 já tem visão → usa-o em vez de exigir o llama3.2-vision).
-                if has_images
+                if latest_has_image
                     && !model_supports_vision(&settings.ollama_model)
                     && !settings.ollama_vision_model.trim().is_empty()
                 {
