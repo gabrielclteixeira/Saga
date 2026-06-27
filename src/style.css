@@ -197,7 +197,30 @@ body {
   width: 100%;
   max-width: 820px;
   margin: 0 auto;
-  padding: 18px;
+  padding: 24px 18px 18px;
+}
+/* Cabeçalho das vistas centrais (Workspace, Servidores, Atividade, Automações, Modelos). */
+#center > dialog .settings > h2,
+#center > dialog .ws > h2 {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+/* Risca a separar o cabeçalho (título [+ subtítulo]) do conteúdo. A borda fica
+   no último elemento do cabeçalho: o subtítulo se existir, senão o próprio título. */
+#center > dialog .settings > h2,
+#center > dialog .ws > h2,
+#center > dialog .settings > .wiz-intro {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+#center > dialog .settings > h2:has(+ .wiz-intro),
+#center > dialog .ws > h2:has(+ .wiz-intro) {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+#center > dialog .settings > .wiz-intro {
+  margin-top: -4px;
 }
 
 /* Sidebar de conversas */
@@ -669,6 +692,7 @@ body {
 }
 .attach-btn {
   align-self: flex-end;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -677,6 +701,7 @@ body {
   border-radius: 10px;
   height: 42px;
   width: 42px;
+  padding: 0; /* anula o padding de `.composer button` que esmagava o ícone */
   cursor: pointer;
   color: var(--muted);
 }
@@ -686,6 +711,9 @@ body {
 }
 .attach-btn svg {
   display: block;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
 }
 .attach-btn:hover {
   background: var(--bg-3);
@@ -970,12 +998,13 @@ body {
   color: var(--text);
 }
 
-/* Wizard de 1.º arranque */
-.wizard .wiz-intro {
+/* Subtítulo das vistas (intro sob o título) — muted, encostado ao h2. */
+.wiz-intro {
   font-size: 13px;
   color: var(--muted);
-  line-height: 1.5;
-  margin: 0;
+  line-height: 1.55;
+  margin: -6px 0 2px;
+  max-width: 68ch;
 }
 .wiz-status {
   font-size: 12px;
@@ -1106,6 +1135,104 @@ body {
   color: var(--local);
   margin-top: 2px;
 }
+/* Ações por-Saga no painel: estimativa de contexto + Compactar/Limpar. */
+.saga-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ctx-est {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.saga-actions-btns {
+  display: flex;
+  gap: 6px;
+}
+.saga-actions-btns button {
+  font-size: 11px;
+  padding: 4px 10px;
+}
+/* Divisória de compactação no fluxo de mensagens. */
+.compact-divider {
+  margin: 6px 0;
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+}
+.compact-divider > summary {
+  cursor: pointer;
+  padding: 6px 2px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  list-style-position: inside;
+}
+.compact-divider > summary:hover {
+  color: var(--fg);
+}
+.compact-summary {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  padding: 8px 10px;
+  margin: 4px 0 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  white-space: pre-wrap;
+}
+/* Turnos já compactados: visíveis mas esbatidos (não vão no contexto enviado). */
+.msg.compacted {
+  opacity: 0.5;
+}
+/* Fontes consultadas — disclosure por mensagem para verificar a pesquisa web. */
+.sources {
+  align-self: flex-start;
+  max-width: 92%;
+  margin-top: 2px;
+  font-size: 12px;
+}
+.sources > summary {
+  cursor: pointer;
+  display: inline-flex;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  list-style: none;
+}
+.sources > summary::-webkit-details-marker {
+  display: none;
+}
+.sources > summary:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 4px 2px;
+}
+.src-row {
+  display: flex;
+  flex-direction: column;
+}
+.src-row a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.src-row a:hover {
+  text-decoration: underline;
+}
+.src-url {
+  font-size: 10px;
+  color: var(--muted);
+  word-break: break-all;
+}
 .mem {
   background: var(--bg-2);
   border: 1px solid var(--border);
@@ -1213,6 +1340,29 @@ dialog::backdrop {
   font-size: 12px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+.settings-about {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.settings-about .about-mark {
+  width: 16px;
+  height: 16px;
+  opacity: 0.85;
+}
+.settings-about a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.settings-about a:hover {
+  text-decoration: underline;
 }
 .settings menu {
   display: flex;
@@ -1354,8 +1504,11 @@ dialog::backdrop {
 }
 .empty-sm {
   color: var(--muted);
-  padding: 12px;
+  font-size: 13px;
+  padding: 18px;
   text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
 }
 .ws-item,
 .mcp-item {
@@ -1601,6 +1754,48 @@ dialog::backdrop {
   margin-top: 6px;
   margin-bottom: 4px;
 }
+/* O container exterior tem a classe `quickpicks` mas alberga títulos/grupos + linhas
+   de `.quickpicks` — tem de ser bloco, senão os cabeçalhos fluem inline (desalinhados). */
+#hub-quickpicks {
+  display: block;
+}
+/* Secção "Avançado" colapsável no hub Modelos. */
+.hub-advanced {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 14px;
+}
+.hub-advanced > summary {
+  cursor: pointer;
+  padding: 12px 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  list-style-position: inside;
+}
+.hub-advanced > summary:hover {
+  color: var(--fg);
+}
+.hub-advanced[open] > summary {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+/* Espaço entre os blocos do Avançado (Router ↔ Pesquisa web ↔ …). */
+.hub-advanced > fieldset {
+  margin-bottom: 18px;
+}
+.hub-advanced > fieldset:last-of-type {
+  margin-bottom: 14px;
+}
+/* Mais respiração entre campos dentro de cada bloco. */
+.hub-advanced fieldset {
+  gap: 16px;
+  padding: 16px;
+}
+.hub-advanced fieldset .wiz-hint {
+  margin-top: -8px;
+}
+
 .hub-rec {
   margin: 8px 0 4px;
   padding: 10px 12px;
@@ -1611,8 +1806,18 @@ dialog::backdrop {
 .hub-rec[hidden] {
   display: none;
 }
+.hub-rec-head {
+  font-size: 14px;
+}
 .hub-rec-line {
-  font-size: 13px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.hub-rec-sub {
+  font-size: 12px;
+  margin-top: 8px;
+  margin-bottom: 6px;
 }
 .hub-rec-actions {
   display: flex;
@@ -1622,10 +1827,115 @@ dialog::backdrop {
 .hub-rec-actions button {
   margin-top: 0;
 }
+/* Escalões "qual escolher" por VRAM/RAM. */
+.rec-tier {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.rec-hw {
+  flex: 0 0 38%;
+  color: var(--text);
+}
+.rec-model {
+  flex: 1;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.rec-note {
+  color: var(--muted);
+}
+.rec-cap {
+  white-space: nowrap;
+}
+.rec-use {
+  flex-shrink: 0;
+  margin-top: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.rec-tip {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
 .catalog-title {
   margin-top: 10px;
   color: var(--muted);
   font-size: 12px;
+}
+.catalog-legend {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  opacity: 0.85;
+}
+/* Badges de capacidade (🛠/👁/🧠) junto ao nome do modelo. */
+.qp-caps {
+  white-space: nowrap;
+}
+.qp-caps .cap {
+  font-size: 11px;
+  cursor: help;
+}
+/* Toast de aviso transitório (ex.: 🔎 não vai pesquisar). */
+.hint-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 84px;
+  transform: translateX(-50%);
+  max-width: 520px;
+  z-index: 60;
+  background: var(--bg-2);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+.hint-toast[hidden] {
+  display: none;
+}
+/* Banner "atualização pronta — reiniciar". */
+.update-ready {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+.update-ready[hidden] {
+  display: none;
+}
+.update-ready button {
+  border-radius: 8px;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+.update-ready .primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
 }
 .catalog-group {
   margin-top: 10px;

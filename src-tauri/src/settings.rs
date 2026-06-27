@@ -2,63 +2,10 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(default)]
-pub struct RoutingConfig {
-    /// Se falso, todos os pedidos vão para o destino por omissão (Claude se configurado, senão local).
-    pub enabled: bool,
-    /// Prompts até este nº de caracteres são considerados "leves" → local.
-    pub light_max_chars: usize,
-    /// Palavras-chave que forçam ficar no modelo local (ex.: "memória", "resume").
-    pub force_local_keywords: Vec<String>,
-    /// Palavras-chave que forçam escalar para o Claude (ex.: "refatora", "debug").
-    pub force_claude_keywords: Vec<String>,
-    /// Se verdadeiro, usa o modelo local para classificar a dificuldade (LEVE/PESADO).
-    pub use_local_classifier: bool,
-}
-
-impl Default for RoutingConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            light_max_chars: 280,
-            force_local_keywords: vec![
-                "memória".into(),
-                "memoria".into(),
-                "memory".into(),
-                "claude.md".into(),
-                "resume".into(),
-                "resumir".into(),
-                "lista".into(),
-                "traduz".into(),
-            ],
-            force_claude_keywords: vec![
-                "refatora".into(),
-                "refactor".into(),
-                "código".into(),
-                "codigo".into(),
-                "code".into(),
-                "debug".into(),
-                "arquitetura".into(),
-                "implementa".into(),
-                "claude".into(),
-                "escala".into(),
-                "pesquisa".into(),
-                "como faço".into(),
-                "como desativar".into(),
-                "passos".into(),
-                "github".into(),
-                "api".into(),
-                "documentação".into(),
-                "documentacao".into(),
-            ],
-            use_local_classifier: true,
-        }
-    }
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -91,7 +38,6 @@ pub struct Settings {
     pub openai_cloud_endpoint: String,
     pub openai_cloud_key: String,
     pub openai_cloud_model: String,
-    pub routing: RoutingConfig,
     /// Pasta com ficheiros markdown de memória.
     pub memory_dir: String,
     /// Caminho opcional para um CLAUDE.md.
@@ -112,10 +58,10 @@ pub struct Settings {
     pub confirm_mode: String,
     /// Pesquisa web para o modelo local (Ollama tool-calling).
     pub local_web_search: bool,
-    /// Motor de pesquisa: "duckduckgo" (sem chave) | "tavily".
+    /// Motor de pesquisa: "duckduckgo" (sem chave) | "tavily" | "brave" | "serper" | "exa" | "jina".
     pub web_search_provider: String,
-    /// Chave do motor de pesquisa (Tavily) — guardada na keychain.
-    pub web_search_api_key: String,
+    /// Chave por-motor (provider → chave) — cada uma guardada na keychain.
+    pub web_search_keys: BTreeMap<String, String>,
     /// Onboarding (wizard de 1.º arranque) concluído.
     pub onboarding_done: bool,
 }
@@ -143,7 +89,6 @@ impl Default for Settings {
             openai_cloud_endpoint: "https://api.openai.com/v1".into(),
             openai_cloud_key: String::new(),
             openai_cloud_model: "gpt-4o".into(),
-            routing: RoutingConfig::default(),
             memory_dir: default_memory_dir().to_string_lossy().to_string(),
             claude_md_path: String::new(),
             enable_browser_tools: false,
@@ -160,8 +105,8 @@ impl Default for Settings {
                 .to_string(),
             confirm_mode: "off".into(),
             local_web_search: false,
-            web_search_provider: "duckduckgo".into(),
-            web_search_api_key: String::new(),
+            web_search_provider: "jina".into(),
+            web_search_keys: BTreeMap::new(),
             onboarding_done: false,
         }
     }
@@ -185,7 +130,15 @@ const KEYRING_SERVICE: &str = "saga";
 const KC_ANTHROPIC: &str = "anthropic_api_key";
 const KC_OPENAI_CLOUD: &str = "openai_cloud_key";
 const KC_OPENAI_LOCAL: &str = "openai_local_key";
-const KC_WEBSEARCH: &str = "web_search_api_key";
+const KC_WEBSEARCH: &str = "web_search_api_key"; // legado (chave única Tavily) — migrado para o mapa
+
+/// Motores de pesquisa com chave (DuckDuckGo é keyless e não entra aqui).
+const WEB_PROVIDERS: [&str; 5] = ["tavily", "brave", "serper", "exa", "jina"];
+
+/// Nome de utilizador da keychain para a chave de um motor de pesquisa.
+fn web_key_user(provider: &str) -> String {
+    format!("websearch_{provider}")
+}
 
 /// Nome de utilizador da keychain para o env de um servidor MCP.
 fn mcp_env_user(name: &str) -> String {
@@ -223,7 +176,6 @@ impl Settings {
             (KC_ANTHROPIC, &mut s.claude_api_key),
             (KC_OPENAI_CLOUD, &mut s.openai_cloud_key),
             (KC_OPENAI_LOCAL, &mut s.openai_local_key),
-            (KC_WEBSEARCH, &mut s.web_search_api_key),
         ] {
             let kc = keychain_load(user);
             if !kc.is_empty() {
@@ -232,6 +184,30 @@ impl Settings {
                 keychain_store(user, field);
                 migrated = true;
             }
+        }
+        // Chaves de pesquisa por-motor: cada uma na sua entrada da keychain.
+        for p in WEB_PROVIDERS {
+            let kc = keychain_load(&web_key_user(p));
+            if !kc.is_empty() {
+                s.web_search_keys.insert(p.to_string(), kc);
+            } else if let Some(v) = s.web_search_keys.get(p) {
+                if !v.is_empty() {
+                    keychain_store(&web_key_user(p), v);
+                    migrated = true;
+                }
+            }
+        }
+        // Migração do legado (chave única Tavily em KC_WEBSEARCH) → mapa.
+        let legacy = keychain_load(KC_WEBSEARCH);
+        if !legacy.is_empty() {
+            let target = if WEB_PROVIDERS.contains(&s.web_search_provider.as_str()) {
+                s.web_search_provider.clone()
+            } else {
+                "tavily".to_string()
+            };
+            s.web_search_keys.entry(target).or_insert(legacy);
+            keychain_store(KC_WEBSEARCH, ""); // limpa o legado
+            migrated = true;
         }
         // O `env` de cada servidor MCP (pode ter tokens) vive na keychain, uma entrada por servidor.
         for srv in &mut s.mcp_servers {
@@ -260,12 +236,17 @@ impl Settings {
         keychain_store(KC_ANTHROPIC, &self.claude_api_key);
         keychain_store(KC_OPENAI_CLOUD, &self.openai_cloud_key);
         keychain_store(KC_OPENAI_LOCAL, &self.openai_local_key);
-        keychain_store(KC_WEBSEARCH, &self.web_search_api_key);
+        for p in WEB_PROVIDERS {
+            keychain_store(
+                &web_key_user(p),
+                self.web_search_keys.get(p).map(|s| s.as_str()).unwrap_or(""),
+            );
+        }
         let mut to_write = self.clone();
         to_write.claude_api_key = String::new();
         to_write.openai_cloud_key = String::new();
         to_write.openai_local_key = String::new();
-        to_write.web_search_api_key = String::new();
+        to_write.web_search_keys = BTreeMap::new();
         // Guarda o env de cada servidor MCP na keychain e limpa-o do json.
         for srv in &mut to_write.mcp_servers {
             if srv.name.trim().is_empty() {
@@ -289,7 +270,11 @@ impl Settings {
         Ok(())
     }
 
-    pub fn claude_enabled(&self) -> bool {
-        self.claude_mode == "api" || self.claude_mode == "cli"
+    /// Chave do motor de pesquisa atualmente selecionado (vazia se keyless/sem chave).
+    pub fn active_web_key(&self) -> String {
+        self.web_search_keys
+            .get(&self.web_search_provider)
+            .cloned()
+            .unwrap_or_default()
     }
 }

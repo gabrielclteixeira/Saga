@@ -160,11 +160,37 @@ impl Dispatcher<'_> {
                 "browser_click" => b.call("click", params).await,
                 "browser_fill" => b.call("fill", params).await,
                 "browser_screenshot" => b.call("screenshot", params).await,
+                "create_pdf" => {
+                    let title = params.get("title").and_then(|x| x.as_str()).unwrap_or("documento");
+                    let body = params.get("html").and_then(|x| x.as_str()).unwrap_or("");
+                    let html = wrap_print_html(title, body);
+                    b.call("pdf", &json!({ "title": title, "html": html })).await
+                }
                 other => Ok(format!("ferramenta desconhecida: {other}")),
             },
-            None => Ok(format!("ferramenta desconhecida: {name}")),
+            None => Ok("PDF indisponível: ativa as ferramentas de browser (sidecar) nas Definições/Modelos.".into()),
         }
     }
+}
+
+/// Embrulha um corpo HTML num documento completo com estilo de impressão (para o create_pdf).
+fn wrap_print_html(title: &str, body: &str) -> String {
+    let esc = title
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>{esc}</title><style>\
+@page {{ margin: 18mm; }} \
+body {{ font: 13px/1.6 -apple-system, 'Segoe UI', Roboto, sans-serif; color: #111; }} \
+h1,h2,h3 {{ line-height: 1.25; }} h1 {{ font-size: 22px; }} \
+pre {{ background:#f4f4f5; padding:10px 12px; border-radius:6px; white-space:pre-wrap; word-wrap:break-word; }} \
+code {{ font-family: ui-monospace, Menlo, monospace; }} \
+img,svg {{ max-width:100%; height:auto; }} \
+table {{ border-collapse:collapse; }} th,td {{ border:1px solid #ccc; padding:4px 8px; }} \
+a {{ color:#2563eb; }}\
+</style></head><body><h1>{esc}</h1>{body}</body></html>"
+    )
 }
 
 impl ToolHost for Dispatcher<'_> {

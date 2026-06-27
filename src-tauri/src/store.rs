@@ -93,6 +93,17 @@ fn init(conn: &Connection) -> Result<()> {
         );
         "#,
     )?;
+    // Migração: colunas de compactação na conversa (ignora erro se já existirem).
+    conn.execute(
+        "ALTER TABLE conversations ADD COLUMN compacted_summary TEXT NOT NULL DEFAULT ''",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "ALTER TABLE conversations ADD COLUMN compacted_upto INTEGER NOT NULL DEFAULT 0",
+        [],
+    )
+    .ok();
     // Backfill único do índice de pesquisa, se ainda estiver vazio.
     let fts_count: i64 = conn
         .query_row("SELECT count(*) FROM messages_fts", [], |r| r.get(0))
@@ -247,6 +258,48 @@ pub fn truncate_conversation(conn: &Connection, conversation_id: i64, keep: i64)
         params![conversation_id],
     )
     .ok();
+    Ok(())
+}
+
+/// Lê (resumo, fronteira) da compactação de uma conversa.
+pub fn get_compaction(conn: &Connection, conversation_id: i64) -> Result<(String, i64)> {
+    let row = conn.query_row(
+        "SELECT compacted_summary, compacted_upto FROM conversations WHERE id = ?1",
+        params![conversation_id],
+        |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)),
+    )?;
+    Ok(row)
+}
+
+/// Guarda o resumo + a fronteira (id da última mensagem compactada) de uma conversa.
+pub fn set_compaction(
+    conn: &Connection,
+    conversation_id: i64,
+    summary: &str,
+    upto: i64,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE conversations SET compacted_summary = ?2, compacted_upto = ?3, updated_at = datetime('now') WHERE id = ?1",
+        params![conversation_id, summary, upto],
+    )?;
+    Ok(())
+}
+
+/// Apaga todas as mensagens de uma conversa e limpa a compactação (mantém a Saga).
+pub fn clear_conversation(conn: &Connection, conversation_id: i64) -> Result<()> {
+    conn.execute(
+        "DELETE FROM messages WHERE conversation_id = ?1",
+        params![conversation_id],
+    )?;
+    conn.execute(
+        "DELETE FROM messages_fts WHERE conversation_id = ?1",
+        params![conversation_id],
+    )
+    .ok();
+    conn.execute(
+        "UPDATE conversations SET compacted_summary = '', compacted_upto = 0, updated_at = datetime('now') WHERE id = ?1",
+        params![conversation_id],
+    )?;
     Ok(())
 }
 

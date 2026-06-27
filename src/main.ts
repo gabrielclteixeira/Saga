@@ -9,6 +9,8 @@ import mermaid from "mermaid";
 import { save } from "@tauri-apps/plugin-dialog";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { getVersion } from "@tauri-apps/api/app";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   api,
   type Accounting,
@@ -52,6 +54,7 @@ function highlightWithin(root: ParentNode) {
 }
 
 interface Item {
+  id?: number; // id da mensagem na BD (ausente = ainda não persistida)
   role: "user" | "assistant";
   content: string;
   meta?: ChatResponse;
@@ -69,10 +72,12 @@ const state: {
   conversations: ConversationMeta[];
   currentConversationId: number | null;
   pendingAttachments: Attachment[];
-  routeMode: "auto" | "local" | "claude";
+  routeMode: "local" | "claude";
   thinking: boolean;
   research: boolean;
   subagents: boolean;
+  compactedSummary: string;
+  compactedUpto: number; // id da última mensagem compactada (0 = sem compactação)
 } = {
   items: [],
   settings: null,
@@ -80,17 +85,19 @@ const state: {
   conversations: [],
   currentConversationId: null,
   pendingAttachments: [],
-  routeMode: "auto",
+  routeMode: "local",
   thinking: false,
   research: false,
   subagents: false,
+  compactedSummary: "",
+  compactedUpto: 0,
 };
 
 initLang();
 const app = document.querySelector<HTMLDivElement>("#app")!;
 app.innerHTML = `
   <header class="topbar">
-    <div class="brand"><img src="/favicon.svg" class="brand-mark" alt="" /> <strong>Saga</strong> <span class="tag">${t("router local ↔ Claude")}</span></div>
+    <div class="brand"><img src="/favicon.svg" class="brand-mark" alt="" /> <strong>Saga</strong></div>
     <div class="mini" id="mini-stats"></div>
     <button class="icon-btn" id="btn-export-saga" title="${t("Exportar Saga (Markdown)")}">⤓</button>
     <button class="icon-btn" id="btn-settings" title="${t("Definições")}">⚙</button>
@@ -98,11 +105,11 @@ app.innerHTML = `
   <main class="layout">
     <nav class="rail" id="rail">
       <button type="button" class="rail-btn active" data-view="sagas" title="Sagas"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 9 9 0 0 1-3.9-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z"/></svg></span><span class="rail-lbl">${t("Sagas")}</span></button>
-      <button type="button" class="rail-btn" data-view="workspace" title="Workspace (skills, playbooks, workflows)"><span class="rail-ico">✦</span><span class="rail-lbl">${t("Workspace")}</span></button>
-      <button type="button" class="rail-btn" data-view="servers" title="Servidores MCP"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><line x1="6.5" y1="7.5" x2="6.5" y2="7.5"/><line x1="6.5" y1="16.5" x2="6.5" y2="16.5"/></svg></span><span class="rail-lbl">${t("Servidores")}</span></button>
-      <button type="button" class="rail-btn" data-view="activity" title="Atividade (ações)"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><line x1="4.5" y1="6" x2="4.5" y2="6"/><line x1="4.5" y1="12" x2="4.5" y2="12"/><line x1="4.5" y1="18" x2="4.5" y2="18"/></svg></span><span class="rail-lbl">${t("Atividade")}</span></button>
-      <button type="button" class="rail-btn" data-view="automations" title="Automações agendadas"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v4.7l3 1.8"/></svg></span><span class="rail-lbl">${t("Automações")}</span></button>
-      <button type="button" class="rail-btn" data-view="models" title="Modelos (instalar/configurar)"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span><span class="rail-lbl">${t("Modelos")}</span></button>
+      <button type="button" class="rail-btn" data-view="workspace" title="${t("Workspace (skills, playbooks, workflows)")}"><span class="rail-ico">✦</span><span class="rail-lbl">${t("Workspace")}</span></button>
+      <button type="button" class="rail-btn" data-view="servers" title="${t("Servidores MCP")}"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><line x1="6.5" y1="7.5" x2="6.5" y2="7.5"/><line x1="6.5" y1="16.5" x2="6.5" y2="16.5"/></svg></span><span class="rail-lbl">${t("Servidores")}</span></button>
+      <button type="button" class="rail-btn" data-view="activity" title="${t("Atividade (ações)")}"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><line x1="4.5" y1="6" x2="4.5" y2="6"/><line x1="4.5" y1="12" x2="4.5" y2="12"/><line x1="4.5" y1="18" x2="4.5" y2="18"/></svg></span><span class="rail-lbl">${t("Atividade")}</span></button>
+      <button type="button" class="rail-btn" data-view="automations" title="${t("Automações agendadas")}"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v4.7l3 1.8"/></svg></span><span class="rail-lbl">${t("Automações")}</span></button>
+      <button type="button" class="rail-btn" data-view="models" title="${t("Modelos (instalar/configurar)")}"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg></span><span class="rail-lbl">${t("Modelos")}</span></button>
     </nav>
     <aside class="sidebar">
       <button class="new-chat" id="btn-new-chat">${t("+ Nova Saga")}</button>
@@ -112,17 +119,18 @@ app.innerHTML = `
     <div class="center" id="center">
     <section class="chat">
       <div class="messages" id="messages">
-        <div class="empty">${t("Faz uma pergunta. Tarefas leves ficam no modelo local; só o que é pesado escala para o Claude.")}</div>
+        <div class="empty">${t("Faz uma pergunta. Corre no teu modelo local; escala para o Claude quando quiseres.")}</div>
       </div>
       <div class="attachments" id="attachments"></div>
       <div class="route-mode" id="route-mode">
-        <button type="button" data-mode="auto" class="active">${t("Auto")}</button>
-        <button type="button" data-mode="local">${t("Local")}</button>
-        <button type="button" data-mode="claude">${t("Claude")}</button>
+        <span class="route-pick" id="route-pick" hidden>
+          <button type="button" data-mode="local" class="active">${t("Local")}</button>
+          <button type="button" data-mode="claude">${t("Claude")}</button>
+        </span>
         <span class="composer-toggles">
-          <button type="button" id="btn-subagents" class="chip-toggle" title="Subagentes (API: orquestra em paralelo · CLI: ferramenta Task)">${t("🧩 Subagentes")}</button>
-          <button type="button" id="btn-research" class="chip-toggle" title="Pesquisa web (API: web_search · CLI: WebSearch)">${t("🔎 Pesquisar")}</button>
-          <button type="button" id="btn-think" class="chip-toggle" title="Extended thinking (raciocínio) — só Claude API">${t("🧠 Think")}</button>
+          <button type="button" id="btn-subagents" class="chip-toggle" title="${t("Subagentes (API: orquestra em paralelo · CLI: ferramenta Task)")}">${t("🧩 Subagentes")}</button>
+          <button type="button" id="btn-research" class="chip-toggle" title="${t("Pesquisa web (API: web_search · CLI: WebSearch)")}">${t("🔎 Pesquisar")}</button>
+          <button type="button" id="btn-think" class="chip-toggle" title="${t("Extended thinking (raciocínio) — só Claude API")}">${t("🧠 Think")}</button>
         </span>
       </div>
       <div class="slash-menu" id="slash-menu" hidden></div>
@@ -135,16 +143,23 @@ app.innerHTML = `
     </section>
     </div>
     <aside class="panel">
-      <button class="panel-collapse" id="panel-collapse" title="Ocultar painel" aria-label="Ocultar painel">❯</button>
+      <button class="panel-collapse" id="panel-collapse" title="${t("Ocultar painel")}" aria-label="${t("Ocultar painel")}">❯</button>
       <h2>${t("Painel de tokens")}</h2>
       <div class="cards" id="acct-cards"></div>
+      <div class="saga-actions">
+        <span class="ctx-est" id="ctx-est" title="${t("Contexto enviado ao modelo (estimativa)")}"></span>
+        <span class="saga-actions-btns">
+          <button class="ghost" id="btn-compact" title="${t("Resumir as mensagens antigas com o modelo local para poupar contexto")}">${t("Compactar")}</button>
+          <button class="ghost" id="btn-clear-saga" title="${t("Apagar as mensagens desta Saga")}">${t("Limpar")}</button>
+        </span>
+      </div>
       <h3>${t("Memória carregada")}</h3>
       <pre class="mem" id="mem-preview">—</pre>
       <button class="ghost" id="btn-mem-refresh">${t("Atualizar pré-visualização")}</button>
     </aside>
   </main>
 
-  <button class="panel-reopen" id="panel-reopen" hidden title="Mostrar painel" aria-label="Mostrar painel">❮</button>
+  <button class="panel-reopen" id="panel-reopen" hidden title="${t("Mostrar painel")}" aria-label="${t("Mostrar painel")}">❮</button>
 
   <div class="dl-toast" id="dl-toast" hidden>
     <div class="dl-toast-label" id="dl-toast-label"></div>
@@ -153,12 +168,13 @@ app.innerHTML = `
 
   <aside class="artifact-panel" id="artifact-panel" hidden>
     <header class="artifact-head">
-      <span class="artifact-title" id="artifact-title">Artefacto</span>
+      <span class="artifact-title" id="artifact-title">${t("Artefacto")}</span>
       <span class="artifact-controls">
-        <button type="button" class="ghost" id="artifact-gallery">Galeria</button>
-        <button type="button" class="ghost" id="artifact-toggle" hidden>Código</button>
-        <button type="button" class="ghost" id="artifact-export">Guardar</button>
-        <button type="button" class="ghost" id="artifact-copy">Copiar</button>
+        <button type="button" class="ghost" id="artifact-gallery">${t("Galeria")}</button>
+        <button type="button" class="ghost" id="artifact-toggle" hidden>${t("Código")}</button>
+        <button type="button" class="ghost" id="artifact-pdf">${t("PDF")}</button>
+        <button type="button" class="ghost" id="artifact-export">${t("Guardar")}</button>
+        <button type="button" class="ghost" id="artifact-copy">${t("Copiar")}</button>
         <button type="button" class="ghost" id="artifact-close">✕</button>
       </span>
     </header>
@@ -166,127 +182,7 @@ app.innerHTML = `
   </aside>
   <dialog id="settings-dialog">
     <form method="dialog" class="settings" id="settings-form">
-      <h2>Definições</h2>
-
-      <fieldset>
-        <legend>Modelo local</legend>
-        <label>Provider
-          <select name="local_provider" id="local-provider">
-            <option value="ollama">Ollama</option>
-            <option value="openai">OpenAI-compatible</option>
-          </select>
-        </label>
-        <div class="field-group" id="ollama-local-fields">
-          <label>Endpoint <input name="ollama_endpoint" type="text" /></label>
-          <label>Modelo
-            <span class="row">
-              <input name="ollama_model" type="text" list="ollama-models" />
-              <button type="button" class="ghost" id="btn-list-models">Listar</button>
-              <button type="button" class="ghost" id="btn-pull-model">Puxar</button>
-            </span>
-          </label>
-          <datalist id="ollama-models"></datalist>
-          <div class="pull-status" id="pull-status"></div>
-          <label>Modelo de visão (imagens) <input name="ollama_vision_model" type="text" /></label>
-        </div>
-        <div class="field-group" id="openai-local-fields" hidden>
-          <label>Endpoint <input name="openai_local_endpoint" type="text" placeholder="http://localhost:1234/v1" /></label>
-          <label>API key (opcional) <input name="openai_local_key" type="password" /></label>
-          <label>Modelo <input name="openai_local_model" type="text" placeholder="ex.: ID do modelo no LM Studio" /></label>
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Cloud (escalar)</legend>
-        <label>Provider
-          <select name="cloud_provider" id="cloud-provider">
-            <option value="claude">Claude</option>
-            <option value="openai">OpenAI-compatible</option>
-          </select>
-        </label>
-        <div class="field-group" id="claude-cloud-fields">
-          <label>Modo
-            <select name="claude_mode">
-              <option value="off">Desligado</option>
-              <option value="cli">Claude CLI (subscrição)</option>
-              <option value="api">API (ANTHROPIC_API_KEY)</option>
-            </select>
-          </label>
-          <label>Modelo
-            <select id="claude-model-preset">
-              <option value="claude-haiku-4-5-20251001">Haiku 4.5 — rápido e barato</option>
-              <option value="claude-sonnet-4-6">Sonnet 4.6 — equilíbrio</option>
-              <option value="claude-opus-4-8">Opus 4.8 — topo</option>
-              <option value="claude-fable-5">Fable 5 — mais capaz</option>
-              <option value="__custom__">Personalizado…</option>
-            </select>
-          </label>
-          <label id="claude-model-custom-wrap" hidden>Modelo (ID personalizado)
-            <input name="claude_model" type="text" />
-          </label>
-          <label>Caminho da CLI <input name="claude_cli_path" type="text" /></label>
-          <label>API key <input name="claude_api_key" type="password" /></label>
-          <label>Max tokens (resposta) <input name="claude_max_tokens" type="number" min="256" /></label>
-        </div>
-        <div class="field-group" id="openai-cloud-fields" hidden>
-          <label>Endpoint <input name="openai_cloud_endpoint" type="text" placeholder="https://api.openai.com/v1" /></label>
-          <label>API key <input name="openai_cloud_key" type="password" /></label>
-          <label>Modelo <input name="openai_cloud_model" type="text" placeholder="ex.: gpt-4o" /></label>
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Router</legend>
-        <label class="check"><input name="routing_enabled" type="checkbox" /> Router ativo</label>
-        <label class="check"><input name="use_local_classifier" type="checkbox" /> Usar classificador local (LEVE/PESADO)</label>
-        <label>Limite "leve" (chars) <input name="light_max_chars" type="number" min="0" /></label>
-        <label>Palavras-chave → local <input name="force_local_keywords" type="text" /></label>
-        <label>Palavras-chave → Claude <input name="force_claude_keywords" type="text" /></label>
-        <label>Rondas de pesquisa (deep research) <input name="research_max_rounds" type="number" min="1" max="5" /></label>
-      </fieldset>
-
-      <fieldset>
-        <legend>Pesquisa web (modelo local)</legend>
-        <label class="check"><input name="local_web_search" type="checkbox" /> Dar pesquisa web ao modelo local (🔎 corre no Ollama)</label>
-        <p class="wiz-hint">Precisa de um modelo Ollama com suporte a ferramentas (ex.: llama3.1, qwen2.5). Com isto desligado, o 🔎 força o Claude.</p>
-        <label>Motor
-          <select name="web_search_provider">
-            <option value="duckduckgo">DuckDuckGo (sem chave)</option>
-            <option value="tavily">Tavily (chave — melhor qualidade)</option>
-          </select>
-        </label>
-        <label>Chave Tavily (opcional) <input name="web_search_api_key" type="password" /></label>
-      </fieldset>
-
-      <fieldset>
-        <legend>Modelo local (avançado)</legend>
-        <label>Contexto (num_ctx) <input name="ollama_num_ctx" type="number" min="2048" step="1024" /></label>
-        <p class="wiz-hint">Maior = o modelo lê mais (resultados de pesquisa + histórico). 8192 é um bom valor; usa mais RAM.</p>
-        <label>Temperatura <input name="ollama_temperature" type="number" min="0" max="1.5" step="0.1" /></label>
-        <p class="wiz-hint">Mais baixa (~0.4) = respostas mais factuais e menos divagantes.</p>
-      </fieldset>
-
-      <fieldset>
-        <legend>Memória</legend>
-        <label>Pasta de memória <input name="memory_dir" type="text" /></label>
-        <label>Caminho CLAUDE.md (opcional) <input name="claude_md_path" type="text" /></label>
-      </fieldset>
-
-      <fieldset>
-        <legend>Ferramentas &amp; Workspace (só modo API)</legend>
-        <label>Pasta do workspace (skills/playbooks/workflows) <input name="workspace_dir" type="text" /></label>
-        <label>Confirmação de ações
-          <select name="confirm_mode">
-            <option value="off">Desligada — executa direto</option>
-            <option value="dry_run">Dry-run — só pré-visualiza</option>
-            <option value="ask">Pedir aprovação a cada ação</option>
-          </select>
-        </label>
-        <label class="check"><input name="enable_browser_tools" type="checkbox" /> Ativar ferramentas de browser</label>
-        <label>Caminho do sidecar (sidecar/index.js) <input name="browser_sidecar_script" type="text" /></label>
-        <label>Executável Node <input name="browser_node_path" type="text" /></label>
-        <label>Pasta de dados do browser (sessão persistente) <input name="browser_user_data_dir" type="text" /></label>
-      </fieldset>
+      <h2>${t("Definições")}</h2>
 
       <fieldset>
         <legend>${t("Aparência")}</legend>
@@ -298,177 +194,180 @@ app.innerHTML = `
         </label>
         <label>${t("Zoom da interface")}
           <span class="row zoom-row">
-            <button type="button" class="ghost" id="zoom-out" aria-label="Reduzir zoom">−</button>
+            <button type="button" class="ghost" id="zoom-out" aria-label="${t("Reduzir zoom")}">−</button>
             <span class="zoom-val" id="zoom-val">100%</span>
-            <button type="button" class="ghost" id="zoom-in" aria-label="Aumentar zoom">+</button>
-            <button type="button" class="ghost" id="zoom-reset">Repor</button>
+            <button type="button" class="ghost" id="zoom-in" aria-label="${t("Aumentar zoom")}">+</button>
+            <button type="button" class="ghost" id="zoom-reset">${t("Repor")}</button>
           </span>
         </label>
-        <p class="wiz-hint">Atalhos: <strong>Ctrl/⌘ +</strong>, <strong>Ctrl/⌘ −</strong>, <strong>Ctrl/⌘ 0</strong> (ou Ctrl/⌘ + roda do rato).</p>
-        <label>Tamanho do texto
+        <p class="wiz-hint">${t("Atalhos: <strong>Ctrl/⌘ +</strong>, <strong>Ctrl/⌘ −</strong>, <strong>Ctrl/⌘ 0</strong> (ou Ctrl/⌘ + roda do rato).")}</p>
+        <label>${t("Tamanho do texto")}
           <span class="row zoom-row">
-            <button type="button" class="ghost" id="font-out" aria-label="Texto menor">A−</button>
+            <button type="button" class="ghost" id="font-out" aria-label="${t("Texto menor")}">A−</button>
             <span class="zoom-val" id="font-val">100%</span>
-            <button type="button" class="ghost" id="font-in" aria-label="Texto maior">A+</button>
-            <button type="button" class="ghost" id="font-reset">Repor</button>
+            <button type="button" class="ghost" id="font-in" aria-label="${t("Texto maior")}">A+</button>
+            <button type="button" class="ghost" id="font-reset">${t("Repor")}</button>
           </span>
         </label>
-        <p class="wiz-hint">Ajusta só o texto das mensagens e do compositor (o zoom escala toda a interface).</p>
+        <p class="wiz-hint">${t("Ajusta só o texto das mensagens e do compositor (o zoom escala toda a interface).")}</p>
       </fieldset>
 
       <fieldset>
-        <legend>Atualizações</legend>
-        <button type="button" class="ghost" id="btn-check-update">Verificar atualizações</button>
+        <legend>${t("Atualizações")}</legend>
+        <button type="button" class="ghost" id="btn-check-update">${t("Verificar atualizações")}</button>
         <div class="pull-status" id="update-status"></div>
       </fieldset>
 
+      <p class="settings-about">
+        <img src="/favicon.svg" alt="" class="about-mark" />
+        Saga <span id="about-version"></span> · ${t("feito por")}
+        <a href="https://github.com/gabrielclteixeira" target="_blank" rel="noopener noreferrer">Gabriel Teixeira</a>
+      </p>
+
       <menu>
-        <button value="cancel" class="ghost">Cancelar</button>
-        <button value="save" id="btn-save" class="primary">Guardar</button>
+        <button value="cancel" class="ghost">${t("Fechar")}</button>
       </menu>
     </form>
   </dialog>
 
   <dialog id="workspace-dialog">
     <div class="settings ws">
-      <h2>Workspace</h2>
+      <h2>${t("Workspace")}</h2>
       <div class="ws-tabs" id="ws-tabs">
-        <button type="button" class="ws-tab active" data-kind="skill">Skills</button>
-        <button type="button" class="ws-tab" data-kind="playbook">Playbooks</button>
-        <button type="button" class="ws-tab" data-kind="workflow">Workflows</button>
+        <button type="button" class="ws-tab active" data-kind="skill">${t("Skills")}</button>
+        <button type="button" class="ws-tab" data-kind="playbook">${t("Playbooks")}</button>
+        <button type="button" class="ws-tab" data-kind="workflow">${t("Workflows")}</button>
       </div>
       <div class="ws-body">
         <div class="ws-list" id="ws-list"></div>
         <div class="ws-editor" id="ws-editor" hidden>
           <div class="ws-gen">
-            <label>✨ Gerar com IA — descreve o que queres
-              <textarea id="ws-gen-prompt" rows="2" placeholder="ex.: uma skill que resume páginas web"></textarea>
+            <label>${t("✨ Gerar com IA — descreve o que queres")}
+              <textarea id="ws-gen-prompt" rows="2" placeholder="${t("ex.: uma skill que resume páginas web")}"></textarea>
             </label>
-            <button type="button" class="ghost" id="ws-gen-btn">Gerar</button>
+            <button type="button" class="ghost" id="ws-gen-btn">${t("Gerar")}</button>
             <span class="pull-status" id="ws-gen-status"></span>
           </div>
-          <label>Nome <input id="ws-name" type="text" placeholder="nome-sem-espacos" /></label>
-          <label>Descrição <input id="ws-desc" type="text" placeholder="o que é / quando usar" /></label>
-          <label id="ws-triggers-wrap">Triggers (palavras que ativam) <input id="ws-triggers" type="text" placeholder="resumir, o que diz este link, …" /></label>
-          <label id="ws-arghint-wrap" hidden>Argumentos esperados <input id="ws-arghint" type="text" placeholder="ex.: o URL a abrir" /></label>
-          <label id="ws-body-label">Corpo (markdown)
-            <textarea id="ws-content" rows="12" spellcheck="false" placeholder="# Instruções…"></textarea>
+          <label>${t("Nome")} <input id="ws-name" type="text" placeholder="${t("nome-sem-espacos")}" /></label>
+          <label>${t("Descrição")} <input id="ws-desc" type="text" placeholder="${t("o que é / quando usar")}" /></label>
+          <label id="ws-triggers-wrap">${t("Triggers (palavras que ativam)")} <input id="ws-triggers" type="text" placeholder="${t("resumir, o que diz este link, …")}" /></label>
+          <label id="ws-arghint-wrap" hidden>${t("Argumentos esperados")} <input id="ws-arghint" type="text" placeholder="${t("ex.: o URL a abrir")}" /></label>
+          <label id="ws-body-label">${t("Corpo (markdown)")}
+            <textarea id="ws-content" rows="12" spellcheck="false" placeholder="${t("# Instruções…")}"></textarea>
           </label>
           <div class="ws-editor-bar">
-            <button type="button" class="ghost" id="ws-cancel">Fechar editor</button>
-            <button type="button" class="primary" id="ws-save">Guardar</button>
+            <button type="button" class="ghost" id="ws-cancel">${t("Fechar editor")}</button>
+            <button type="button" class="primary" id="ws-save">${t("Guardar")}</button>
           </div>
         </div>
       </div>
       <menu>
-        <button type="button" class="ghost" id="ws-new">+ Novo</button>
-        <button type="button" class="ghost" id="ws-close">Fechar</button>
+        <button type="button" class="ghost" id="ws-new">${t("+ Novo")}</button>
+        <button type="button" class="ghost" id="ws-close">${t("Fechar")}</button>
       </menu>
     </div>
   </dialog>
 
   <dialog id="mcp-dialog">
     <div class="settings">
-      <h2>Servidores MCP</h2>
-      <p class="wiz-intro">A Saga liga-se a servidores MCP (stdio) e o modelo pode chamar as ferramentas deles.
-      Os segredos do <em>env</em> são guardados na keychain do sistema.</p>
+      <h2>${t("Servidores MCP")}</h2>
+      <p class="wiz-intro">${t("A Saga liga-se a servidores MCP (stdio) e o modelo pode chamar as ferramentas deles. Os segredos do env são guardados na keychain do sistema.")}</p>
       <div class="mcp-list" id="mcp-list"></div>
       <fieldset>
-        <legend id="mcp-form-legend">Novo servidor</legend>
-        <label>Nome <input id="mcp-name" type="text" placeholder="ex.: filesystem" /></label>
-        <label>Comando <input id="mcp-command" type="text" placeholder="ex.: npx" /></label>
-        <label>Argumentos (um por linha) <textarea id="mcp-args" rows="3" spellcheck="false" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/caminho"></textarea></label>
-        <label>Env (KEY=VALUE, um por linha) <textarea id="mcp-env" rows="2" spellcheck="false" placeholder="TOKEN=abc"></textarea></label>
-        <label class="check"><input id="mcp-enabled" type="checkbox" checked /> Ativo</label>
+        <legend id="mcp-form-legend">${t("Novo servidor")}</legend>
+        <label>${t("Nome")} <input id="mcp-name" type="text" placeholder="${t("ex.: filesystem")}" /></label>
+        <label>${t("Comando")} <input id="mcp-command" type="text" placeholder="${t("ex.: npx")}" /></label>
+        <label>${t("Argumentos (um por linha)")} <textarea id="mcp-args" rows="3" spellcheck="false" placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/caminho"></textarea></label>
+        <label>${t("Env (KEY=VALUE, um por linha)")} <textarea id="mcp-env" rows="2" spellcheck="false" placeholder="TOKEN=abc"></textarea></label>
+        <label class="check"><input id="mcp-enabled" type="checkbox" checked /> ${t("Ativo")}</label>
         <div class="ws-editor-bar">
-          <button type="button" class="ghost" id="mcp-test">Testar ligação</button>
-          <button type="button" class="primary" id="mcp-add">Guardar servidor</button>
+          <button type="button" class="ghost" id="mcp-test">${t("Testar ligação")}</button>
+          <button type="button" class="primary" id="mcp-add">${t("Guardar servidor")}</button>
         </div>
         <div class="pull-status" id="mcp-status"></div>
       </fieldset>
       <menu>
-        <button type="button" class="ghost" id="mcp-close">Fechar</button>
+        <button type="button" class="ghost" id="mcp-close">${t("Fechar")}</button>
       </menu>
     </div>
   </dialog>
 
   <dialog id="activity-dialog">
     <div class="settings">
-      <h2>Atividade desta Saga</h2>
+      <h2>${t("Atividade desta Saga")}</h2>
       <div class="act-list" id="act-list"></div>
       <menu>
-        <button type="button" class="ghost" id="act-refresh">Atualizar</button>
-        <button type="button" class="ghost" id="act-close">Fechar</button>
+        <button type="button" class="ghost" id="act-refresh">${t("Atualizar")}</button>
+        <button type="button" class="ghost" id="act-close">${t("Fechar")}</button>
       </menu>
     </div>
   </dialog>
 
   <dialog id="automations-dialog">
     <div class="settings">
-      <h2>Automações agendadas</h2>
-      <p class="wiz-intro">Corre um workflow num horário. As ações são <strong>executadas
-      automaticamente</strong> e registadas; o resultado vai para a Saga "Automações" + notificação.
-      Só corre com a app aberta.</p>
+      <h2>${t("Automações agendadas")}</h2>
+      <p class="wiz-intro">${t("Corre um workflow num horário. As ações são executadas automaticamente e registadas; o resultado vai para a Saga \"Automações\" + notificação. Só corre com a app aberta.")}</p>
       <div class="mcp-list" id="sched-list"></div>
       <fieldset>
-        <legend id="sched-form-legend">Novo agendamento</legend>
-        <label>Nome <input id="sched-name" type="text" placeholder="ex.: Login diário" /></label>
-        <label>Workflow <select id="sched-workflow"></select></label>
-        <label>Argumentos <input id="sched-args" type="text" placeholder="(opcional)" /></label>
-        <label>Frequência
+        <legend id="sched-form-legend">${t("Novo agendamento")}</legend>
+        <label>${t("Nome")} <input id="sched-name" type="text" placeholder="${t("ex.: Login diário")}" /></label>
+        <label>${t("Workflow")} <select id="sched-workflow"></select></label>
+        <label>${t("Argumentos")} <input id="sched-args" type="text" placeholder="${t("(opcional)")}" /></label>
+        <label>${t("Frequência")}
           <select id="sched-preset">
-            <option value="0 0 9 * * *">Todos os dias às 9h</option>
-            <option value="0 0 9 * * Mon-Fri">Dias úteis às 9h</option>
-            <option value="0 0 * * * *">De hora a hora</option>
-            <option value="0 */5 * * * *">A cada 5 minutos</option>
-            <option value="__custom__">Personalizado (cron)…</option>
+            <option value="0 0 9 * * *">${t("Todos os dias às 9h")}</option>
+            <option value="0 0 9 * * Mon-Fri">${t("Dias úteis às 9h")}</option>
+            <option value="0 0 * * * *">${t("De hora a hora")}</option>
+            <option value="0 */5 * * * *">${t("A cada 5 minutos")}</option>
+            <option value="__custom__">${t("Personalizado (cron)…")}</option>
           </select>
         </label>
-        <label>Expressão cron <input id="sched-cron" type="text" value="0 0 9 * * *" /></label>
-        <label class="check"><input id="sched-enabled" type="checkbox" checked /> Ativo</label>
+        <label>${t("Expressão cron")} <input id="sched-cron" type="text" value="0 0 9 * * *" /></label>
+        <label class="check"><input id="sched-enabled" type="checkbox" checked /> ${t("Ativo")}</label>
         <div class="ws-editor-bar">
-          <button type="button" class="ghost" id="sched-add">Guardar agendamento</button>
+          <button type="button" class="ghost" id="sched-add">${t("Guardar agendamento")}</button>
         </div>
         <div class="pull-status" id="sched-status"></div>
       </fieldset>
       <menu>
-        <button type="button" class="ghost" id="sched-close">Fechar</button>
+        <button type="button" class="ghost" id="sched-close">${t("Fechar")}</button>
       </menu>
     </div>
   </dialog>
 
   <dialog id="models-dialog">
     <div class="settings">
-      <h2>Modelos</h2>
+      <h2>${t("Modelos")}</h2>
+      <datalist id="ollama-models"></datalist>
       <div class="pull-status" id="hub-status">—</div>
       <div class="hub-rec" id="hub-rec" hidden></div>
 
       <fieldset>
-        <legend>Provider local</legend>
-        <label>Provider
+        <legend>${t("Provider local")}</legend>
+        <label>${t("Provider")}
           <select id="hub-local-provider">
             <option value="ollama">Ollama</option>
             <option value="openai">OpenAI-compatible (LM Studio)</option>
           </select>
         </label>
         <div class="field-group" id="hub-ollama-fields">
-          <label>Endpoint <input id="hub-ollama-endpoint" type="text" placeholder="http://localhost:11434" /></label>
-          <label>Modelo de visão (imagens) <input id="hub-vision" type="text" list="ollama-models" /></label>
+          <label>${t("Endpoint")} <input id="hub-ollama-endpoint" type="text" placeholder="http://localhost:11434" /></label>
+          <label>${t("Modelo de visão (imagens)")} <input id="hub-vision" type="text" list="ollama-models" /></label>
         </div>
         <div class="field-group" id="hub-openai-local-fields" hidden>
-          <label>Endpoint <input id="hub-oai-local-endpoint" type="text" placeholder="http://localhost:1234/v1" /></label>
-          <label>API key (opcional) <input id="hub-oai-local-key" type="password" /></label>
-          <label>Modelo <input id="hub-oai-local-model" type="text" placeholder="ex.: ID no LM Studio" /></label>
+          <label>${t("Endpoint")} <input id="hub-oai-local-endpoint" type="text" placeholder="http://localhost:1234/v1" /></label>
+          <label>${t("API key (opcional)")} <input id="hub-oai-local-key" type="password" /></label>
+          <label>${t("Modelo")} <input id="hub-oai-local-model" type="text" placeholder="${t("ex.: ID no LM Studio")}" /></label>
         </div>
       </fieldset>
 
       <fieldset id="hub-ollama-mgmt">
-        <legend>Modelos Ollama instalados</legend>
+        <legend>${t("Modelos Ollama instalados")}</legend>
         <div class="models-list" id="hub-installed"></div>
-        <label>Instalar modelo
+        <label>${t("Instalar modelo")}
           <span class="row">
-            <input id="hub-pull-name" type="text" placeholder="ex.: llama3.2" list="ollama-models" />
-            <button type="button" class="ghost" id="hub-pull-btn">Puxar</button>
+            <input id="hub-pull-name" type="text" placeholder="${t("ex.: llama3.2")}" list="ollama-models" />
+            <button type="button" class="ghost" id="hub-pull-btn">${t("Puxar")}</button>
           </span>
         </label>
         <div class="hub-progress" id="hub-progress" hidden><div class="hub-bar" id="hub-bar"></div></div>
@@ -477,82 +376,137 @@ app.innerHTML = `
       </fieldset>
 
       <fieldset>
-        <legend>Cloud (escalar)</legend>
-        <label>Provider
+        <legend>${t("Cloud (escalar)")}</legend>
+        <label>${t("Provider")}
           <select id="hub-cloud-provider">
             <option value="claude">Claude</option>
             <option value="openai">OpenAI-compatible</option>
           </select>
         </label>
         <div class="field-group" id="hub-claude-fields">
-          <label>Modo
+          <label>${t("Modo")}
             <select id="hub-claude-mode">
-              <option value="off">Desligado</option>
-              <option value="cli">Claude CLI (subscrição)</option>
-              <option value="api">API (ANTHROPIC_API_KEY)</option>
+              <option value="off">${t("Desligado")}</option>
+              <option value="cli">${t("Claude CLI (subscrição)")}</option>
+              <option value="api">${t("API (ANTHROPIC_API_KEY)")}</option>
             </select>
           </label>
-          <label>Modelo
+          <label>${t("Modelo")}
             <select id="hub-claude-preset">
-              <option value="claude-haiku-4-5-20251001">Haiku 4.5 — rápido e barato</option>
-              <option value="claude-sonnet-4-6">Sonnet 4.6 — equilíbrio</option>
-              <option value="claude-opus-4-8">Opus 4.8 — topo</option>
-              <option value="claude-fable-5">Fable 5 — mais capaz</option>
-              <option value="__custom__">Personalizado…</option>
+              <option value="claude-haiku-4-5-20251001">${t("Haiku 4.5 — rápido e barato")}</option>
+              <option value="claude-sonnet-4-6">${t("Sonnet 4.6 — equilíbrio")}</option>
+              <option value="claude-opus-4-8">${t("Opus 4.8 — topo")}</option>
+              <option value="claude-fable-5">${t("Fable 5 — mais capaz")}</option>
+              <option value="__custom__">${t("Personalizado…")}</option>
             </select>
           </label>
-          <label id="hub-claude-custom-wrap" hidden>Modelo (ID) <input id="hub-claude-model" type="text" /></label>
-          <label>Caminho da CLI <input id="hub-claude-cli" type="text" /></label>
-          <label>API key <input id="hub-claude-key" type="password" /></label>
-          <label>Max tokens <input id="hub-claude-maxtok" type="number" min="256" /></label>
+          <label id="hub-claude-custom-wrap" hidden>${t("Modelo (ID)")} <input id="hub-claude-model" type="text" /></label>
+          <label>${t("Caminho da CLI")} <input id="hub-claude-cli" type="text" /></label>
+          <label>${t("API key")} <input id="hub-claude-key" type="password" /></label>
+          <label>${t("Max tokens")} <input id="hub-claude-maxtok" type="number" min="256" /></label>
         </div>
         <div class="field-group" id="hub-openai-cloud-fields" hidden>
-          <label>Endpoint <input id="hub-oai-cloud-endpoint" type="text" placeholder="https://api.openai.com/v1" /></label>
-          <label>API key <input id="hub-oai-cloud-key" type="password" /></label>
-          <label>Modelo <input id="hub-oai-cloud-model" type="text" placeholder="ex.: gpt-4o" /></label>
+          <label>${t("Endpoint")} <input id="hub-oai-cloud-endpoint" type="text" placeholder="https://api.openai.com/v1" /></label>
+          <label>${t("API key")} <input id="hub-oai-cloud-key" type="password" /></label>
+          <label>${t("Modelo")} <input id="hub-oai-cloud-model" type="text" placeholder="${t("ex.: gpt-4o")}" /></label>
         </div>
       </fieldset>
 
+      <details class="hub-advanced" id="hub-advanced">
+        <summary>${t("Avançado")}</summary>
+
+        <fieldset>
+          <legend>${t("Deep research (Claude)")}</legend>
+          <label>${t("Rondas de pesquisa (deep research)")} <input id="hub-research-rounds" type="number" min="1" max="5" /></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>${t("Pesquisa web (modelo local)")}</legend>
+          <label class="check"><input id="hub-local-web" type="checkbox" /> ${t("Dar pesquisa web ao modelo local (🔎 corre no Ollama)")}</label>
+          <p class="wiz-hint">${t("Precisa de um modelo Ollama com suporte a ferramentas (ex.: llama3.1, qwen2.5). Com isto desligado, o 🔎 força o Claude.")}</p>
+          <label>${t("Motor")}
+            <select id="hub-web-provider">
+              <option value="jina">${t("Jina (recomendado)")}</option>
+              <option value="tavily">Tavily</option>
+              <option value="brave">Brave</option>
+              <option value="serper">Serper</option>
+              <option value="exa">Exa</option>
+              <option value="duckduckgo">${t("DuckDuckGo (sem chave — pouco fiável)")}</option>
+            </select>
+          </label>
+          <label id="hub-web-key-wrap"><span id="hub-web-key-text"></span> <input id="hub-web-key" type="password" /></label>
+          <p class="wiz-hint" id="hub-web-hint"></p>
+        </fieldset>
+
+        <fieldset>
+          <legend>${t("Modelo local (avançado)")}</legend>
+          <label>${t("Contexto (num_ctx)")} <input id="hub-num-ctx" type="number" min="2048" step="1024" /></label>
+          <p class="wiz-hint">${t("Maior = o modelo lê mais (resultados de pesquisa + histórico). 8192 é um bom valor; usa mais RAM.")}</p>
+          <label>${t("Temperatura")} <input id="hub-temp" type="number" min="0" max="1.5" step="0.1" /></label>
+          <p class="wiz-hint">${t("Mais baixa (~0.4) = respostas mais factuais e menos divagantes.")}</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>${t("Memória")}</legend>
+          <label>${t("Pasta de memória")} <input id="hub-memory-dir" type="text" /></label>
+          <label>${t("Caminho CLAUDE.md (opcional)")} <input id="hub-claude-md" type="text" /></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>${t("Ferramentas & Workspace (só modo API)")}</legend>
+          <label>${t("Pasta do workspace (skills/playbooks/workflows)")} <input id="hub-workspace-dir" type="text" /></label>
+          <label>${t("Confirmação de ações")}
+            <select id="hub-confirm-mode">
+              <option value="off">${t("Desligada — executa direto")}</option>
+              <option value="dry_run">${t("Dry-run — só pré-visualiza")}</option>
+              <option value="ask">${t("Pedir aprovação a cada ação")}</option>
+            </select>
+          </label>
+          <label class="check"><input id="hub-browser-tools" type="checkbox" /> ${t("Ativar ferramentas de browser")}</label>
+          <label>${t("Caminho do sidecar (sidecar/index.js)")} <input id="hub-browser-sidecar" type="text" /></label>
+          <label>${t("Executável Node")} <input id="hub-browser-node" type="text" /></label>
+          <label>${t("Pasta de dados do browser (sessão persistente)")} <input id="hub-browser-data" type="text" /></label>
+        </fieldset>
+      </details>
+
       <menu>
-        <button type="button" class="primary" id="hub-save">Guardar</button>
-        <button type="button" class="ghost" id="hub-close">Fechar</button>
+        <button type="button" class="primary" id="hub-save">${t("Guardar")}</button>
+        <button type="button" class="ghost" id="hub-close">${t("Fechar")}</button>
       </menu>
     </div>
   </dialog>
 
   <dialog id="wizard-dialog">
     <div class="settings wizard">
-      <h2>Bem-vindo ao Saga ⛵</h2>
-      <p class="wiz-intro">O Saga corre um modelo local para tarefas leves e escala para o Claude
-      quando compensa. Vamos configurar o que precisas — podes mudar tudo depois nas Definições.</p>
+      <h2>${t("Bem-vindo ao Saga ⛵")}</h2>
+      <p class="wiz-intro">${t("O Saga corre no teu modelo local. O Claude (CLI/subscrição) é opcional — liga-o para escalar tarefas mais pesadas quando quiseres. Podes mudar tudo depois nas Definições.")}</p>
 
       <fieldset>
-        <legend>Modelo local (Ollama)</legend>
-        <div class="wiz-status" id="wiz-ollama-status">A verificar…</div>
-        <label>Endpoint <input id="w_ollama_endpoint" type="text" /></label>
-        <label>Modelo <input id="w_ollama_model" type="text" list="ollama-models" /></label>
-        <p class="wiz-hint">Sem Ollama? Instala em <strong>ollama.com</strong> e corre
-        <code>ollama pull llama3.2</code>.</p>
+        <legend>${t("Modelo local (Ollama)")}</legend>
+        <div class="wiz-status" id="wiz-ollama-status">${t("A verificar…")}</div>
+        <label>${t("Endpoint")} <input id="w_ollama_endpoint" type="text" /></label>
+        <label>${t("Modelo")} <input id="w_ollama_model" type="text" list="ollama-models" /></label>
+        <p class="wiz-hint">${t("Sem Ollama? Instala em <strong>ollama.com</strong> e corre <code>ollama pull llama3.2</code>.")}</p>
       </fieldset>
 
       <fieldset>
-        <legend>Claude</legend>
-        <div class="wiz-status" id="wiz-claude-status">A verificar…</div>
-        <label>Modo
+        <legend>${t("Claude")}</legend>
+        <div class="wiz-status" id="wiz-claude-status">${t("A verificar…")}</div>
+        <label>${t("Modo")}
           <select id="w_claude_mode">
-            <option value="off">Desligado</option>
-            <option value="cli">Claude CLI (subscrição)</option>
-            <option value="api">API (key)</option>
+            <option value="off">${t("Desligado")}</option>
+            <option value="cli">${t("Claude CLI (subscrição)")}</option>
+            <option value="api">${t("API (key)")}</option>
           </select>
         </label>
-        <label id="wiz-key-wrap" hidden>API key <input id="w_claude_api_key" type="password" /></label>
+        <label id="wiz-key-wrap" hidden>${t("API key")} <input id="w_claude_api_key" type="password" /></label>
       </fieldset>
 
       <menu>
-        <button type="button" class="ghost" id="wiz-test">Testar ligações</button>
-        <button type="button" class="primary" id="wiz-finish">Começar a usar</button>
+        <button type="button" class="ghost" id="wiz-test">${t("Testar ligações")}</button>
+        <button type="button" class="primary" id="wiz-finish">${t("Começar a usar")}</button>
       </menu>
-      <p class="wiz-skip"><a href="#" id="wiz-skip">Saltar por agora</a></p>
+      <p class="wiz-skip"><a href="#" id="wiz-skip">${t("Saltar por agora")}</a></p>
     </div>
   </dialog>
 `;
@@ -568,7 +522,6 @@ const els = {
   memPreview: document.querySelector<HTMLPreElement>("#mem-preview")!,
   dialog: document.querySelector<HTMLDialogElement>("#settings-dialog")!,
   wizard: document.querySelector<HTMLDialogElement>("#wizard-dialog")!,
-  form: document.querySelector<HTMLFormElement>("#settings-form")!,
   modelsList: document.querySelector<HTMLDataListElement>("#ollama-models")!,
   convList: document.querySelector<HTMLDivElement>("#conv-list")!,
   convSearch: document.querySelector<HTMLInputElement>("#conv-search")!,
@@ -581,8 +534,6 @@ const els = {
   artifactToggle: document.querySelector<HTMLButtonElement>("#artifact-toggle")!,
   artifactCopy: document.querySelector<HTMLButtonElement>("#artifact-copy")!,
   artifactClose: document.querySelector<HTMLButtonElement>("#artifact-close")!,
-  claudeModelPreset: document.querySelector<HTMLSelectElement>("#claude-model-preset")!,
-  claudeModelCustomWrap: document.querySelector<HTMLLabelElement>("#claude-model-custom-wrap")!,
 };
 
 const CLAUDE_MODEL_PRESETS = [
@@ -591,19 +542,6 @@ const CLAUDE_MODEL_PRESETS = [
   "claude-opus-4-8",
   "claude-fable-5",
 ];
-
-/** Sincroniza o dropdown de presets com o input de texto `claude_model`. */
-function syncClaudeModelControls(model: string) {
-  const input = els.form.elements.namedItem("claude_model") as HTMLInputElement;
-  input.value = model;
-  if (CLAUDE_MODEL_PRESETS.includes(model)) {
-    els.claudeModelPreset.value = model;
-    els.claudeModelCustomWrap.hidden = true;
-  } else {
-    els.claudeModelPreset.value = "__custom__";
-    els.claudeModelCustomWrap.hidden = false;
-  }
-}
 
 function fmtUsd(n: number): string {
   return "$" + n.toFixed(n < 0.01 ? 5 : 4);
@@ -623,16 +561,23 @@ function renderMessages() {
     img.src = "/caravel-panel.svg";
     img.alt = "Saga";
     const p = document.createElement("p");
-    p.textContent =
-      "Faz uma pergunta. Tarefas leves ficam no modelo local; só o que é pesado escala para o Claude.";
+    p.textContent = t(
+      "Faz uma pergunta. Tarefas leves ficam no modelo local; só o que é pesado escala para o Claude."
+    );
     empty.appendChild(img);
     empty.appendChild(p);
     els.messages.appendChild(empty);
     return;
   }
+  const firstKept = state.compactedUpto > 0 ? state.items.findIndex((i) => !isCompacted(i)) : -1;
   state.items.forEach((item, index) => {
+    if (index === firstKept && firstKept > 0) {
+      els.messages.appendChild(buildCompactDivider(firstKept));
+    }
     const row = document.createElement("div");
-    row.className = `msg ${item.role}${item.error ? " error" : ""}`;
+    row.className = `msg ${item.role}${item.error ? " error" : ""}${
+      isCompacted(item) ? " compacted" : ""
+    }`;
 
     if (item.attachments && item.attachments.length) {
       const thumbs = document.createElement("div");
@@ -662,7 +607,7 @@ function renderMessages() {
       det.className = "thinking-block";
       det.open = index === state.items.length - 1 && state.busy;
       const sum = document.createElement("summary");
-      sum.textContent = "🧠 raciocínio";
+      sum.textContent = t("🧠 raciocínio");
       const body = document.createElement("div");
       body.className = "thinking-body";
       body.textContent = item.thinking;
@@ -671,17 +616,26 @@ function renderMessages() {
       row.appendChild(det);
     }
 
+    const parsed =
+      item.role === "assistant" && !item.error ? parseSources(item.content) : null;
     if (item.content !== "" || item.role === "assistant") {
       const bubble = document.createElement("div");
       bubble.className = "bubble";
       if (item.role === "assistant" && !item.error) {
         bubble.classList.add("markdown");
-        bubble.innerHTML = renderMarkdown(item.content);
+        // Renderiza o corpo sem a secção "## Fontes" (essa vai para o disclosure de fontes).
+        bubble.innerHTML = renderMarkdown(
+          parsed && parsed.sources.length ? parsed.body : item.content
+        );
         highlightWithin(bubble);
       } else {
         bubble.textContent = item.content;
       }
       row.appendChild(bubble);
+    }
+    // Fontes consultadas (verificar se o modelo pesquisou mesmo). Ausência = não pesquisou.
+    if (parsed && parsed.sources.length) {
+      row.appendChild(buildSources(parsed.sources));
     }
 
     if (item.meta) {
@@ -713,7 +667,7 @@ function renderMessages() {
         arow.className = "artifact-actions";
         if (isReport) {
           const btn = document.createElement("button");
-          btn.textContent = "📄 Relatório";
+          btn.textContent = t("📄 Relatório");
           btn.addEventListener("click", () =>
             openArtifact({ lang: "markdown", code: item.content, kind: "markdown" })
           );
@@ -722,7 +676,7 @@ function renderMessages() {
         blocks.forEach((b, i) => {
           const btn = document.createElement("button");
           btn.textContent =
-            `📄 ${KIND_LABEL[b.kind]}${blocks.length > 1 ? " " + (i + 1) : ""}` +
+            `📄 ${t(KIND_LABEL[b.kind])}${blocks.length > 1 ? " " + (i + 1) : ""}` +
             (b.lang ? " · " + b.lang : "");
           btn.addEventListener("click", () => openArtifact(b));
           arow.appendChild(btn);
@@ -742,8 +696,8 @@ function renderMessages() {
       const actions = document.createElement("div");
       actions.className = "msg-actions user-actions";
       const ed = document.createElement("button");
-      ed.textContent = "✎ Editar";
-      ed.title = "Editar e reenviar";
+      ed.textContent = t("✎ Editar");
+      ed.title = t("Editar e reenviar");
       ed.addEventListener("click", () => editUserMessage(index));
       actions.appendChild(ed);
       row.appendChild(actions);
@@ -752,6 +706,98 @@ function renderMessages() {
     els.messages.appendChild(row);
   });
   els.messages.scrollTop = els.messages.scrollHeight;
+  updateCtxEst();
+}
+
+/** Estima e mostra o contexto (tokens) que seria enviado ao modelo, contando a compactação. */
+function updateCtxEst() {
+  const el = document.querySelector<HTMLElement>("#ctx-est");
+  if (!el) return;
+  if (state.items.length === 0) {
+    el.textContent = "";
+    return;
+  }
+  const chars = buildPayload().reduce((n, m) => n + m.content.length, 0);
+  el.textContent = `~${fmtInt(Math.ceil(chars / 4))} ${t("tok no contexto")}`;
+}
+
+/** Formata um passo de ferramenta para o fluxo (traduzível; o backend manda detalhe neutro). */
+function formatToolStep(tool: string, detail: string): string {
+  switch (tool) {
+    case "web_search":
+      return `🔎 ${t("a pesquisar")}: ${detail}`;
+    case "web_fetch":
+      return `↗ ${t("a abrir")}: ${detail}`;
+    case "create_pdf":
+      return `📄 ${t("a criar PDF")}`;
+    default:
+      return detail ? `${tool}: ${detail}` : tool;
+  }
+}
+
+interface Source {
+  label: string;
+  url: string;
+}
+
+/** Separa o corpo da resposta da secção "## Fontes/Sources" e extrai as fontes (título + URL). */
+function parseSources(content: string): { body: string; sources: Source[] } {
+  const m = content.match(/\n#{1,3}\s*(?:Fontes|Sources)\s*\n([\s\S]*)$/i);
+  if (!m || m.index === undefined) return { body: content, sources: [] };
+  const body = content.slice(0, m.index).trimEnd();
+  const sources: Source[] = [];
+  const re = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s)]+)/g;
+  let mm: RegExpExecArray | null;
+  while ((mm = re.exec(m[1])) !== null) {
+    const url = (mm[2] || mm[3]).replace(/[).,]+$/, "");
+    const label = mm[1] || url;
+    if (url && !sources.some((s) => s.url === url)) sources.push({ label, url });
+  }
+  return { body, sources };
+}
+
+/** Disclosure com as fontes web realmente consultadas no turno (para verificação). */
+function buildSources(sources: Source[]): HTMLDetailsElement {
+  const det = document.createElement("details");
+  det.className = "sources";
+  const sum = document.createElement("summary");
+  sum.textContent = t("🔎 Fontes ({n})", { n: sources.length });
+  det.appendChild(sum);
+  const list = document.createElement("div");
+  list.className = "sources-list";
+  for (const s of sources) {
+    const row = document.createElement("div");
+    row.className = "src-row";
+    const a = document.createElement("a");
+    a.href = s.url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = s.label;
+    const u = document.createElement("span");
+    u.className = "src-url";
+    u.textContent = s.url;
+    row.appendChild(a);
+    row.appendChild(u);
+    list.appendChild(row);
+  }
+  det.appendChild(list);
+  return det;
+}
+
+/** Linha divisória da compactação: turnos acima estão resumidos e fora do contexto enviado. */
+function buildCompactDivider(count: number): HTMLDetailsElement {
+  const det = document.createElement("details");
+  det.className = "compact-divider";
+  const sum = document.createElement("summary");
+  sum.textContent = t("▲ {n} mensagens compactadas — resumidas, fora do contexto enviado", {
+    n: count,
+  });
+  const body = document.createElement("div");
+  body.className = "compact-summary";
+  body.textContent = state.compactedSummary;
+  det.appendChild(sum);
+  det.appendChild(body);
+  return det;
 }
 
 function buildActions(): HTMLDivElement {
@@ -766,27 +812,32 @@ function buildActions(): HTMLDivElement {
     return b;
   };
 
-  actions.appendChild(mk("↻ Regenerar", "Regenerar com a mesma rota", () => regenerate()));
-  actions.appendChild(
-    mk("⤴ Claude", "Escalar para o Claude", () => regenerate({ routeOverride: "claude" }))
-  );
+  actions.appendChild(mk(t("↻ Regenerar"), t("Regenerar a resposta"), () => regenerate()));
 
-  const sel = document.createElement("select");
-  sel.className = "model-pick";
-  sel.innerHTML = `
-    <option value="">Modelo ▾</option>
-    <option value="local">Tentar local</option>
-    <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
-    <option value="claude-sonnet-4-6">Sonnet 4.6</option>
-    <option value="claude-opus-4-8">Opus 4.8</option>`;
-  sel.addEventListener("change", () => {
-    const v = sel.value;
-    if (!v) return;
-    if (v === "local") regenerate({ routeOverride: "local" });
-    else regenerate({ routeOverride: "claude", modelOverride: v });
-    sel.value = "";
-  });
-  actions.appendChild(sel);
+  // Escalonamento para o Claude só quando está configurado (local-first).
+  if (cloudEnabled()) {
+    actions.appendChild(
+      mk(t("⤴ Perguntar ao Claude"), t("Escalar esta resposta para o Claude"), () =>
+        regenerate({ routeOverride: "claude" })
+      )
+    );
+    const sel = document.createElement("select");
+    sel.className = "model-pick";
+    sel.innerHTML = `
+      <option value="">${t("Modelo ▾")}</option>
+      <option value="local">${t("Tentar local")}</option>
+      <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+      <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+      <option value="claude-opus-4-8">Opus 4.8</option>`;
+    sel.addEventListener("change", () => {
+      const v = sel.value;
+      if (!v) return;
+      if (v === "local") regenerate({ routeOverride: "local" });
+      else regenerate({ routeOverride: "claude", modelOverride: v });
+      sel.value = "";
+    });
+    actions.appendChild(sel);
+  }
 
   return actions;
 }
@@ -799,12 +850,12 @@ function escapeHtml(s: string): string {
 
 function renderAccounting(a: Accounting) {
   const cards: [string, string, string?][] = [
-    ["Pedidos locais", fmtInt(a.local_requests), "grátis"],
-    ["Pedidos Claude", fmtInt(a.claude_requests)],
-    ["Tokens servidos localmente", fmtInt(a.tokens_served_local), "que não foram ao Claude"],
-    ["Tokens poupados (compressão)", fmtInt(a.tokens_saved_compression)],
-    ["Tokens Claude", `${fmtInt(a.claude_input_tokens)}↓ / ${fmtInt(a.claude_output_tokens)}↑`],
-    ["Custo Claude", fmtUsd(a.claude_cost_usd)],
+    [t("Pedidos locais"), fmtInt(a.local_requests), t("grátis")],
+    [t("Pedidos Claude"), fmtInt(a.claude_requests)],
+    [t("Tokens servidos localmente"), fmtInt(a.tokens_served_local), t("que não foram ao Claude")],
+    [t("Tokens poupados (compressão)"), fmtInt(a.tokens_saved_compression)],
+    [t("Tokens Claude"), `${fmtInt(a.claude_input_tokens)}↓ / ${fmtInt(a.claude_output_tokens)}↑`],
+    [t("Custo Claude"), fmtUsd(a.claude_cost_usd)],
   ];
   els.acctCards.innerHTML = cards
     .map(
@@ -818,16 +869,16 @@ function renderAccounting(a: Accounting) {
     .join("");
 
   els.miniStats.innerHTML = `
-    <span title="Tokens servidos localmente">⬡ ${fmtInt(
+    <span title="${t("Tokens servidos localmente")}">⬡ ${fmtInt(
       a.tokens_served_local + a.tokens_saved_compression
-    )} tok poupados</span>
-    <span title="Custo acumulado no Claude">▲ ${fmtUsd(a.claude_cost_usd)}</span>`;
+    )} ${t("tok poupados")}</span>
+    <span title="${t("Custo acumulado no Claude")}">▲ ${fmtUsd(a.claude_cost_usd)}</span>`;
 }
 
 async function refreshMemory() {
   try {
     const preview = await api.getMemoryPreview();
-    els.memPreview.textContent = preview.trim() || "(sem memória — define a pasta nas definições)";
+    els.memPreview.textContent = preview.trim() || t("(sem memória — define a pasta nas definições)");
   } catch (e) {
     els.memPreview.textContent = String(e);
   }
@@ -860,7 +911,7 @@ function renderPendingAttachments() {
     img.src = `data:${a.media_type};base64,${a.data_base64}`;
     const rm = document.createElement("button");
     rm.textContent = "×";
-    rm.title = "Remover";
+    rm.title = t("Remover");
     rm.addEventListener("click", () => {
       state.pendingAttachments.splice(idx, 1);
       renderPendingAttachments();
@@ -918,7 +969,7 @@ function renderSidebar() {
 
     const title = document.createElement("span");
     title.className = "conv-title";
-    title.textContent = c.title || "Nova conversa";
+    title.textContent = c.title || t("Nova conversa");
     title.title = c.title;
     title.addEventListener("click", () => selectConversation(c.id));
     title.addEventListener("dblclick", (e) => {
@@ -929,7 +980,7 @@ function renderSidebar() {
     const ren = document.createElement("button");
     ren.className = "conv-act";
     ren.textContent = "✎";
-    ren.title = "Renomear";
+    ren.title = t("Renomear");
     ren.addEventListener("click", (e) => {
       e.stopPropagation();
       startRename(c, row, title);
@@ -938,7 +989,7 @@ function renderSidebar() {
     const del = document.createElement("button");
     del.className = "conv-act conv-del";
     del.textContent = "×";
-    del.title = "Apagar";
+    del.title = t("Apagar");
     del.addEventListener("click", (e) => {
       e.stopPropagation();
       removeConversation(c.id);
@@ -1008,20 +1059,20 @@ function renderSearchResults(hits: SearchHit[]) {
   if (!hits.length) {
     const empty = document.createElement("div");
     empty.className = "conv-empty";
-    empty.textContent = "Sem resultados";
+    empty.textContent = t("Sem resultados");
     els.convList.appendChild(empty);
     return;
   }
   for (const h of hits) {
     const row = document.createElement("div");
     row.className = "conv search-hit";
-    const t = document.createElement("div");
-    t.className = "conv-title";
-    t.textContent = h.title || "Nova conversa";
+    const titleEl = document.createElement("div");
+    titleEl.className = "conv-title";
+    titleEl.textContent = h.title || t("Nova conversa");
     const s = document.createElement("div");
     s.className = "hit-snippet";
     s.textContent = h.snippet;
-    row.appendChild(t);
+    row.appendChild(titleEl);
     row.appendChild(s);
     row.addEventListener("click", () => {
       els.convSearch.value = "";
@@ -1042,6 +1093,7 @@ function storedToItem(m: StoredMessage): Item {
   }
   if (m.role === "assistant" && m.route) {
     return {
+      id: m.id,
       role: "assistant",
       content: m.content,
       attachments,
@@ -1058,7 +1110,12 @@ function storedToItem(m: StoredMessage): Item {
       },
     };
   }
-  return { role: m.role, content: m.content, attachments };
+  return { id: m.id, role: m.role, content: m.content, attachments };
+}
+
+function resetCompaction() {
+  state.compactedSummary = "";
+  state.compactedUpto = 0;
 }
 
 async function selectConversation(id: number) {
@@ -1066,6 +1123,13 @@ async function selectConversation(id: number) {
   state.currentConversationId = id;
   const msgs = await api.getConversation(id);
   state.items = msgs.map(storedToItem);
+  try {
+    const c = await api.getCompaction(id);
+    state.compactedSummary = c.summary;
+    state.compactedUpto = c.upto;
+  } catch {
+    resetCompaction();
+  }
   renderMessages();
   renderSidebar();
   renderAccounting(await api.conversationAccounting(id));
@@ -1076,6 +1140,7 @@ async function createConversation() {
   const id = await api.newConversation();
   state.currentConversationId = id;
   state.items = [];
+  resetCompaction();
   renderMessages();
   await loadConversations();
   renderAccounting(await api.conversationAccounting(id));
@@ -1086,6 +1151,7 @@ async function removeConversation(id: number) {
   if (state.currentConversationId === id) {
     state.currentConversationId = null;
     state.items = [];
+    resetCompaction();
     renderMessages();
   }
   await loadConversations();
@@ -1093,6 +1159,42 @@ async function removeConversation(id: number) {
     await selectConversation(state.conversations[0].id);
   } else if (state.conversations.length === 0) {
     await createConversation();
+  }
+}
+
+/** Compacta a Saga atual: resume os turnos antigos com o modelo local (não-destrutivo). */
+async function compactCurrentSaga() {
+  if (state.busy || state.currentConversationId === null) return;
+  const btn = document.querySelector<HTMLButtonElement>("#btn-compact")!;
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = t("A compactar…");
+  try {
+    const r = await api.compactConversation(state.currentConversationId, 4);
+    state.compactedSummary = r.summary;
+    state.compactedUpto = r.upto;
+    renderMessages();
+  } catch (e) {
+    alert(t("Falha a compactar: ") + e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+/** Esvazia a Saga atual (mantém-na na lista). */
+async function clearCurrentSaga() {
+  if (state.busy || state.currentConversationId === null) return;
+  if (!confirm(t("Apagar todas as mensagens desta Saga?"))) return;
+  const id = state.currentConversationId;
+  try {
+    await api.clearConversation(id);
+    state.items = [];
+    resetCompaction();
+    renderMessages();
+    renderAccounting(await api.conversationAccounting(id));
+  } catch (e) {
+    alert(t("Falha a limpar: ") + e);
   }
 }
 
@@ -1105,16 +1207,41 @@ type SendOpts = {
   subagents?: boolean;
 };
 
+/** Item já compactado (resumido e fora do contexto enviado ao modelo)? */
+function isCompacted(i: Item): boolean {
+  return state.compactedUpto > 0 && i.id !== undefined && i.id <= state.compactedUpto;
+}
+
 function buildPayload(): ChatMessage[] {
-  return state.items.map((i) => ({
-    role: i.role,
-    content: i.content,
-    attachments: i.attachments,
-  }));
+  const kept = state.items
+    .filter((i) => !isCompacted(i))
+    .map((i) => ({ role: i.role, content: i.content, attachments: i.attachments }));
+  if (state.compactedSummary.trim()) {
+    // Injeta o resumo como contexto (par user→assistant para manter alternância de papéis).
+    return [
+      {
+        role: "user",
+        content: `${t("Resumo do início desta conversa (contexto):")}\n\n${state.compactedSummary}`,
+      },
+      { role: "assistant", content: t("Entendido — tenho o contexto anterior.") },
+      ...kept,
+    ];
+  }
+  return kept;
 }
 
 function routeOptsFromMode(): SendOpts {
-  return state.routeMode === "auto" ? {} : { routeOverride: state.routeMode };
+  // Local-first: só envia override quando o utilizador escolhe Claude.
+  return state.routeMode === "claude" ? { routeOverride: "claude" } : {};
+}
+
+/** Escalonamento para a cloud (Claude/OpenAI) está configurado? Se não, esconde tudo o que é Claude. */
+function cloudEnabled(): boolean {
+  const s = state.settings;
+  if (!s) return false;
+  return s.cloud_provider === "claude"
+    ? s.claude_mode !== "off"
+    : !!s.openai_cloud_endpoint?.trim();
 }
 
 /** Empurra uma bolha de assistente e preenche-a com o streaming. */
@@ -1148,12 +1275,12 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     els.messages.scrollTop = els.messages.scrollHeight;
   };
   const waiting = sendOpts.research
-    ? "A pesquisar na net…"
+    ? t("A pesquisar na net…")
     : sendOpts.subagents
-      ? "A coordenar subagentes…"
+      ? t("A coordenar subagentes…")
       : sendOpts.thinking
-        ? "A pensar a fundo…"
-        : "A pensar…";
+        ? t("A pensar a fundo…")
+        : t("A pensar…");
   const tb = els.messages.lastElementChild?.querySelector(".bubble") as HTMLDivElement | null;
   if (tb) {
     tb.innerHTML =
@@ -1178,7 +1305,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
           renderMessages();
         } else if (evt.kind === "ToolStep") {
           assistant.steps = assistant.steps ?? [];
-          assistant.steps.push(`${evt.tool} ${evt.detail}`);
+          assistant.steps.push(formatToolStep(evt.tool, evt.detail));
           renderMessages();
           paintBubble();
         } else if (evt.kind === "ApprovalRequest") {
@@ -1236,7 +1363,8 @@ function refreshSlashWorkflows() {
     .catch(() => {});
 }
 
-function setRouteMode(mode: "auto" | "local" | "claude") {
+function setRouteMode(mode: "local" | "claude") {
+  if (mode === "claude" && !cloudEnabled()) return; // Claude indisponível
   state.routeMode = mode;
   els.routeModeBar
     .querySelectorAll<HTMLButtonElement>("button[data-mode]")
@@ -1249,25 +1377,28 @@ function toggleComposerFlag(flag: "thinking" | "research" | "subagents") {
   document.querySelector(id)!.classList.toggle("active", state[flag]);
 }
 function openSettingsDialog() {
-  if (state.settings) settingsToForm(state.settings);
   els.dialog.showModal();
 }
 
 function slashCommands(): SlashCmd[] {
   const cmds: SlashCmd[] = [
-    { cmd: "skill", label: "Criar skill com IA — /skill <descrição>", kind: "create" },
-    { cmd: "playbook", label: "Criar playbook com IA — /playbook <descrição>", kind: "create" },
-    { cmd: "workflow", label: "Criar workflow com IA — /workflow <descrição>", kind: "create" },
-    { cmd: "auto", label: "Rota: Auto", kind: "setting", run: () => setRouteMode("auto") },
-    { cmd: "local", label: "Rota: Local", kind: "setting", run: () => setRouteMode("local") },
-    { cmd: "claude", label: "Rota: Claude", kind: "setting", run: () => setRouteMode("claude") },
-    { cmd: "think", label: "Toggle: 🧠 Think", kind: "setting", run: () => toggleComposerFlag("thinking") },
-    { cmd: "pesquisar", label: "Toggle: 🔎 Pesquisar", kind: "setting", run: () => toggleComposerFlag("research") },
-    { cmd: "subagentes", label: "Toggle: 🧩 Subagentes", kind: "setting", run: () => toggleComposerFlag("subagents") },
-    { cmd: "modelos", label: "Abrir Modelos", kind: "setting", run: () => openModels() },
-    { cmd: "definicoes", label: "Abrir Definições", kind: "setting", run: openSettingsDialog },
+    { cmd: "skill", label: t("Criar skill com IA — /skill <descrição>"), kind: "create" },
+    { cmd: "playbook", label: t("Criar playbook com IA — /playbook <descrição>"), kind: "create" },
+    { cmd: "workflow", label: t("Criar workflow com IA — /workflow <descrição>"), kind: "create" },
+    { cmd: t("pesquisar"), label: t("Toggle: 🔎 Pesquisar"), kind: "setting", run: () => toggleComposerFlag("research") },
+    { cmd: t("modelos"), label: t("Abrir Modelos"), kind: "setting", run: () => openModels() },
+    { cmd: t("definicoes"), label: t("Abrir Definições"), kind: "setting", run: openSettingsDialog },
   ];
-  for (const w of slashWorkflows) cmds.push({ cmd: w, label: `Correr workflow: ${w}`, kind: "workflow" });
+  // Comandos só-Claude apenas quando o escalonamento está configurado.
+  if (cloudEnabled()) {
+    cmds.push(
+      { cmd: "local", label: t("Rota: Local"), kind: "setting", run: () => setRouteMode("local") },
+      { cmd: "claude", label: t("Rota: Claude"), kind: "setting", run: () => setRouteMode("claude") },
+      { cmd: "think", label: t("Toggle: 🧠 Think"), kind: "setting", run: () => toggleComposerFlag("thinking") },
+      { cmd: t("subagentes"), label: t("Toggle: 🧩 Subagentes"), kind: "setting", run: () => toggleComposerFlag("subagents") }
+    );
+  }
+  for (const w of slashWorkflows) cmds.push({ cmd: w, label: t("Correr workflow: {w}", { w }), kind: "workflow" });
   return cmds;
 }
 
@@ -1419,10 +1550,10 @@ async function editUserMessage(index: number) {
   bar.className = "edit-bar";
   const cancel = document.createElement("button");
   cancel.className = "ghost";
-  cancel.textContent = "Cancelar";
+  cancel.textContent = t("Cancelar");
   const save = document.createElement("button");
   save.className = "primary";
-  save.textContent = "Guardar e reenviar";
+  save.textContent = t("Guardar e reenviar");
   bar.append(cancel, save);
   row.append(ta, bar);
   ta.focus();
@@ -1470,130 +1601,67 @@ function setBusy(b: boolean) {
   els.input.disabled = b;
 }
 
-// ---- Settings ----
-function settingsToForm(s: Settings) {
-  const f = els.form;
-  (f.elements.namedItem("ollama_endpoint") as HTMLInputElement).value = s.ollama_endpoint;
-  (f.elements.namedItem("ollama_model") as HTMLInputElement).value = s.ollama_model;
-  (f.elements.namedItem("ollama_vision_model") as HTMLInputElement).value = s.ollama_vision_model;
-  (f.elements.namedItem("ollama_num_ctx") as HTMLInputElement).value = String(s.ollama_num_ctx);
-  (f.elements.namedItem("ollama_temperature") as HTMLInputElement).value = String(s.ollama_temperature);
-  (f.elements.namedItem("claude_mode") as HTMLSelectElement).value = s.claude_mode;
-  syncClaudeModelControls(s.claude_model);
-  (f.elements.namedItem("claude_cli_path") as HTMLInputElement).value = s.claude_cli_path;
-  (f.elements.namedItem("claude_api_key") as HTMLInputElement).value = s.claude_api_key;
-  (f.elements.namedItem("claude_max_tokens") as HTMLInputElement).value = String(s.claude_max_tokens);
-  (f.elements.namedItem("research_max_rounds") as HTMLInputElement).value = String(
-    s.research_max_rounds
-  );
-  (f.elements.namedItem("local_web_search") as HTMLInputElement).checked = s.local_web_search;
-  (f.elements.namedItem("web_search_provider") as HTMLSelectElement).value = s.web_search_provider;
-  (f.elements.namedItem("web_search_api_key") as HTMLInputElement).value = s.web_search_api_key;
-  (f.elements.namedItem("routing_enabled") as HTMLInputElement).checked = s.routing.enabled;
-  (f.elements.namedItem("use_local_classifier") as HTMLInputElement).checked =
-    s.routing.use_local_classifier;
-  (f.elements.namedItem("light_max_chars") as HTMLInputElement).value = String(
-    s.routing.light_max_chars
-  );
-  (f.elements.namedItem("force_local_keywords") as HTMLInputElement).value =
-    s.routing.force_local_keywords.join(", ");
-  (f.elements.namedItem("force_claude_keywords") as HTMLInputElement).value =
-    s.routing.force_claude_keywords.join(", ");
-  (f.elements.namedItem("memory_dir") as HTMLInputElement).value = s.memory_dir;
-  (f.elements.namedItem("claude_md_path") as HTMLInputElement).value = s.claude_md_path;
-  (f.elements.namedItem("enable_browser_tools") as HTMLInputElement).checked =
-    s.enable_browser_tools;
-  (f.elements.namedItem("browser_sidecar_script") as HTMLInputElement).value =
-    s.browser_sidecar_script;
-  (f.elements.namedItem("browser_node_path") as HTMLInputElement).value = s.browser_node_path;
-  (f.elements.namedItem("browser_user_data_dir") as HTMLInputElement).value =
-    s.browser_user_data_dir;
-  (f.elements.namedItem("workspace_dir") as HTMLInputElement).value = s.workspace_dir;
-  (f.elements.namedItem("confirm_mode") as HTMLSelectElement).value = s.confirm_mode;
-  (f.elements.namedItem("local_provider") as HTMLSelectElement).value = s.local_provider;
-  (f.elements.namedItem("openai_local_endpoint") as HTMLInputElement).value =
-    s.openai_local_endpoint;
-  (f.elements.namedItem("openai_local_key") as HTMLInputElement).value = s.openai_local_key;
-  (f.elements.namedItem("openai_local_model") as HTMLInputElement).value = s.openai_local_model;
-  (f.elements.namedItem("cloud_provider") as HTMLSelectElement).value = s.cloud_provider;
-  (f.elements.namedItem("openai_cloud_endpoint") as HTMLInputElement).value =
-    s.openai_cloud_endpoint;
-  (f.elements.namedItem("openai_cloud_key") as HTMLInputElement).value = s.openai_cloud_key;
-  (f.elements.namedItem("openai_cloud_model") as HTMLInputElement).value = s.openai_cloud_model;
-  applyProviderFields();
-}
-
-function applyProviderFields() {
-  const lp = (els.form.elements.namedItem("local_provider") as HTMLSelectElement).value;
-  const cp = (els.form.elements.namedItem("cloud_provider") as HTMLSelectElement).value;
-  document.querySelector("#ollama-local-fields")!.toggleAttribute("hidden", lp !== "ollama");
-  document.querySelector("#openai-local-fields")!.toggleAttribute("hidden", lp !== "openai");
-  document.querySelector("#claude-cloud-fields")!.toggleAttribute("hidden", cp !== "claude");
-  document.querySelector("#openai-cloud-fields")!.toggleAttribute("hidden", cp !== "openai");
-}
-
-/** Esconde os toggles só-Claude (🔎/🧩/🧠) quando o cloud não é Claude. */
+// ---- Settings (app: aparência + atualizações; config de modelos vive no hub Modelos) ----
+/**
+ * Local-first: mostra o seletor Local|Claude e os toggles só-Claude (🧩/🧠) apenas quando o
+ * Claude está configurado. 🔎 fica visível também em local-only se a pesquisa web local estiver ON.
+ */
 function applyComposerToggles() {
-  const isClaude = !state.settings || state.settings.cloud_provider === "claude";
+  const s = state.settings;
+  const cloud = cloudEnabled();
+  const localWeb = s?.local_provider === "ollama" && !!s?.local_web_search;
+  // Seletor Local|Claude só faz sentido se houver Claude.
+  document.querySelector("#route-pick")?.toggleAttribute("hidden", !cloud);
+  if (!cloud && state.routeMode === "claude") setRouteMode("local");
+  // Toggles: 🔎 (local ou cloud) · 🧩/🧠 (só Claude).
+  document.querySelector("#btn-research")?.toggleAttribute("hidden", !(localWeb || cloud));
+  document.querySelector("#btn-subagents")?.toggleAttribute("hidden", !cloud);
+  document.querySelector("#btn-think")?.toggleAttribute("hidden", !cloud);
+  // O contentor dos toggles fica visível se algum toggle estiver visível.
   els.routeModeBar
     .querySelector(".composer-toggles")!
-    .toggleAttribute("hidden", !isClaude);
-}
-
-function formToSettings(base: Settings): Settings {
-  const f = els.form;
-  const val = (n: string) => (f.elements.namedItem(n) as HTMLInputElement).value;
-  const checked = (n: string) => (f.elements.namedItem(n) as HTMLInputElement).checked;
-  const csv = (n: string) =>
-    val(n)
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-  return {
-    ...base,
-    ollama_endpoint: val("ollama_endpoint"),
-    ollama_model: val("ollama_model"),
-    ollama_vision_model: val("ollama_vision_model"),
-    ollama_num_ctx: Math.max(2048, parseInt(val("ollama_num_ctx")) || 8192),
-    ollama_temperature: Math.min(1.5, Math.max(0, parseFloat(val("ollama_temperature")) || 0.4)),
-    claude_mode: val("claude_mode") as Settings["claude_mode"],
-    claude_model: val("claude_model"),
-    claude_cli_path: val("claude_cli_path"),
-    claude_api_key: val("claude_api_key"),
-    claude_max_tokens: parseInt(val("claude_max_tokens")) || 2048,
-    research_max_rounds: Math.min(5, Math.max(1, parseInt(val("research_max_rounds")) || 3)),
-    local_web_search: checked("local_web_search"),
-    web_search_provider: val("web_search_provider") as Settings["web_search_provider"],
-    web_search_api_key: val("web_search_api_key"),
-    memory_dir: val("memory_dir"),
-    claude_md_path: val("claude_md_path"),
-    enable_browser_tools: checked("enable_browser_tools"),
-    browser_sidecar_script: val("browser_sidecar_script"),
-    browser_node_path: val("browser_node_path"),
-    browser_user_data_dir: val("browser_user_data_dir"),
-    workspace_dir: val("workspace_dir"),
-    confirm_mode: val("confirm_mode") as Settings["confirm_mode"],
-    local_provider: val("local_provider") as Settings["local_provider"],
-    openai_local_endpoint: val("openai_local_endpoint"),
-    openai_local_key: val("openai_local_key"),
-    openai_local_model: val("openai_local_model"),
-    cloud_provider: val("cloud_provider") as Settings["cloud_provider"],
-    openai_cloud_endpoint: val("openai_cloud_endpoint"),
-    openai_cloud_key: val("openai_cloud_key"),
-    openai_cloud_model: val("openai_cloud_model"),
-    routing: {
-      enabled: checked("routing_enabled"),
-      use_local_classifier: checked("use_local_classifier"),
-      light_max_chars: parseInt(val("light_max_chars")) || 280,
-      force_local_keywords: csv("force_local_keywords"),
-      force_claude_keywords: csv("force_claude_keywords"),
-    },
-  };
+    .toggleAttribute("hidden", !(localWeb || cloud));
+  // Esconde a barra inteira quando não há nada a mostrar (local puro, sem pesquisa web).
+  els.routeModeBar.toggleAttribute("hidden", !(cloud || localWeb));
 }
 
 function autoGrow() {
   els.input.style.height = "auto";
   els.input.style.height = Math.min(els.input.scrollHeight, 160) + "px";
+}
+
+/** Toast transitório (avisos não-bloqueantes). */
+let hintTimer: number | undefined;
+function showHint(msg: string) {
+  let el = document.querySelector<HTMLElement>("#hint-toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "hint-toast";
+    el.className = "hint-toast";
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.hidden = false;
+  if (hintTimer) clearTimeout(hintTimer);
+  hintTimer = window.setTimeout(() => {
+    if (el) el.hidden = true;
+  }, 6000);
+}
+
+/** Avisa quando o 🔎 não vai realmente pesquisar localmente (setting off ou modelo sem tools). */
+function maybeWarnSearch() {
+  const s = state.settings;
+  if (!s) return;
+  const localModel = s.local_provider === "ollama" ? s.ollama_model : s.openai_local_model;
+  if (!s.local_web_search) {
+    showHint(
+      state.routeMode === "local"
+        ? t("🔎 não vai pesquisar: ativa a Pesquisa web (Modelos → Avançado) para o modelo local pesquisar.")
+        : t("🔎 vai usar o Claude. Para pesquisar com o modelo local, ativa a Pesquisa web em Modelos → Avançado.")
+    );
+  } else if (s.local_provider === "ollama" && state.routeMode !== "claude" && !modelHasTools(localModel)) {
+    showHint(t("🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1.", { m: localModel }));
+  }
 }
 
 // ---- Artefactos ----
@@ -1641,7 +1709,7 @@ function renderArtifactBody() {
   body.innerHTML = "";
   const hasPreview = a.kind !== "code";
   els.artifactToggle.hidden = !hasPreview;
-  els.artifactToggle.textContent = artifactMode === "preview" ? "Código" : "Pré-visualizar";
+  els.artifactToggle.textContent = artifactMode === "preview" ? t("Código") : t("Pré-visualizar");
 
   if (hasPreview && artifactMode === "preview") {
     if (a.kind === "html") {
@@ -1667,7 +1735,7 @@ function renderArtifactBody() {
           div.innerHTML = svg;
         })
         .catch((e) => {
-          div.textContent = "Erro a desenhar o diagrama: " + e;
+          div.textContent = t("Erro a desenhar o diagrama: ") + e;
         });
     }
   } else {
@@ -1685,7 +1753,7 @@ function renderArtifactBody() {
 function openArtifact(a: Artifact) {
   artifactCurrent = a;
   artifactMode = a.kind === "code" ? "code" : "preview";
-  els.artifactTitle.textContent = `${KIND_LABEL[a.kind]}` + (a.lang ? ` · ${a.lang}` : "");
+  els.artifactTitle.textContent = `${t(KIND_LABEL[a.kind])}` + (a.lang ? ` · ${a.lang}` : "");
   els.artifactPanel.hidden = false;
   renderArtifactBody();
 }
@@ -1709,9 +1777,65 @@ async function exportArtifact() {
     try {
       await api.exportFile(path, artifactCurrent.code);
     } catch (e) {
-      alert("Falha a exportar: " + e);
+      alert(t("Falha a exportar: ") + e);
     }
   }
+}
+
+/** Exporta o artefacto atual como PDF via impressão do webview (Guardar como PDF). */
+function exportArtifactPdf() {
+  if (!artifactCurrent) return;
+  const a = artifactCurrent;
+  if (a.kind === "html") {
+    printHtml(a.code, true);
+    return;
+  }
+  let inner: string;
+  if (a.kind === "markdown") {
+    inner = renderMarkdown(a.code);
+  } else if (a.kind === "mermaid") {
+    inner = els.artifactBody.querySelector(".artifact-mermaid")?.innerHTML ?? `<pre>${escapeHtml(a.code)}</pre>`;
+  } else {
+    inner = `<pre>${escapeHtml(a.code)}</pre>`;
+  }
+  printHtml(inner, false);
+}
+
+/** Imprime HTML num iframe oculto (o webview oferece "Guardar como PDF"). */
+function printHtml(bodyHtml: string, isFullDoc: boolean) {
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument;
+  if (!doc) {
+    iframe.remove();
+    return;
+  }
+  const wrapped = `<!doctype html><html><head><meta charset="utf-8"><style>
+      @page { margin: 18mm; }
+      body { font: 13px/1.6 -apple-system, "Segoe UI", Roboto, sans-serif; color: #111; }
+      h1, h2, h3 { line-height: 1.25; }
+      pre { background: #f4f4f5; padding: 10px 12px; border-radius: 6px; white-space: pre-wrap; word-wrap: break-word; }
+      code { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; }
+      img, svg { max-width: 100%; height: auto; }
+      table { border-collapse: collapse; } th, td { border: 1px solid #ccc; padding: 4px 8px; }
+      a { color: #2563eb; }
+    </style></head><body>${bodyHtml}</body></html>`;
+  doc.open();
+  doc.write(isFullDoc ? bodyHtml : wrapped);
+  doc.close();
+  let printed = false;
+  const go = () => {
+    if (printed) return;
+    printed = true;
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    setTimeout(() => iframe.remove(), 1500);
+  };
+  // Dá tempo ao layout/imagens; usa onload quando disponível, com fallback.
+  iframe.onload = () => setTimeout(go, 100);
+  setTimeout(go, 500);
 }
 
 /** Galeria: lista os artefactos da Saga atual (varre as mensagens guardadas). */
@@ -1728,12 +1852,12 @@ async function openGallery() {
     if (m.role === "assistant") arts.push(...extractCodeBlocks(m.content));
   }
   const body = els.artifactBody;
-  els.artifactTitle.textContent = `Galeria · ${arts.length}`;
+  els.artifactTitle.textContent = `${t("Galeria")} · ${arts.length}`;
   els.artifactToggle.hidden = true;
   els.artifactPanel.hidden = false;
   body.innerHTML = "";
   if (arts.length === 0) {
-    body.innerHTML = `<div class="empty-sm">Sem artefactos nesta Saga.</div>`;
+    body.innerHTML = `<div class="empty-sm">${t("Sem artefactos nesta Saga.")}</div>`;
     return;
   }
   const list = document.createElement("div");
@@ -1741,7 +1865,7 @@ async function openGallery() {
   arts.forEach((a, i) => {
     const item = document.createElement("button");
     item.className = "gallery-item";
-    item.textContent = `${KIND_LABEL[a.kind]}${a.lang ? " · " + a.lang : ""} #${i + 1}`;
+    item.textContent = `${t(KIND_LABEL[a.kind])}${a.lang ? " · " + a.lang : ""} #${i + 1}`;
     item.addEventListener("click", () => openArtifact(a));
     list.appendChild(item);
   });
@@ -1755,14 +1879,14 @@ async function exportSaga() {
   try {
     msgs = await api.getConversation(state.currentConversationId);
   } catch (e) {
-    alert("Falha a ler a Saga: " + e);
+    alert(t("Falha a ler a Saga: ") + e);
     return;
   }
   const title =
     state.conversations.find((c) => c.id === state.currentConversationId)?.title || "Saga";
   const lines = [`# ${title}`, ""];
   for (const m of msgs) {
-    const who = m.role === "user" ? "Tu" : "Saga";
+    const who = m.role === "user" ? t("Tu") : "Saga";
     const tag = m.role === "assistant" && m.model ? ` _(${m.route}/${m.model})_` : "";
     lines.push(`## ${who}${tag}`, "", m.content, "");
   }
@@ -1771,7 +1895,7 @@ async function exportSaga() {
     try {
       await api.exportFile(path, lines.join("\n"));
     } catch (e) {
-      alert("Falha a exportar: " + e);
+      alert(t("Falha a exportar: ") + e);
     }
   }
 }
@@ -1797,14 +1921,14 @@ function renderDiagnostics(d: Diagnostics) {
   if (d.ollama_ok) {
     o.className = "wiz-status ok";
     o.textContent =
-      `✓ Ollama ligado — ${d.ollama_models.length} modelo(s)` +
-      (d.ollama_model_present ? "" : " · modelo configurado não encontrado");
+      t("✓ Ollama ligado — {n} modelo(s)", { n: d.ollama_models.length }) +
+      (d.ollama_model_present ? "" : t(" · modelo configurado não encontrado"));
     els.modelsList.innerHTML = d.ollama_models
       .map((m) => `<option value="${escapeHtml(m)}"></option>`)
       .join("");
   } else {
     o.className = "wiz-status bad";
-    o.textContent = "✗ Ollama não detetado neste endpoint";
+    o.textContent = t("✗ Ollama não detetado neste endpoint");
   }
   const c = document.querySelector("#wiz-claude-status")!;
   c.className = "wiz-status " + (d.claude_ready ? "ok" : "bad");
@@ -1843,7 +1967,7 @@ async function finishWizard() {
     await api.saveSettings(next);
     state.settings = next;
   } catch (e) {
-    alert("Falha a guardar definições: " + e);
+    alert(t("Falha a guardar definições: ") + e);
   }
   els.wizard.close();
   await refreshMemory();
@@ -1853,23 +1977,60 @@ async function finishWizard() {
 
 async function checkForUpdates() {
   const status = document.querySelector("#update-status")!;
-  status.textContent = "A verificar…";
+  status.textContent = t("A verificar…");
   try {
     const update = await check();
     if (!update) {
-      status.textContent = "Estás na versão mais recente.";
+      status.textContent = t("Estás na versão mais recente.");
       return;
     }
-    status.textContent = `Nova versão ${update.version} — a descarregar…`;
+    status.textContent = t("Nova versão {v} — a descarregar…", { v: update.version });
     await update.downloadAndInstall();
-    status.textContent = "Instalado. A reiniciar…";
+    status.textContent = t("Instalado. A reiniciar…");
     await relaunch();
   } catch (e) {
     const msg = String(e);
     status.textContent = /release json|404|fetch|endpoint|not found/i.test(msg)
-      ? "Auto-update ainda não está ativo (instaladores sem assinatura). Descarrega a versão mais recente em github.com/gabrielclteixeira/Saga/releases."
-      : "Não foi possível verificar atualizações: " + msg;
+      ? t("Auto-update ainda não está ativo (instaladores sem assinatura). Descarrega a versão mais recente em github.com/gabrielclteixeira/Saga/releases.")
+      : t("Não foi possível verificar atualizações: ") + msg;
   }
+}
+
+/** No arranque: verifica, descarrega e instala a atualização em fundo, depois oferece reiniciar. */
+async function autoUpdate() {
+  try {
+    const update = await check();
+    if (!update) return;
+    showHint(t("A descarregar atualização {v}…", { v: update.version }));
+    await update.downloadAndInstall();
+    showUpdateReady(update.version);
+  } catch {
+    /* silencioso no arranque — o feed pode ainda não existir / instaladores sem assinatura */
+  }
+}
+
+/** Banner não-bloqueante: atualização instalada, oferece reiniciar para aplicar. */
+function showUpdateReady(version: string) {
+  let el = document.querySelector<HTMLElement>("#update-ready");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "update-ready";
+    el.className = "update-ready";
+    document.body.appendChild(el);
+  }
+  el.innerHTML = "";
+  const span = document.createElement("span");
+  span.textContent = t("Atualização {v} instalada.", { v: version });
+  const restart = document.createElement("button");
+  restart.className = "primary";
+  restart.textContent = t("Reiniciar");
+  restart.addEventListener("click", () => relaunch());
+  const later = document.createElement("button");
+  later.className = "ghost";
+  later.textContent = t("Mais tarde");
+  later.addEventListener("click", () => (el!.hidden = true));
+  el.append(span, restart, later);
+  el.hidden = false;
 }
 
 // ---- Aprovação de ações (modo "ask") ----
@@ -1877,12 +2038,12 @@ function showApproval(id: number, tool: string, preview: string) {
   const card = document.createElement("div");
   card.className = "approval-card";
   card.innerHTML = `
-    <div class="approval-head">Aprovar ação?</div>
+    <div class="approval-head">${t("Aprovar ação?")}</div>
     <div class="approval-tool">${escapeHtml(tool)}</div>
     <pre class="approval-preview">${escapeHtml(preview)}</pre>
     <div class="approval-bar">
-      <button type="button" class="ghost" data-ok="0">Recusar</button>
-      <button type="button" class="primary" data-ok="1">Aprovar</button>
+      <button type="button" class="ghost" data-ok="0">${t("Recusar")}</button>
+      <button type="button" class="primary" data-ok="1">${t("Aprovar")}</button>
     </div>`;
   const done = (ok: boolean) => {
     api.approveAction(id, ok).catch(() => {});
@@ -1927,7 +2088,7 @@ async function renderWorkspaceList() {
         ? idx.workflows
         : idx.playbooks.map((n) => ({ name: n, description: "" }));
   if (items.length === 0) {
-    list.innerHTML = `<div class="empty-sm">Nada ainda. Cria o primeiro com “+ Novo”.</div>`;
+    list.innerHTML = `<div class="empty-sm">${t("Nada ainda. Cria o primeiro com “+ Novo”.")}</div>`;
     return;
   }
   list.innerHTML = items
@@ -1936,8 +2097,8 @@ async function renderWorkspaceList() {
     <div class="ws-item">
       <div class="ws-item-main"><strong>${escapeHtml(it.name)}</strong><span>${escapeHtml(it.description)}</span></div>
       <div class="ws-item-actions">
-        ${wsKind === "workflow" ? `<button type="button" class="ghost" data-run="${escapeHtml(it.name)}">▶ Correr</button>` : ""}
-        <button type="button" class="ghost" data-edit="${escapeHtml(it.name)}">Editar</button>
+        ${wsKind === "workflow" ? `<button type="button" class="ghost" data-run="${escapeHtml(it.name)}">${t("▶ Correr")}</button>` : ""}
+        <button type="button" class="ghost" data-edit="${escapeHtml(it.name)}">${t("Editar")}</button>
         <button type="button" class="ghost" data-del="${escapeHtml(it.name)}">✕</button>
       </div>
     </div>`
@@ -1978,10 +2139,10 @@ function applyDocKindFields() {
   const bl = wsq("#ws-body-label").childNodes[0];
   if (bl)
     bl.nodeValue = isPlaybook
-      ? "Procedimento (markdown)"
+      ? t("Procedimento (markdown)")
       : isWorkflow
-        ? "Passos (markdown — usa $ARGUMENTS)"
-        : "Instruções (markdown)";
+        ? t("Passos (markdown — usa $ARGUMENTS)")
+        : t("Instruções (markdown)");
 }
 
 /** Parser simples de frontmatter (espelha workspace.rs). */
@@ -2049,10 +2210,10 @@ function newWsDoc() {
   fillEditorFields({
     body:
       wsKind === "workflow"
-        ? "Passos a executar (usa $ARGUMENTS para os argumentos)…"
+        ? t("Passos a executar (usa $ARGUMENTS para os argumentos)…")
         : wsKind === "skill"
-          ? "Instruções passo a passo…"
-          : "Procedimento reutilizável…",
+          ? t("Instruções passo a passo…")
+          : t("Procedimento reutilizável…"),
   });
   wsq<HTMLTextAreaElement>("#ws-gen-prompt").value = "";
   wsq("#ws-gen-status").textContent = "";
@@ -2072,7 +2233,7 @@ async function editWsDoc(name: string) {
     applyDocKindFields();
     wsq("#ws-editor").removeAttribute("hidden");
   } catch (e) {
-    alert("Falha a abrir: " + e);
+    alert(t("Falha a abrir: ") + e);
   }
 }
 
@@ -2080,10 +2241,10 @@ async function genWsDoc() {
   const prompt = wsq<HTMLTextAreaElement>("#ws-gen-prompt").value.trim();
   const status = wsq("#ws-gen-status");
   if (!prompt) {
-    status.textContent = "Descreve o que queres.";
+    status.textContent = t("Descreve o que queres.");
     return;
   }
-  status.textContent = "A gerar…";
+  status.textContent = t("A gerar…");
   try {
     const md = await api.generateDoc(wsKind, prompt);
     const f = parseDocFields(wsKind, md);
@@ -2091,7 +2252,7 @@ async function genWsDoc() {
     if (f.name && !nameEl.value.trim()) nameEl.value = f.name;
     fillEditorFields(f);
     applyDocKindFields();
-    status.textContent = "✓ Gerado — revê e guarda";
+    status.textContent = t("✓ Gerado — revê e guarda");
   } catch (e) {
     status.textContent = "✗ " + e;
   }
@@ -2100,7 +2261,7 @@ async function genWsDoc() {
 async function saveWsDoc() {
   const f = readEditorFields();
   if (!f.name) {
-    alert("Indica um nome (sem espaços).");
+    alert(t("Indica um nome (sem espaços)."));
     return;
   }
   try {
@@ -2108,17 +2269,17 @@ async function saveWsDoc() {
     wsq("#ws-editor").setAttribute("hidden", "");
     await renderWorkspaceList();
   } catch (e) {
-    alert("Falha a guardar: " + e);
+    alert(t("Falha a guardar: ") + e);
   }
 }
 
 async function delWsDoc(name: string) {
-  if (!confirm(`Apagar “${name}”?`)) return;
+  if (!confirm(t("Apagar “{name}”?", { name }))) return;
   try {
     await api.deleteWorkspaceDoc(wsKind, name);
     await renderWorkspaceList();
   } catch (e) {
-    alert("Falha a apagar: " + e);
+    alert(t("Falha a apagar: ") + e);
   }
 }
 
@@ -2151,7 +2312,7 @@ function renderMcpList() {
   const list = document.querySelector<HTMLDivElement>("#mcp-list")!;
   const srvs = mcpServers();
   if (srvs.length === 0) {
-    list.innerHTML = `<div class="empty-sm">Sem servidores. Adiciona um abaixo.</div>`;
+    list.innerHTML = `<div class="empty-sm">${t("Sem servidores. Adiciona um abaixo.")}</div>`;
     return;
   }
   list.innerHTML = srvs
@@ -2161,7 +2322,7 @@ function renderMcpList() {
       <label class="check"><input type="checkbox" data-toggle="${i}" ${s.enabled ? "checked" : ""} /> <strong>${escapeHtml(s.name)}</strong></label>
       <code>${escapeHtml(s.command)} ${escapeHtml(s.args.join(" "))}</code>
       <div class="mcp-item-actions">
-        <button type="button" class="ghost" data-edit="${i}">Editar</button>
+        <button type="button" class="ghost" data-edit="${i}">${t("Editar")}</button>
         <button type="button" class="ghost" data-del="${i}">✕</button>
       </div>
     </div>`
@@ -2186,7 +2347,7 @@ function clearMcpForm() {
   (document.querySelector("#mcp-env") as HTMLTextAreaElement).value = "";
   (document.querySelector("#mcp-enabled") as HTMLInputElement).checked = true;
   document.querySelector("#mcp-status")!.textContent = "";
-  document.querySelector("#mcp-form-legend")!.textContent = "Novo servidor";
+  document.querySelector("#mcp-form-legend")!.textContent = t("Novo servidor");
 }
 
 function readMcpForm(): McpServerConfig {
@@ -2217,7 +2378,7 @@ function editMcp(i: number) {
     .map(([k, v]) => `${k}=${v}`)
     .join("\n");
   (document.querySelector("#mcp-enabled") as HTMLInputElement).checked = s.enabled;
-  document.querySelector("#mcp-form-legend")!.textContent = "Editar servidor";
+  document.querySelector("#mcp-form-legend")!.textContent = t("Editar servidor");
 }
 
 async function persistServers(next: McpServerConfig[]) {
@@ -2231,7 +2392,7 @@ async function addOrUpdateMcp() {
   const cfg = readMcpForm();
   const status = document.querySelector("#mcp-status")!;
   if (!cfg.name || !cfg.command) {
-    status.textContent = "Nome e comando são obrigatórios.";
+    status.textContent = t("Nome e comando são obrigatórios.");
     return;
   }
   const next = mcpServers().slice();
@@ -2242,7 +2403,7 @@ async function addOrUpdateMcp() {
     clearMcpForm();
     renderMcpList();
   } catch (e) {
-    status.textContent = "Falha a guardar: " + e;
+    status.textContent = t("Falha a guardar: ") + e;
   }
 }
 
@@ -2253,19 +2414,19 @@ async function toggleMcp(i: number, enabled: boolean) {
   try {
     await persistServers(next);
   } catch (e) {
-    alert("Falha: " + e);
+    alert(t("Falha: ") + e);
   }
 }
 
 async function delMcp(i: number) {
-  if (!confirm("Remover este servidor?")) return;
+  if (!confirm(t("Remover este servidor?"))) return;
   const next = mcpServers().slice();
   next.splice(i, 1);
   try {
     await persistServers(next);
     renderMcpList();
   } catch (e) {
-    alert("Falha: " + e);
+    alert(t("Falha: ") + e);
   }
 }
 
@@ -2273,13 +2434,16 @@ async function testMcp() {
   const cfg = readMcpForm();
   const status = document.querySelector("#mcp-status")!;
   if (!cfg.command) {
-    status.textContent = "Indica o comando.";
+    status.textContent = t("Indica o comando.");
     return;
   }
-  status.textContent = "A ligar…";
+  status.textContent = t("A ligar…");
   try {
     const tools = await api.testMcpServer(cfg);
-    status.textContent = `✓ ${tools.length} ferramentas: ${tools.join(", ") || "(nenhuma)"}`;
+    status.textContent = t("✓ {n} ferramentas: {list}", {
+      n: tools.length,
+      list: tools.join(", ") || t("(nenhuma)"),
+    });
   } catch (e) {
     status.textContent = "✗ " + e;
   }
@@ -2294,7 +2458,7 @@ async function openActivity() {
 async function renderActivity() {
   const list = document.querySelector<HTMLDivElement>("#act-list")!;
   if (state.currentConversationId === null) {
-    list.innerHTML = `<div class="empty-sm">Sem Saga selecionada.</div>`;
+    list.innerHTML = `<div class="empty-sm">${t("Sem Saga selecionada.")}</div>`;
     return;
   }
   let rows: ActionLogEntry[] = [];
@@ -2304,7 +2468,7 @@ async function renderActivity() {
     rows = [];
   }
   if (rows.length === 0) {
-    list.innerHTML = `<div class="empty-sm">Sem ações registadas nesta Saga.</div>`;
+    list.innerHTML = `<div class="empty-sm">${t("Sem ações registadas nesta Saga.")}</div>`;
     return;
   }
   list.innerHTML = rows
@@ -2334,7 +2498,7 @@ async function openAutomations() {
       .map((w) => `<option value="${escapeHtml(w.name)}">${escapeHtml(w.name)}</option>`)
       .join("");
     if (idx.workflows.length === 0) {
-      sel.innerHTML = `<option value="">(sem workflows — cria um no Workspace)</option>`;
+      sel.innerHTML = `<option value="">${t("(sem workflows — cria um no Workspace)")}</option>`;
     }
   } catch {
     sel.innerHTML = "";
@@ -2352,7 +2516,7 @@ function clearSchedForm() {
   (document.querySelector("#sched-cron") as HTMLInputElement).value = "0 0 9 * * *";
   (document.querySelector("#sched-enabled") as HTMLInputElement).checked = true;
   document.querySelector("#sched-status")!.textContent = "";
-  document.querySelector("#sched-form-legend")!.textContent = "Novo agendamento";
+  document.querySelector("#sched-form-legend")!.textContent = t("Novo agendamento");
 }
 
 function fmtEpoch(epoch: number): string {
@@ -2369,7 +2533,7 @@ async function renderSchedules() {
     rows = [];
   }
   if (rows.length === 0) {
-    list.innerHTML = `<div class="empty-sm">Sem agendamentos. Cria um abaixo.</div>`;
+    list.innerHTML = `<div class="empty-sm">${t("Sem agendamentos. Cria um abaixo.")}</div>`;
     return;
   }
   list.innerHTML = rows
@@ -2377,10 +2541,10 @@ async function renderSchedules() {
       (s) => `
     <div class="mcp-item">
       <label class="check"><input type="checkbox" data-toggle="${s.id}" ${s.enabled ? "checked" : ""} /> <strong>${escapeHtml(s.name)}</strong></label>
-      <code>${escapeHtml(s.workflow_name)} · ${escapeHtml(s.cron)} · próx: ${escapeHtml(fmtEpoch(s.next_run_epoch))}</code>
+      <code>${escapeHtml(s.workflow_name)} · ${escapeHtml(s.cron)} · ${t("próx:")} ${escapeHtml(fmtEpoch(s.next_run_epoch))}</code>
       <div class="mcp-item-actions">
         <button type="button" class="ghost" data-run="${s.id}">▶</button>
-        <button type="button" class="ghost" data-edit="${s.id}">Editar</button>
+        <button type="button" class="ghost" data-edit="${s.id}">${t("Editar")}</button>
         <button type="button" class="ghost" data-del="${s.id}">✕</button>
       </div>
     </div>`
@@ -2410,7 +2574,7 @@ function editSchedule(s: Schedule) {
   (document.querySelector("#sched-enabled") as HTMLInputElement).checked = s.enabled;
   const sel = document.querySelector<HTMLSelectElement>("#sched-workflow")!;
   if ([...sel.options].some((o) => o.value === s.workflow_name)) sel.value = s.workflow_name;
-  document.querySelector("#sched-form-legend")!.textContent = "Editar agendamento";
+  document.querySelector("#sched-form-legend")!.textContent = t("Editar agendamento");
 }
 
 async function addOrUpdateSchedule() {
@@ -2421,7 +2585,7 @@ async function addOrUpdateSchedule() {
   const enabled = (document.querySelector("#sched-enabled") as HTMLInputElement).checked;
   const status = document.querySelector("#sched-status")!;
   if (!name || !workflow || !cron) {
-    status.textContent = "Nome, workflow e cron são obrigatórios.";
+    status.textContent = t("Nome, workflow e cron são obrigatórios.");
     return;
   }
   try {
@@ -2433,7 +2597,7 @@ async function addOrUpdateSchedule() {
     clearSchedForm();
     await renderSchedules();
   } catch (e) {
-    status.textContent = "Falha: " + e;
+    status.textContent = t("Falha: ") + e;
   }
 }
 
@@ -2442,28 +2606,28 @@ async function toggleSchedule(s: Schedule, enabled: boolean) {
     await api.updateSchedule(s.id, s.name, s.workflow_name, s.arguments, s.cron, enabled);
     await renderSchedules();
   } catch (e) {
-    alert("Falha: " + e);
+    alert(t("Falha: ") + e);
   }
 }
 
 async function delSchedule(id: number) {
-  if (!confirm("Remover este agendamento?")) return;
+  if (!confirm(t("Remover este agendamento?"))) return;
   try {
     await api.deleteSchedule(id);
     await renderSchedules();
   } catch (e) {
-    alert("Falha: " + e);
+    alert(t("Falha: ") + e);
   }
 }
 
 async function runScheduleNow(id: number) {
   const status = document.querySelector("#sched-status")!;
-  status.textContent = "A correr…";
+  status.textContent = t("A correr…");
   try {
     status.textContent = await api.runScheduleNow(id);
     await renderSchedules();
   } catch (e) {
-    status.textContent = "Falha: " + e;
+    status.textContent = t("Falha: ") + e;
   }
 }
 
@@ -2472,60 +2636,103 @@ const modelsDialog = document.querySelector<HTMLDialogElement>("#models-dialog")
 interface CatalogModel {
   name: string;
   size: string;
-  tools?: boolean;
 }
+
+interface Caps {
+  tools: boolean;
+  vision: boolean;
+  reasoning: boolean;
+}
+
+/**
+ * Deteta capacidades de um modelo local pela família (regex), robusto a versões.
+ * Baseado nas páginas de capacidades do ollama.com (tools / vision / thinking).
+ */
+function modelCapabilities(name: string): Caps {
+  const n = name.toLowerCase();
+  const isVision =
+    /(-vl(:|$)|\dvl(:|$)|llama3\.2-vision|llava|moondream|minicpm-v|granite[\d.]*-vision|-vision)/.test(n) ||
+    /gemma3:(4b|12b|27b)/.test(n);
+  const reasoning = /(deepseek-r1|qwq|qwen3|-thinking|thinking)/.test(n);
+  // Famílias com function-calling treinado; exclui visão-pura e raciocínio-puro.
+  const tools =
+    /(qwen3|qwen2\.5|qwen[\w.]*coder|llama3\.1|llama3\.3|llama3\.2:3b|mistral|mixtral|ministral|devstral|granite3|command-?r|hermes|firefunction|smollm2)/.test(n) &&
+    !/(-vision|vl(:|$)|\dvl(:|$)|llava|moondream)/.test(n);
+  return { tools, vision: isVision, reasoning };
+}
+
+/** Modelo ativo suporta tool-calling? (necessário para a pesquisa web local). */
+function modelHasTools(name: string): boolean {
+  return modelCapabilities(name).tools;
+}
+
 const MODEL_CATALOG: { group: string; models: CatalogModel[] }[] = [
   {
-    group: "Geral + ferramentas/web",
+    group: "Geral + ferramentas/web", /* i18n: traduzido via t(g.group) em renderQuickPicks */
     models: [
-      { name: "llama3.1:8b", size: "8B", tools: true },
-      { name: "qwen2.5:7b", size: "7B", tools: true },
-      { name: "qwen2.5:14b", size: "14B", tools: true },
-      { name: "mistral", size: "7B", tools: true },
-      { name: "mistral-nemo", size: "12B", tools: true },
-      { name: "gemma2:9b", size: "9B" },
+      { name: "llama3.3:70b", size: "70B" },
+      { name: "llama3.1:8b", size: "8B" },
+      { name: "qwen3:8b", size: "8B" },
+      { name: "qwen3:14b", size: "14B" },
+      { name: "qwen2.5:7b", size: "7B" },
+      { name: "qwen2.5:14b", size: "14B" },
+      { name: "mistral-small", size: "24B" },
+      { name: "mistral-nemo", size: "12B" },
+      { name: "granite3.3:8b", size: "8B" },
+      { name: "command-r7b", size: "7B" },
     ],
   },
   {
     group: "Pequenos / rápidos",
     models: [
-      { name: "llama3.2:3b", size: "3B", tools: true },
-      { name: "llama3.2:1b", size: "1B" },
-      { name: "qwen2.5:3b", size: "3B", tools: true },
-      { name: "phi3.5", size: "3.8B" },
-      { name: "gemma2:2b", size: "2B" },
+      { name: "llama3.2:3b", size: "3B" },
+      { name: "qwen3:1.7b", size: "1.7B" },
+      { name: "qwen2.5:3b", size: "3B" },
+      { name: "phi4-mini", size: "3.8B" },
+      { name: "gemma3:1b", size: "1B" },
+      { name: "granite3.3:2b", size: "2B" },
     ],
   },
   {
     group: "Código",
     models: [
-      { name: "qwen2.5-coder:7b", size: "7B", tools: true },
+      { name: "qwen2.5-coder:7b", size: "7B" },
+      { name: "qwen2.5-coder:14b", size: "14B" },
       { name: "deepseek-coder-v2", size: "16B" },
-      { name: "codellama", size: "7B" },
     ],
   },
   {
     group: "Raciocínio",
-    models: [{ name: "deepseek-r1:8b", size: "8B" }],
+    models: [
+      { name: "deepseek-r1:8b", size: "8B" },
+      { name: "deepseek-r1:14b", size: "14B" },
+      { name: "qwq", size: "32B" },
+      { name: "qwen3:32b", size: "32B" },
+    ],
   },
   {
     group: "Visão",
     models: [
+      { name: "qwen2.5vl:7b", size: "7B" },
       { name: "llama3.2-vision", size: "11B" },
-      { name: "llava", size: "7B" },
+      { name: "gemma3:4b", size: "4B" },
+      { name: "gemma3:12b", size: "12B" },
+      { name: "minicpm-v", size: "8B" },
       { name: "moondream", size: "1.8B" },
+      { name: "llava:7b", size: "7B" },
     ],
   },
 ];
 
-/** Heurística: o modelo ativo é pequeno/fraco em ferramentas? */
+/** Heurística: o modelo ativo é pequeno/fraco (respostas e pesquisa podem falhar)? */
 function isWeakModel(name: string): boolean {
   const n = name.toLowerCase();
   return (
     /(^|[^0-9])llama3\.2(:latest)?$/.test(n) ||
-    /:1b|:2b|:3b/.test(n) ||
+    /:1b|:1\.7b|:2b|:3b/.test(n) ||
     n.includes("phi3") ||
     n.includes("gemma2:2b") ||
+    n.includes("gemma3:1b") ||
     n.includes("moondream")
   );
 }
@@ -2550,31 +2757,48 @@ async function openModels() {
   void renderRecommendation();
 }
 
-/** Recomenda um modelo consoante a máquina (RAM/cores). */
+/** Guia "qual escolher": escolhe pela VRAM da placa gráfica (ou RAM se não houver GPU). */
+const PICK_TIERS: { hw: string; model: string; note: string }[] = [
+  { hw: "Máquina fraca ou sem GPU", model: "llama3.2:3b", note: "leve — corre em quase qualquer máquina" },
+  { hw: "Sem GPU (CPU) ou GPU pequena (~8 GB)", model: "qwen3:8b", note: "rápido e com ferramentas/web" },
+  { hw: "GPU média (~12 GB)", model: "qwen3:14b", note: "melhor equilíbrio" },
+  { hw: "GPU grande (16 GB+)", model: "mistral-small", note: "mais capaz (ou qwen3:32b)" },
+];
+
+/** Secção de recomendação para quem não sabe que modelo escolher. */
 async function renderRecommendation() {
   const box = document.querySelector<HTMLElement>("#hub-rec")!;
-  let info;
-  try {
-    info = await api.systemInfo();
-  } catch {
-    box.hidden = true;
-    return;
-  }
   box.hidden = false;
+  let machine = "";
+  try {
+    const info = await api.systemInfo();
+    machine =
+      `<div class="hub-rec-line">${t("A tua máquina")}: ${info.total_ram_gb} GB RAM · ${info.cpu_cores} cores — ` +
+      `${t("sugestão")}: <code>${escapeHtml(info.recommended)}</code> <span class="rec-cap">${capBadges(info.recommended)}</span></div>`;
+  } catch {
+    /* sem info de sistema — mostra só os escalões */
+  }
+  const tiers = PICK_TIERS.map(
+    (p) =>
+      `<div class="rec-tier">
+        <span class="rec-hw">${escapeHtml(t(p.hw))}</span>
+        <span class="rec-model"><code>${escapeHtml(p.model)}</code> ${capBadges(p.model)} <span class="rec-note">${escapeHtml(t(p.note))}</span></span>
+        <button type="button" class="ghost rec-use" data-model="${escapeHtml(p.model)}">${t("Instalar e usar")}</button>
+      </div>`
+  ).join("");
   box.innerHTML =
-    `<div class="hub-rec-line"><strong>Recomendado para a tua máquina</strong> ` +
-    `(${info.total_ram_gb} GB RAM · ${info.cpu_cores} cores): ` +
-    `<code>${escapeHtml(info.recommended)}</code> — ${escapeHtml(info.note)}</div>` +
-    `<div class="hub-rec-actions">` +
-    `<button type="button" class="ghost" id="rec-pull">Descarregar</button>` +
-    `<button type="button" class="ghost" id="rec-activate">Ativar</button>` +
-    `</div>`;
-  document
-    .querySelector("#rec-pull")!
-    .addEventListener("click", () => pullModelUi(info.recommended));
-  document
-    .querySelector("#rec-activate")!
-    .addEventListener("click", () => setActiveModel(info.recommended));
+    `<div class="hub-rec-head"><strong>${t("Não sabes qual escolher?")}</strong></div>` +
+    machine +
+    `<div class="hub-rec-sub">${t("Escolhe pela memória da tua placa gráfica (VRAM) — ou pela RAM se não tiveres GPU:")}</div>` +
+    tiers +
+    `<div class="rec-tip">${t("🛠 faz pesquisa web · 🧠 raciocínio (não pesquisa) · 👁 lê imagens. Para o 🔎 funcionar, escolhe um modelo 🛠.")}</div>`;
+  box.querySelectorAll<HTMLButtonElement>(".rec-use").forEach((b) =>
+    b.addEventListener("click", () => {
+      const m = b.dataset.model!;
+      setActiveModel(m); // fica ativo (aplica-se assim que o download terminar)
+      pullModelUi(m);
+    })
+  );
 }
 
 function hubLoad(s: Settings) {
@@ -2602,6 +2826,63 @@ function hubLoad(s: Settings) {
   hubIn("#hub-oai-cloud-endpoint").value = s.openai_cloud_endpoint;
   hubIn("#hub-oai-cloud-key").value = s.openai_cloud_key;
   hubIn("#hub-oai-cloud-model").value = s.openai_cloud_model;
+  // Avançado
+  hubIn("#hub-research-rounds").value = String(s.research_max_rounds);
+  hubIn("#hub-local-web").checked = s.local_web_search;
+  hubSel("#hub-web-provider").value = s.web_search_provider;
+  applyWebProviderUi(true);
+  hubIn("#hub-num-ctx").value = String(s.ollama_num_ctx);
+  hubIn("#hub-temp").value = String(s.ollama_temperature);
+  hubIn("#hub-memory-dir").value = s.memory_dir;
+  hubIn("#hub-claude-md").value = s.claude_md_path;
+  hubIn("#hub-workspace-dir").value = s.workspace_dir;
+  hubSel("#hub-confirm-mode").value = s.confirm_mode;
+  hubIn("#hub-browser-tools").checked = s.enable_browser_tools;
+  hubIn("#hub-browser-sidecar").value = s.browser_sidecar_script;
+  hubIn("#hub-browser-node").value = s.browser_node_path;
+  hubIn("#hub-browser-data").value = s.browser_user_data_dir;
+}
+
+/** Metadados por motor de pesquisa: rótulo, página da chave e free tier (null = keyless). */
+const WEB_PROVIDER_META: Record<string, { label: string; url: string; free: string } | null> = {
+  duckduckgo: null,
+  tavily: { label: "Tavily", url: "https://tavily.com", free: "~1000/mês" },
+  brave: { label: "Brave", url: "https://brave.com/search/api/", free: "~2000/mês" },
+  serper: { label: "Serper", url: "https://serper.dev", free: "~2500" },
+  exa: { label: "Exa", url: "https://exa.ai", free: "~1000/mês" },
+  jina: { label: "Jina", url: "https://jina.ai/reader", free: "10M tokens" },
+};
+
+/** Atualiza o campo de chave (rótulo, link, valor) ao motor selecionado; esconde-o no keyless. */
+function applyWebProviderUi(loadValue: boolean) {
+  const p = hubSel("#hub-web-provider").value;
+  const meta = WEB_PROVIDER_META[p] ?? null;
+  const wrap = document.querySelector<HTMLElement>("#hub-web-key-wrap")!;
+  const hint = document.querySelector<HTMLElement>("#hub-web-hint")!;
+  if (!meta) {
+    wrap.hidden = true;
+    hint.textContent = t("Sem chave (DuckDuckGo) é pouco fiável e costuma devolver vazio. Escolhe um motor com chave para pesquisa fiável.");
+    return;
+  }
+  wrap.hidden = false;
+  document.querySelector("#hub-web-key-text")!.textContent = t("Chave {p}", { p: meta.label });
+  if (loadValue) hubIn("#hub-web-key").value = state.settings?.web_search_keys?.[p] ?? "";
+  const a = document.createElement("a");
+  a.href = meta.url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.textContent = `${t("obter chave grátis")} →`;
+  hint.textContent = `${t("Pesquisa fiável.")} `;
+  hint.appendChild(a);
+  hint.appendChild(document.createTextNode(` (${t("grátis")}: ${meta.free})`));
+}
+
+/** Constrói o mapa de chaves a guardar: preserva as outras e atualiza a do motor atual. */
+function webSearchKeysPatch(): Record<string, string> {
+  const keys = { ...(state.settings?.web_search_keys ?? {}) };
+  const p = hubSel("#hub-web-provider").value;
+  if (p !== "duckduckgo") keys[p] = hubIn("#hub-web-key").value;
+  return keys;
 }
 
 function applyHubProviderFields() {
@@ -2643,27 +2924,55 @@ async function hubSave() {
       openai_cloud_endpoint: hubIn("#hub-oai-cloud-endpoint").value.trim(),
       openai_cloud_key: hubIn("#hub-oai-cloud-key").value,
       openai_cloud_model: hubIn("#hub-oai-cloud-model").value.trim(),
+      // Avançado
+      research_max_rounds: Math.min(5, Math.max(1, parseInt(hubIn("#hub-research-rounds").value) || 3)),
+      local_web_search: hubIn("#hub-local-web").checked,
+      web_search_provider: hubSel("#hub-web-provider").value as Settings["web_search_provider"],
+      web_search_keys: webSearchKeysPatch(),
+      ollama_num_ctx: Math.max(2048, parseInt(hubIn("#hub-num-ctx").value) || 8192),
+      ollama_temperature: Math.min(1.5, Math.max(0, parseFloat(hubIn("#hub-temp").value) || 0.4)),
+      memory_dir: hubIn("#hub-memory-dir").value,
+      claude_md_path: hubIn("#hub-claude-md").value,
+      workspace_dir: hubIn("#hub-workspace-dir").value,
+      confirm_mode: hubSel("#hub-confirm-mode").value as Settings["confirm_mode"],
+      enable_browser_tools: hubIn("#hub-browser-tools").checked,
+      browser_sidecar_script: hubIn("#hub-browser-sidecar").value,
+      browser_node_path: hubIn("#hub-browser-node").value,
+      browser_user_data_dir: hubIn("#hub-browser-data").value,
     });
-    document.querySelector("#hub-status")!.textContent = "✓ Guardado";
+    document.querySelector("#hub-status")!.textContent = t("✓ Guardado");
     void renderHubStatus();
   } catch (e) {
-    alert("Falha a guardar: " + e);
+    alert(t("Falha a guardar: ") + e);
   }
 }
 
 async function renderHubStatus() {
   const el = document.querySelector("#hub-status")!;
-  const active = state.settings?.ollama_model ?? "";
-  const warn =
-    state.settings?.local_provider === "ollama" && isWeakModel(active)
-      ? ` ⚠ '${active}' é pequeno — respostas e pesquisa web podem falhar; experimenta llama3.1 ou qwen2.5.`
-      : "";
+  const s = state.settings;
+  const active = s?.ollama_model ?? "";
+  const isOllama = s?.local_provider === "ollama";
+  let warn = "";
+  if (isOllama && s?.local_web_search && active && !modelHasTools(active)) {
+    // Pesquisa web ligada mas o modelo não chama ferramentas → nunca vai pesquisar.
+    warn =
+      " " +
+      t("⚠ '{m}' não chama ferramentas — a pesquisa web não funciona; usa um modelo 🛠 (ex.: qwen3, llama3.1).", {
+        m: active,
+      });
+  } else if (isOllama && isWeakModel(active)) {
+    warn =
+      " " +
+      t("⚠ '{m}' é pequeno — respostas e pesquisa web podem falhar; experimenta llama3.1 ou qwen2.5.", {
+        m: active,
+      });
+  }
   try {
     const d = await api.diagnostics();
     el.textContent =
       (d.ollama_ok
-        ? `Ollama ligado · ${d.ollama_models.length} modelos`
-        : "Ollama não acessível — instala em ollama.com e confirma o endpoint") + warn;
+        ? t("Ollama ligado · {n} modelos", { n: d.ollama_models.length })
+        : t("Ollama não acessível — instala em ollama.com e confirma o endpoint")) + warn;
   } catch {
     el.textContent = "—" + warn;
   }
@@ -2680,7 +2989,7 @@ async function renderInstalled() {
   // alimenta o datalist partilhado (#ollama-models) para os campos com sugestões
   els.modelsList.innerHTML = models.map((m) => `<option value="${escapeHtml(m.name)}"></option>`).join("");
   if (models.length === 0) {
-    list.innerHTML = `<div class="empty-sm">Sem modelos. Puxa um abaixo.</div>`;
+    list.innerHTML = `<div class="empty-sm">${t("Sem modelos. Puxa um abaixo.")}</div>`;
     return;
   }
   const active = state.settings?.ollama_model;
@@ -2689,11 +2998,11 @@ async function renderInstalled() {
       (m) => `
     <div class="model-item${m.name === active ? " active" : ""}">
       <div class="model-main">
-        <strong>${escapeHtml(m.name)}</strong>
+        <strong>${escapeHtml(m.name)} <span class="qp-caps">${capBadges(m.name)}</span></strong>
         <span>${escapeHtml([m.parameter_size, fmtSize(m.size), m.quantization].filter(Boolean).join(" · "))}</span>
       </div>
       <div class="model-actions">
-        ${m.name === active ? `<span class="model-badge">ativo</span>` : `<button type="button" class="ghost" data-activate="${escapeHtml(m.name)}">Ativar</button>`}
+        ${m.name === active ? `<span class="model-badge">${t("ativo")}</span>` : `<button type="button" class="ghost" data-activate="${escapeHtml(m.name)}">${t("Ativar")}</button>`}
         <button type="button" class="ghost" data-del="${escapeHtml(m.name)}">✕</button>
       </div>
     </div>`
@@ -2713,26 +3022,37 @@ async function setActiveModel(name: string) {
 }
 
 async function deleteModelUi(name: string) {
-  if (!confirm(`Apagar o modelo "${name}"?`)) return;
+  if (!confirm(t("Apagar o modelo \"{name}\"?", { name }))) return;
   try {
     await api.deleteOllamaModel(name);
     await renderInstalled();
   } catch (e) {
-    alert("Falha a apagar: " + e);
+    alert(t("Falha a apagar: ") + e);
   }
+}
+
+/** Badges de capacidade (🛠 tools · 👁 visão · 🧠 raciocínio) com tooltip. */
+function capBadges(name: string): string {
+  const c = modelCapabilities(name);
+  const parts: string[] = [];
+  if (c.tools) parts.push(`<span class="cap" title="${t("Ferramentas / pesquisa web")}">🛠</span>`);
+  if (c.vision) parts.push(`<span class="cap" title="${t("Visão (imagens)")}">👁</span>`);
+  if (c.reasoning) parts.push(`<span class="cap" title="${t("Raciocínio")}">🧠</span>`);
+  return parts.join("");
 }
 
 function renderQuickPicks() {
   const box = document.querySelector<HTMLDivElement>("#hub-quickpicks")!;
   box.innerHTML =
-    `<div class="catalog-title">Catálogo — clica para descarregar</div>` +
+    `<div class="catalog-title">${t("Catálogo — clica para descarregar")}</div>` +
+    `<div class="catalog-legend">${t("🛠 ferramentas/web · 👁 visão · 🧠 raciocínio")}</div>` +
     MODEL_CATALOG.map(
       (g) =>
-        `<div class="catalog-group">${escapeHtml(g.group)}</div><div class="quickpicks">` +
+        `<div class="catalog-group">${escapeHtml(t(g.group))}</div><div class="quickpicks">` +
         g.models
           .map(
             (m) =>
-              `<button type="button" class="quickpick" data-pull="${escapeHtml(m.name)}" title="${escapeHtml(m.name)} · ${m.size}${m.tools ? " · ferramentas/web" : ""}">${escapeHtml(m.name)} <span class="qp-size">${m.size}${m.tools ? " · 🛠" : ""}</span></button>`
+              `<button type="button" class="quickpick" data-pull="${escapeHtml(m.name)}" title="${escapeHtml(m.name)} · ${m.size}">${escapeHtml(m.name)} <span class="qp-size">${m.size}</span> <span class="qp-caps">${capBadges(m.name)}</span></button>`
           )
           .join("") +
         `</div>`
@@ -2839,6 +3159,7 @@ function wireWorkspaceUi() {
   document.querySelector("#hub-close")!.addEventListener("click", () => showView(null));
   document.querySelector("#hub-local-provider")!.addEventListener("change", applyHubProviderFields);
   document.querySelector("#hub-cloud-provider")!.addEventListener("change", applyHubProviderFields);
+  document.querySelector("#hub-web-provider")!.addEventListener("change", () => applyWebProviderUi(true));
   document.querySelector("#hub-claude-preset")!.addEventListener("change", () => {
     const v = hubSel("#hub-claude-preset").value;
     document.querySelector("#hub-claude-custom-wrap")!.toggleAttribute("hidden", v !== "__custom__");
@@ -2899,10 +3220,11 @@ async function init() {
   });
 
   document.querySelector("#btn-settings")!.addEventListener("click", () => {
-    if (state.settings) settingsToForm(state.settings);
     els.dialog.showModal();
   });
   document.querySelector("#btn-mem-refresh")!.addEventListener("click", refreshMemory);
+  document.querySelector("#btn-compact")!.addEventListener("click", compactCurrentSaga);
+  document.querySelector("#btn-clear-saga")!.addEventListener("click", clearCurrentSaga);
   document.querySelector("#btn-new-chat")!.addEventListener("click", createConversation);
   els.convSearch.addEventListener("input", onSearch);
   document.querySelector("#btn-attach")!.addEventListener("click", () => els.fileInput.click());
@@ -2928,12 +3250,7 @@ async function init() {
     document.querySelector("#wiz-key-wrap")!.toggleAttribute("hidden", v !== "api");
   });
   els.routeModeBar.querySelectorAll<HTMLButtonElement>("button[data-mode]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.routeMode = (btn.dataset.mode as "auto" | "local" | "claude") ?? "auto";
-      els.routeModeBar
-        .querySelectorAll("button[data-mode]")
-        .forEach((b) => b.classList.toggle("active", b === btn));
-    });
+    btn.addEventListener("click", () => setRouteMode((btn.dataset.mode as "local" | "claude") ?? "local"));
   });
   document.querySelector("#btn-think")!.addEventListener("click", (e) => {
     state.thinking = !state.thinking;
@@ -2942,6 +3259,7 @@ async function init() {
   document.querySelector("#btn-research")!.addEventListener("click", (e) => {
     state.research = !state.research;
     (e.currentTarget as HTMLElement).classList.toggle("active", state.research);
+    if (state.research) maybeWarnSearch();
   });
   document.querySelector("#btn-subagents")!.addEventListener("click", (e) => {
     state.subagents = !state.subagents;
@@ -2956,77 +3274,18 @@ async function init() {
     if (artifactCurrent) navigator.clipboard?.writeText(artifactCurrent.code);
   });
   document.querySelector("#artifact-export")!.addEventListener("click", exportArtifact);
+  document.querySelector("#artifact-pdf")!.addEventListener("click", exportArtifactPdf);
   document.querySelector("#artifact-gallery")!.addEventListener("click", openGallery);
   document.querySelector("#btn-export-saga")!.addEventListener("click", exportSaga);
-  els.claudeModelPreset.addEventListener("change", () => {
-    const v = els.claudeModelPreset.value;
-    const input = els.form.elements.namedItem("claude_model") as HTMLInputElement;
-    if (v === "__custom__") {
-      els.claudeModelCustomWrap.hidden = false;
-      input.focus();
-    } else {
-      els.claudeModelCustomWrap.hidden = true;
-      input.value = v;
-    }
-  });
-  document.querySelector("#btn-pull-model")!.addEventListener("click", async () => {
-    const model = (els.form.elements.namedItem("ollama_model") as HTMLInputElement).value.trim();
-    const status = document.querySelector("#pull-status")!;
-    if (!model) {
-      status.textContent = "Indica um modelo (ex.: llama3.2)";
-      return;
-    }
-    status.textContent = "A iniciar descarga…";
-    try {
-      await api.pullOllamaModel(model, (ev) => {
-        if (ev.kind === "Progress") {
-          status.textContent =
-            ev.percent >= 0 ? `${ev.status} — ${ev.percent.toFixed(0)}%` : ev.status;
-        } else if (ev.kind === "Done") {
-          status.textContent = "✓ Descarregado";
-          api.listOllamaModels()
-            .then((models) => {
-              els.modelsList.innerHTML = models
-                .map((m) => `<option value="${escapeHtml(m)}"></option>`)
-                .join("");
-            })
-            .catch(() => {});
-        } else {
-          status.textContent = "✗ " + ev.message;
-        }
-      });
-    } catch (e) {
-      status.textContent = "✗ " + e;
-    }
-  });
-  document.querySelector("#btn-list-models")!.addEventListener("click", async () => {
-    try {
-      const models = await api.listOllamaModels();
-      els.modelsList.innerHTML = models
-        .map((m) => `<option value="${escapeHtml(m)}"></option>`)
-        .join("");
-    } catch (e) {
-      alert("Falha a listar modelos do Ollama: " + e);
-    }
-  });
-
-  els.form.addEventListener("submit", async (e) => {
-    const submitter = (e as SubmitEvent).submitter as HTMLButtonElement | null;
-    if (submitter?.value === "save" && state.settings) {
-      const next = formToSettings(state.settings);
-      try {
-        await api.saveSettings(next);
-        state.settings = next;
-        applyComposerToggles();
-        await refreshMemory();
-      } catch (err) {
-        alert("Falha a guardar definições: " + err);
-      }
-    }
-  });
-  document.querySelector("#local-provider")!.addEventListener("change", applyProviderFields);
-  document.querySelector("#cloud-provider")!.addEventListener("change", applyProviderFields);
   document.querySelector("#btn-check-update")!.addEventListener("click", checkForUpdates);
+  // Abre QUALQUER link externo (Sobre, Fontes, markdown) no browser do sistema (Tauri não o faz sozinho).
+  document.addEventListener("click", (e) => {
+    const a = (e.target as HTMLElement | null)?.closest?.("a") as HTMLAnchorElement | null;
+    if (a && /^https?:\/\//i.test(a.href)) {
+      e.preventDefault();
+      openUrl(a.href).catch((err) => console.error("openUrl", err));
+    }
+  });
   wireWorkspaceUi();
   refreshSlashWorkflows();
 
@@ -3087,6 +3346,15 @@ async function init() {
   } finally {
     hideSplash();
   }
+  // Mostra a versão no rodapé "Sobre" das Definições.
+  getVersion()
+    .then((v) => {
+      const el = document.querySelector("#about-version");
+      if (el) el.textContent = "v" + v;
+    })
+    .catch(() => {});
+  // Verifica/descarrega atualizações em fundo, sem atrasar o arranque.
+  setTimeout(autoUpdate, 4000);
 }
 
 /** Esconde o splash de arranque com fade e remove-o do DOM. */

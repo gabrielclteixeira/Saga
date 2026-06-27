@@ -1,7 +1,7 @@
 [package]
 name = "saga"
-version = "0.2.4"
-description = "Saga — assistente desktop com router local (Ollama) ↔ Claude para poupar tokens"
+version = "0.3.0"
+description = "Saga — assistente desktop local-first (Ollama) com escalonamento opcional para o Claude"
 authors = ["Gabriel Teixeira <gabrielcalaca@hotmail.com>"]
 license = "MIT"
 repository = ""
@@ -27,6 +27,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
 cron = "0.12"
 chrono = "0.4"
 reqwest = { version = "0.12", features = ["json", "stream"] }

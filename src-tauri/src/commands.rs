@@ -260,6 +260,86 @@ pub fn truncate_conversation(state: State<AppState>, id: i64, keep: i64) -> Resu
     store::truncate_conversation(&conn, id, keep).map_err(|e| e.to_string())
 }
 
+#[derive(Serialize)]
+pub struct Compaction {
+    pub summary: String,
+    pub upto: i64,
+}
+
+#[derive(Serialize)]
+pub struct CompactResult {
+    pub summary: String,
+    pub upto: i64,
+    pub messages_compacted: usize,
+}
+
+/// Lê o resumo/fronteira de compactação de uma Saga (para o frontend repor ao abrir).
+#[tauri::command]
+pub fn get_compaction(state: State<AppState>, id: i64) -> Result<Compaction, String> {
+    let conn = state.db.lock().unwrap();
+    let (summary, upto) = store::get_compaction(&conn, id).map_err(|e| e.to_string())?;
+    Ok(Compaction { summary, upto })
+}
+
+/// Esvazia uma Saga (apaga mensagens + limpa compactação), mantendo-a na lista.
+#[tauri::command]
+pub fn clear_conversation(state: State<AppState>, id: i64) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    store::clear_conversation(&conn, id).map_err(|e| e.to_string())
+}
+
+/// Compacta uma Saga: resume os turnos antigos com o modelo local (não-destrutivo) e
+/// marca a fronteira; mantém os últimos `keep_last` turnos verbatim.
+#[tauri::command]
+pub async fn compact_conversation(
+    state: State<'_, AppState>,
+    id: i64,
+    keep_last: i64,
+) -> Result<CompactResult, String> {
+    let settings = state.settings.lock().unwrap().clone();
+    let (msgs, prev_summary) = {
+        let conn = state.db.lock().unwrap();
+        let msgs = store::get_messages(&conn, id).map_err(|e| e.to_string())?;
+        let prev = store::get_compaction(&conn, id)
+            .map(|(s, _)| s)
+            .unwrap_or_default();
+        (msgs, prev)
+    };
+    let total = msgs.len() as i64;
+    let keep = keep_last.max(0);
+    let cut = (total - keep).max(0) as usize;
+    if cut < 2 {
+        return Err("Conversa demasiado curta para compactar.".to_string());
+    }
+    let to_summarize = &msgs[..cut];
+    let upto = to_summarize.last().map(|m| m.id).unwrap_or(0);
+    let transcript = to_summarize
+        .iter()
+        .map(|m| {
+            let who = if m.role == "user" { "Utilizador" } else { "Assistente" };
+            format!("{who}: {}", m.content)
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let full = if prev_summary.trim().is_empty() {
+        transcript
+    } else {
+        format!("Resumo anterior:\n{prev_summary}\n\n{transcript}")
+    };
+    let summary = router::summarize_conversation(&full, &settings)
+        .await
+        .ok_or_else(|| "Não foi possível resumir — verifica o modelo local.".to_string())?;
+    {
+        let conn = state.db.lock().unwrap();
+        store::set_compaction(&conn, id, &summary, upto).map_err(|e| e.to_string())?;
+    }
+    Ok(CompactResult {
+        summary,
+        upto,
+        messages_compacted: cut,
+    })
+}
+
 /// Escreve `content` no caminho dado (usado para exportar artefactos/Sagas; o caminho
 /// vem do save-dialog no frontend).
 #[tauri::command]
@@ -481,15 +561,15 @@ pub fn system_info() -> SystemInfo {
         .map(|n| n.get() as u32)
         .unwrap_or(0);
     let (recommended, why) = if total_ram_gb == 0 {
-        ("qwen2.5:7b", "não consegui ler a RAM — sugestão equilibrada")
+        ("qwen3:8b", "sugestão equilibrada, com ferramentas/web")
     } else if total_ram_gb < 9 {
         ("llama3.2:3b", "RAM limitada — modelo pequeno e rápido")
     } else if total_ram_gb < 18 {
-        ("qwen2.5:7b", "RAM média — 7-8B com ferramentas é confortável")
+        ("qwen3:8b", "RAM média — 8B com ferramentas é confortável")
     } else if total_ram_gb < 34 {
-        ("qwen2.5:14b", "boa RAM — 14B é viável")
+        ("qwen3:14b", "boa RAM — 14B é o melhor equilíbrio")
     } else {
-        ("qwen2.5:14b", "muita RAM — podes ir além (ex.: 32B)")
+        ("qwen3:14b", "muita RAM — 14B; com GPU 24 GB+ podes ir a 32B")
     };
     SystemInfo {
         total_ram_gb,
@@ -760,7 +840,7 @@ pub async fn send_message_stream(
                     &settings.ollama_endpoint,
                     &prepared.model,
                     &settings.web_search_provider,
-                    &settings.web_search_api_key,
+                    &settings.active_web_key(),
                     &prepared.full_messages,
                     gopts,
                     on_delta,

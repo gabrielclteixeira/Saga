@@ -54,6 +54,18 @@ pub fn browser_tools_schema() -> serde_json::Value {
             "name": "browser_screenshot",
             "description": "Tira uma screenshot da página e devolve o caminho do ficheiro.",
             "input_schema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "create_pdf",
+            "description": "Cria um ficheiro PDF a partir de conteúdo HTML e devolve o caminho. Usa quando o utilizador pedir um PDF, relatório ou documento. Passa o corpo em HTML simples (<h1>,<h2>,<p>,<ul>,<ol>,<table>,<pre>,<strong>…); o estilo de impressão é aplicado automaticamente.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string", "description": "título do documento (também o nome do ficheiro)" },
+                    "html": { "type": "string", "description": "corpo do documento em HTML" }
+                },
+                "required": ["title", "html"]
+            }
         }
     ])
 }

@@ -28,35 +28,34 @@
 ## Why
 
 Most "chat with an LLM" apps send every keystroke to a paid frontier model — including trivial
-work like reading your notes, summarizing, or classifying. Saga puts a **router** in front:
+work like reading your notes, summarizing, or classifying. Saga is **local-first**: your **Ollama
+model is the assistant**, and **Claude is an optional escalation** you reach for on purpose.
 
-- **Light tasks** (short prompts, "summarize my memory", reading `CLAUDE.md`) → handled **locally** by Ollama. Free.
-- **Heavy tasks** (code, refactors, complex reasoning) → **escalated to Claude**.
-- Before escalating, the local model **compresses the context** so fewer tokens are billed.
+- **Everything runs locally by default** on Ollama. Free, private, offline-capable.
+- **Claude (CLI subscription or API) is optional.** With no Claude configured, Saga is a complete
+  local assistant. Connect it to **escalate** a heavy turn — explicitly, not by a guess.
+- **Escalate when you decide:** flip a turn to **Claude**, or hit **⤴ Ask Claude** on any local answer
+  to re-run it on Claude. Before escalating, the local model **compresses the context** so fewer tokens are billed.
 
-A live panel shows **tokens served locally** and **tokens saved by compression** against the actual **Claude cost**.
+A live panel shows **tokens served locally (free)** against the actual **Claude cost**.
 
-## How the router works
+## Local-first, escalate on demand
 
 ```
-                ┌──────────────────────────────────────────────┐
-   user prompt  │                  ROUTER                       │
- ─────────────► │                                              │
-                │  1. keyword rules  (force local / force claude)│
-                │  2. length heuristic (light_max_chars)         │
-                │  3. optional local classifier  (LEVE / PESADO) │
-                └───────────────┬──────────────┬─────────────────┘
-                                │              │
-                       light    │              │   heavy
-                                ▼              ▼
-                        ┌──────────────┐   ┌────────────────────────────┐
-                        │   Ollama     │   │  compress context (local)   │
-                        │ (local, free)│   │            ↓                │
-                        └──────────────┘   │  Claude  ── API  or  CLI ── │
-                                           └────────────────────────────┘
-                                │              │
-                                ▼              ▼
-                          accounting: tokens served local · tokens saved · Claude $
+                ┌───────────────┐
+   user prompt  │  local model  │   default: runs on Ollama (free)
+ ─────────────► │   (Ollama)    │
+                └───────┬───────┘
+                        │   you choose to escalate (Local|Claude switch, or ⤴ Ask Claude)
+                        ▼
+                ┌────────────────────────────┐
+                │  compress context (local)   │
+                │            ↓                │
+                │  Claude  ── API  or  CLI ── │   optional — hidden when not configured
+                └────────────────────────────┘
+                        │
+                        ▼
+                  accounting: local (free) · Claude $
 ```
 
 ## Beyond chat — an agentic workspace
@@ -71,6 +70,11 @@ Conversations are **Sagas**. A left nav rail opens the workspace surfaces:
 - **Workflows** — saved agentic procedures. Type `/<name> args` to run one; it executes step-by-step with the
   available tools.
 - **Browser tool** — a Playwright session (navigate / read / click / fill / screenshot) driven by tool-calling.
+- **Web search** — toggle 🔎 to give the **local** model live web access (needs a tool-capable model like
+  qwen3 / llama3.1). Pick an engine in **Models → Advanced**: **Jina** (default), Tavily, Brave, Serper or Exa
+  (each with its own free-tier key, stored in the OS keychain), plus keyless DuckDuckGo as a best-effort
+  fallback. Keyless scraping is unreliable in 2026, so a free key is recommended. Page fetching uses **Jina
+  Reader** (`r.jina.ai`, keyless). Sources consulted are shown under each answer to verify the model searched.
 
 Every tool call is **logged** (per-Saga *Atividade* view), and a **confirmation mode** (off / dry-run / ask)
 can preview or require approval before any action runs. Workspace files live under a configurable folder
@@ -160,13 +164,16 @@ The SVG masters are the source of truth — platform icons are regenerated from 
 
 ## Roadmap
 
-**Done:** local↔Claude router with context compression · real-time streaming · Sagas history + full-text
+**Done:** local-first assistant (Ollama) with optional one-click Claude escalation + context compression · real-time streaming · Sagas history + full-text
 search (SQLite/FTS5) · image attachments (vision) · extended thinking & deep research · subagent
 orchestration · agentic **browser tool** · **MCP host** · **skills / playbooks / workflows** · **action log +
 confirm/dry-run** · side rail · interface zoom · OpenAI-compatible providers · in-app model downloader ·
 azulejo identity + animated caravel loader · OS-keychain secrets · CI release builds ·
 **rich artifacts** (Markdown/Mermaid/syntax-highlight, export, gallery) · **Saga export** ·
-**iterative cited deep-research** · **scheduled automations** (cron, background runner + notifications).
+**iterative cited deep-research** · **scheduled automations** (cron, background runner + notifications) ·
+**local web search** (Jina · Tavily · Brave · Serper · Exa, + keyless DuckDuckGo; **Jina Reader** for page fetch) ·
+**compact / clear a Saga** (local-model summarization) · **PDF export** (print-to-PDF + `create_pdf` tool + bundled
+skill) · **English / Portuguese UI** · per-provider keychain keys.
 
 **Next:**
 
@@ -175,10 +182,15 @@ azulejo identity + animated caravel loader · OS-keychain secrets · CI release 
   install, and round off the first-run wizard. Goal: double-click the installer and it just works.
 - **Signed & auto-updating** — code-sign + notarize installers (drops the "unknown publisher" warnings) and
   turn the Tauri updater back on.
-- **Local web search** — give the local model web access via Rust-side `web_search`/`web_fetch` tools, so
-  research can run fully local (today web search is Claude-only; enabling 🔎 forces the Claude route).
-- **Compact / clear a Saga** — like Claude Code's `/compact` and `/clear`: summarize old messages with the
-  local model to save context/tokens, or clear the conversation.
+- **Agents** — reusable personas that specialize the model for a task (e.g. *Software Engineer* with
+  workspace/tools on, *Expert Web Researcher* with web search + deep-research on, *Writer*, …). Each agent is a
+  system prompt plus suggested toggles/route, selectable per-Saga or per-message; builds on the existing
+  skills/workspace but at the persona level.
+- **Rich PDF design** — upgrade the PDF skill/export beyond plain markdown: a polished, self-contained print
+  theme (type scale + accent, cover block, styled headings/tables/callouts/code, page-break control) rendered
+  via the Playwright `page.pdf()` path with a running header/footer + page numbers and embedded fonts.
+  Selectable templates (Report / Article / Technical) and optional embedded diagrams/charts — artifact-grade
+  documents, not a dumped markdown print.
 - **Tray & autostart** — keep automations running without the window open.
 
 ### Browser tool setup

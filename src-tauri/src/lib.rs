@@ -14,6 +14,7 @@ mod web_agent;
 mod workspace;
 
 use commands::AppState;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,9 +24,16 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState::new())
         .setup(|app| {
             scheduler::spawn_loop(app.handle().clone());
+            // Semeia skills embutidas por defeito (ex.: pdf) se o workspace estiver definido.
+            {
+                let state = app.state::<AppState>();
+                let dir = state.settings.lock().unwrap().workspace_dir.clone();
+                workspace::seed_defaults(&dir);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -51,6 +59,9 @@ pub fn run() {
             commands::search_chats,
             commands::get_conversation_accounting,
             commands::truncate_conversation,
+            commands::get_compaction,
+            commands::clear_conversation,
+            commands::compact_conversation,
             commands::get_action_log,
             commands::approve_action,
             commands::get_workspace_index,

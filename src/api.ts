@@ -12,14 +12,6 @@ export interface ChatMessage {
   attachments?: Attachment[];
 }
 
-export interface RoutingConfig {
-  enabled: boolean;
-  light_max_chars: number;
-  force_local_keywords: string[];
-  force_claude_keywords: string[];
-  use_local_classifier: boolean;
-}
-
 export interface McpServerConfig {
   name: string;
   command: string;
@@ -49,7 +41,6 @@ export interface Settings {
   openai_cloud_endpoint: string;
   openai_cloud_key: string;
   openai_cloud_model: string;
-  routing: RoutingConfig;
   memory_dir: string;
   claude_md_path: string;
   enable_browser_tools: boolean;
@@ -60,8 +51,8 @@ export interface Settings {
   workspace_dir: string;
   confirm_mode: "off" | "dry_run" | "ask";
   local_web_search: boolean;
-  web_search_provider: "duckduckgo" | "tavily";
-  web_search_api_key: string;
+  web_search_provider: "duckduckgo" | "tavily" | "brave" | "serper" | "exa" | "jina";
+  web_search_keys: Record<string, string>;
   onboarding_done: boolean;
 }
 
@@ -149,6 +140,17 @@ export interface ConversationMeta {
   title: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface Compaction {
+  summary: string;
+  upto: number;
+}
+
+export interface CompactResult {
+  summary: string;
+  upto: number;
+  messages_compacted: number;
 }
 
 export interface SearchHit {
@@ -252,6 +254,10 @@ export const api = {
     invoke<Accounting>("get_conversation_accounting", { id }),
   truncateConversation: (id: number, keep: number) =>
     invoke<void>("truncate_conversation", { id, keep }),
+  getCompaction: (id: number) => invoke<Compaction>("get_compaction", { id }),
+  clearConversation: (id: number) => invoke<void>("clear_conversation", { id }),
+  compactConversation: (id: number, keepLast: number) =>
+    invoke<CompactResult>("compact_conversation", { id, keepLast }),
   // MCP
   testMcpServer: (config: McpServerConfig) =>
     invoke<string[]>("test_mcp_server", { config }),

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Saga",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "identifier": "pt.erp24.saga",
   "build": {
     "frontendDist": "../dist",
@@ -28,7 +28,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -45,7 +45,7 @@
       "endpoints": [
         "https://github.com/gabrielclteixeira/Saga/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU3NzRCMzZFMTg0RTc0OTgKUldTWWRFNFlick4wNThMdHd5TG1EakFkeS8rakh6MWZLWm1tcDQ3ckhyRThhZTB0c05tVHphRDMK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdDNEIwMTkyNDNGMUEwNUMKUldSY29QRkRrZ0ZMZkN4Vlhad01XMlpld2xDdWUzLzZ3RTVUSW9vWE4ralV5NnlLMzNqNDFqdjcK"
     }
   }
 }

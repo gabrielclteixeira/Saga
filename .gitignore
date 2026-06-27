@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Tauri updater signing key — NEVER commit (only the public key goes in tauri.conf.json)
+saga-updater.key
+saga-updater.key.pub
+*.key

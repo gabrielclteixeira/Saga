@@ -11,6 +11,8 @@
     "updater:default",
     "process:default",
     "dialog:default",
-    "notification:default"
+    "notification:default",
+    "opener:default",
+    "opener:allow-open-url"
   ]
 }

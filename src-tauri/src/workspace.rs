@@ -180,6 +180,39 @@ pub fn write_doc(root: &str, kind: &str, name: &str, content: &str) -> anyhow::R
     Ok(())
 }
 
+/// Skill embutida por defeito para criar PDFs.
+const PDF_SKILL: &str = r#"---
+name: pdf
+description: "Cria um PDF a partir de um documento ou relatório. Triggers: pdf, criar pdf, exportar pdf, gerar relatório, fazer um documento"
+---
+
+# Criar PDF
+
+Quando o utilizador pedir um PDF, relatório ou documento:
+
+1. Escreve um documento bem estruturado e completo sobre o tema pedido (títulos, secções,
+   listas e tabelas quando ajudarem). Sê claro e direto.
+2. **Se a ferramenta `create_pdf` estiver disponível** (modo API com ferramentas de browser),
+   chama-a com `title` (título do documento) e `html` (o corpo em HTML simples: `<h1>`, `<h2>`,
+   `<p>`, `<ul>`, `<ol>`, `<table>`, `<pre>`, `<strong>`…). Ela grava o ficheiro e devolve o caminho.
+3. **Caso contrário**, devolve o documento como um bloco de código markdown (```markdown) ou HTML
+   (```html) — ele abre como artefacto — e diz ao utilizador para clicar em **PDF** no painel do
+   artefacto para guardar como PDF.
+
+Não inventes dados; se faltar informação, pede ao utilizador ou indica claramente as lacunas.
+"#;
+
+/// Escreve as skills embutidas por defeito que ainda não existam (não sobrescreve edições do utilizador).
+pub fn seed_defaults(root: &str) {
+    if root.trim().is_empty() {
+        return;
+    }
+    let pdf = skills_dir(root).join("pdf").join("SKILL.md");
+    if !pdf.exists() {
+        let _ = write_doc(root, "skill", "pdf", PDF_SKILL);
+    }
+}
+
 /// Apaga um documento do workspace (e a pasta da skill, se for o caso).
 pub fn delete_doc(root: &str, kind: &str, name: &str) -> anyhow::Result<()> {
     let path = doc_path(root, kind, name)

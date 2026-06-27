@@ -20,7 +20,7 @@ async function ensure() {
 }
 
 async function handle(action, params) {
-  await ensure();
+  if (action !== "pdf") await ensure(); // pdf usa um browser headless próprio
   switch (action) {
     case "navigate": {
       await page.goto(params.url, { waitUntil: "domcontentloaded", timeout: 30000 });
@@ -42,6 +42,31 @@ async function handle(action, params) {
       const dir = process.env.SAGA_USER_DATA_DIR || ".";
       const out = path.join(dir, `shot-${Date.now()}.png`);
       await page.screenshot({ path: out, fullPage: false });
+      return out;
+    }
+    case "pdf": {
+      // page.pdf() só funciona em headless → usa uma instância dedicada (não a sessão persistente).
+      const dir = process.env.SAGA_USER_DATA_DIR || ".";
+      const slug =
+        String(params.title || "documento")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 40) || "documento";
+      const out = params.path || path.join(dir, `${slug}-${Date.now()}.pdf`);
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const p = await browser.newPage();
+        await p.setContent(String(params.html || ""), { waitUntil: "networkidle" });
+        await p.pdf({
+          path: out,
+          format: "A4",
+          printBackground: true,
+          margin: { top: "18mm", bottom: "18mm", left: "16mm", right: "16mm" },
+        });
+      } finally {
+        await browser.close();
+      }
       return out;
     }
     default:

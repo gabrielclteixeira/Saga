@@ -22,103 +22,6 @@ impl Route {
     }
 }
 
-pub struct Decision {
-    pub route: Route,
-    pub reason: String,
-    /// `true` quando a decisão é definitiva (ex.: palavra-chave) e não deve ser revista pelo classificador.
-    pub firm: bool,
-}
-
-/// Decisão heurística e síncrona, a partir do último prompt do utilizador.
-pub fn decide(prompt: &str, settings: &Settings) -> Decision {
-    let routing = &settings.routing;
-
-    if !routing.enabled {
-        let route = if settings.claude_enabled() {
-            Route::Claude
-        } else {
-            Route::Local
-        };
-        return Decision {
-            route,
-            reason: "router desligado — destino por omissão".into(),
-            firm: true,
-        };
-    }
-
-    let lc = prompt.to_lowercase();
-
-    if let Some(kw) = routing
-        .force_claude_keywords
-        .iter()
-        .find(|k| lc.contains(k.as_str()))
-    {
-        return Decision {
-            route: Route::Claude,
-            reason: format!("palavra-chave \"{kw}\" → Claude"),
-            firm: true,
-        };
-    }
-
-    if let Some(kw) = routing
-        .force_local_keywords
-        .iter()
-        .find(|k| lc.contains(k.as_str()))
-    {
-        return Decision {
-            route: Route::Local,
-            reason: format!("palavra-chave \"{kw}\" → local"),
-            firm: true,
-        };
-    }
-
-    if !settings.claude_enabled() {
-        return Decision {
-            route: Route::Local,
-            reason: "Claude desativado → local".into(),
-            firm: true,
-        };
-    }
-
-    let len = prompt.chars().count();
-    if len <= routing.light_max_chars {
-        Decision {
-            route: Route::Local,
-            reason: format!("prompt curto ({len} chars) → local"),
-            firm: false,
-        }
-    } else {
-        Decision {
-            route: Route::Claude,
-            reason: format!("prompt longo ({len} chars) → Claude"),
-            firm: false,
-        }
-    }
-}
-
-/// Triagem: o modelo local decide quem responde, ANTES de responder. Falha → None.
-async fn classify_local(prompt: &str, settings: &Settings) -> Option<Route> {
-    let q = format!(
-        "És um triador de pedidos. Decide quem deve responder ao pedido abaixo. \
-Responde APENAS com uma palavra: LOCAL (se é simples — leitura, resumo, reformulação, tradução — \
-e podes responder de forma fiável e factual) ou CLAUDE (se precisa de raciocínio complexo, código, \
-conhecimento externo/atualizado, ou passos específicos de um produto/serviço). \
-Na dúvida, responde CLAUDE.\n\nPedido: {prompt}"
-    );
-    let resp = providers::ollama::generate(&settings.ollama_endpoint, &settings.ollama_model, &q, gopts(settings))
-        .await
-        .ok()?;
-    let answer = resp.text.to_uppercase();
-    // "na dúvida → CLAUDE": só fica local se disser LOCAL e não disser CLAUDE.
-    if answer.contains("CLAUDE") {
-        Some(Route::Claude)
-    } else if answer.contains("LOCAL") {
-        Some(Route::Local)
-    } else {
-        None
-    }
-}
-
 /// Comprime o contexto de memória via modelo local, para enviar menos tokens ao Claude.
 async fn compress_context(raw: &str, settings: &Settings) -> String {
     if raw.trim().is_empty() {
@@ -134,6 +37,30 @@ caminhos e decisões importantes. Sê telegráfico.\n\n{raw}"
     }
 }
 
+/// Resume um transcript de conversa com o modelo local (para o /compact da Saga).
+/// Devolve `None` se o transcript estiver vazio ou o modelo falhar.
+pub async fn summarize_conversation(transcript: &str, settings: &Settings) -> Option<String> {
+    if transcript.trim().is_empty() {
+        return None;
+    }
+    let q = format!(
+        "Resume a conversa seguinte de forma concisa mas completa, em pontos. Preserva factos, \
+decisões, nomes, caminhos de ficheiros, números e o estado atual da tarefa, para servir de contexto \
+à continuação. Escreve no idioma da conversa. NÃO inventes nada.\n\n{transcript}"
+    );
+    match providers::ollama::generate(
+        &settings.ollama_endpoint,
+        &settings.ollama_model,
+        &q,
+        gopts(settings),
+    )
+    .await
+    {
+        Ok(resp) if !resp.text.trim().is_empty() => Some(resp.text.trim().to_string()),
+        _ => None,
+    }
+}
+
 pub struct Outcome {
     pub route: Route,
     pub model: String,
@@ -142,22 +69,23 @@ pub struct Outcome {
     pub tokens_saved_compression: u64,
 }
 
-fn last_user_prompt(messages: &[ChatMessage]) -> String {
-    messages
-        .iter()
-        .rev()
-        .find(|m| m.role == "user")
-        .map(|m| m.content.clone())
-        .unwrap_or_default()
-}
-
 const WORKSPACE_NUDGE: &str = "Para criar ou editar skills, playbooks ou workflows, NÃO escrevas \
 ficheiros nem uses uma pasta .claude/ — usa o comando /skill (ou /playbook, /workflow), ou o botão \
 'Gerar com IA' no Workspace da Saga.";
 
+/// Para a rota local: como criar um PDF (não há ferramenta de PDF local).
+const PDF_NUDGE: &str = "\n\nSe te pedirem um PDF ou documento, NÃO procures um PDF na web: escreve o \
+documento completo num bloco de código ```markdown (aparece como artefacto) e diz ao utilizador para \
+clicar em 'Export PDF' no painel do artefacto.";
+
+/// Data de hoje, para o modelo não assumir um ano antigo do treino.
+fn today() -> String {
+    chrono::Local::now().format("%Y-%m-%d").to_string()
+}
+
 fn with_system(context: &str, messages: &[ChatMessage]) -> Vec<ChatMessage> {
     let mut out = Vec::with_capacity(messages.len() + 1);
-    let mut sys = WORKSPACE_NUDGE.to_string();
+    let mut sys = format!("Hoje é {}. Usa informação atual.\n\n{WORKSPACE_NUDGE}", today());
     if !context.trim().is_empty() {
         sys.push_str(&format!("\n\nContexto/memória relevante:\n{context}"));
     }
@@ -184,7 +112,10 @@ diz-o claramente — sugere ligar o 🔎 (pesquisa) ou escalar para o Claude. N�
 
 /// Mensagens para a rota local: instrução de honestidade + memória (crua, é grátis).
 fn with_system_local(context: &str, messages: &[ChatMessage]) -> Vec<ChatMessage> {
-    let mut sys = LOCAL_HONESTY.to_string();
+    let mut sys = format!(
+        "Hoje é {}. Usa informação atual e não assumas anos antigos.\n\n{LOCAL_HONESTY}{PDF_NUDGE}",
+        today()
+    );
     if !context.trim().is_empty() {
         sys.push_str(&format!("\n\nContexto/memória relevante:\n{context}"));
     }
@@ -217,27 +148,13 @@ pub async fn prepare(
     route_override: Option<&str>,
     model_override: Option<&str>,
 ) -> Result<Prepared> {
-    let prompt = last_user_prompt(messages);
     let has_images = messages.iter().any(|m| !m.attachments.is_empty());
 
-    // 1. Rota: override do utilizador > intenção/triagem.
-    let (route, reason) = if let Some(r) = route_override {
-        let route = if r == "claude" {
-            Route::Claude
-        } else {
-            Route::Local
-        };
-        (route, "forçado pelo utilizador".to_string())
+    // Local-first: corre no modelo local, exceto quando o utilizador escala explicitamente para o Claude.
+    let (route, reason) = if route_override == Some("claude") {
+        (Route::Claude, "escalado para o Claude".to_string())
     } else {
-        let mut decision = decide(&prompt, settings);
-        // Triagem é o sinal principal (override do comprimento) quando ativa.
-        if !decision.firm && settings.routing.use_local_classifier {
-            if let Some(r) = classify_local(&prompt, settings).await {
-                decision.reason = format!("triagem local → {}", r.as_str());
-                decision.route = r;
-            }
-        }
-        (decision.route, decision.reason)
+        (Route::Local, "modelo local".to_string())
     };
 
     let raw_memory = memory::load_raw(settings);

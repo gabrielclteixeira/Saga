@@ -13,8 +13,10 @@ const MAX_TURNS: usize = 5;
 
 const SYSTEM: &str = "Tens acesso à web. Para acontecimentos atuais, datas, tempo/meteorologia, \
 notícias, preços ou resultados, chama SEMPRE web_search primeiro (e web_fetch para ler um resultado em \
-detalhe). Responde APENAS com base nos resultados da pesquisa; se não encontrares, di-lo claramente. \
-NUNCA inventes URLs, datas, números nem factos. Sê conciso.";
+detalhe). Pesquisa sempre informação ATUAL (usa a data de hoje, não anos antigos). Responde APENAS com \
+base nos resultados da pesquisa; se não encontrares, di-lo claramente. NUNCA inventes URLs, datas, \
+números nem factos. Se te pedirem um PDF/documento, NÃO procures um PDF na web — escreve o documento \
+num bloco ```markdown (aparece como artefacto) e diz ao utilizador para clicar em 'Export PDF'. Sê conciso.";
 
 fn tools_schema() -> Value {
     json!([
@@ -60,7 +62,8 @@ where
     D: FnMut(&str),
     T: FnMut(&str, &str),
 {
-    let mut messages: Vec<Value> = vec![json!({ "role": "system", "content": SYSTEM })];
+    let sys = format!("Hoje é {}. {SYSTEM}", chrono::Local::now().format("%Y-%m-%d"));
+    let mut messages: Vec<Value> = vec![json!({ "role": "system", "content": sys })];
     messages.extend(
         full_messages
             .iter()
@@ -105,9 +108,9 @@ where
             let result = match name {
                 "web_search" => {
                     let q = args.get("query").and_then(|x| x.as_str()).unwrap_or("");
-                    on_tool("web_search", &format!("a pesquisar: {q}"));
+                    on_tool("web_search", q);
                     match web::web_search(provider, api_key, q, 5).await {
-                        Ok(rs) => {
+                        Ok(rs) if !rs.is_empty() => {
                             for r in &rs {
                                 if !r.url.is_empty() && !sources.iter().any(|(_, u)| u == &r.url) {
                                     sources.push((r.title.clone(), r.url.clone()));
@@ -115,6 +118,18 @@ where
                             }
                             web::format_results(&rs)
                         }
+                        // Sem resultados: dá uma instrução acionável em vez de um beco sem saída.
+                        Ok(_) if provider == "duckduckgo" || provider.is_empty() => {
+                            "A pesquisa sem-chave (DuckDuckGo) não devolveu resultados — está \
+frequentemente bloqueada para pesquisas automáticas. INFORMA o utilizador: para pesquisa web fiável, \
+escolha um motor com chave (Tavily, Brave, Serper, Exa ou Jina) em Modelos → Avançado → Pesquisa web. \
+Não inventes resultados nem finjas que pesquisaste."
+                                .to_string()
+                        }
+                        Ok(_) => format!(
+                            "Sem resultados de '{provider}'. Tenta termos diferentes ou verifica a chave \
+do motor em Modelos → Avançado. Não inventes resultados."
+                        ),
                         Err(e) => format!("erro na pesquisa: {e}"),
                     }
                 }
