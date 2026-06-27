@@ -944,6 +944,48 @@ mark.find-current {
 .doc-chip.msg-doc {
   height: 36px;
 }
+.doc-chip.clickable {
+  cursor: pointer;
+}
+.doc-chip.clickable:hover {
+  border-color: var(--accent);
+}
+
+/* Visor de documento (texto extraído que o modelo leu) */
+.doc-viewer-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 90vw);
+  max-height: 82vh;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.doc-viewer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.doc-viewer-title {
+  flex: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.doc-viewer-body {
+  margin: 0;
+  padding: 16px 18px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+}
 
 /* Miniaturas dentro das mensagens */
 .msg-thumbs {

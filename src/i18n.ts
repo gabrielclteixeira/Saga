@@ -531,6 +531,8 @@ const EN: Record<string, string> = {
   "Procurar na conversa…": "Find in conversation…",
   "Anexar ficheiro": "Attach file",
   "Larga para anexar": "Drop to attach",
+  "Abrir documento": "Open document",
+  "(sem texto extraído)": "(no extracted text)",
   "+ Ficheiro": "+ File",
   "documento": "document",
   "Tipo de ficheiro não suportado: {name}": "Unsupported file type: {name}",

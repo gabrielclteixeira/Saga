@@ -927,13 +927,14 @@ function renderMessagesInner() {
       for (const a of item.attachments) {
         if (a.kind === "document") {
           const chip = document.createElement("span");
-          chip.className = "doc-chip msg-doc";
-          chip.title = a.name || "";
+          chip.className = "doc-chip msg-doc clickable";
+          chip.title = t("Abrir documento");
           chip.innerHTML = `<span class="doc-chip-ic">${icon("doc")}</span>`;
           const nm = document.createElement("span");
           nm.className = "doc-chip-name";
           nm.textContent = a.name || t("documento");
           chip.appendChild(nm);
+          chip.addEventListener("click", () => openDocViewer(a.name || t("documento"), a.text || ""));
           thumbs.appendChild(chip);
           continue;
         }
@@ -1339,8 +1340,9 @@ async function fileToAttachment(file: File): Promise<Attachment> {
 /** Constrói um "chip" de documento (ícone + nome + remover) para as barras de anexos. */
 function docChipEl(a: Attachment, onRemove: () => void): HTMLElement {
   const wrap = document.createElement("div");
-  wrap.className = "doc-chip";
-  wrap.title = a.name || "";
+  wrap.className = "doc-chip clickable";
+  wrap.title = t("Abrir documento");
+  wrap.addEventListener("click", () => openDocViewer(a.name || t("documento"), a.text || ""));
   const ic = document.createElement("span");
   ic.className = "doc-chip-ic";
   ic.innerHTML = icon("doc");
@@ -1351,9 +1353,49 @@ function docChipEl(a: Attachment, onRemove: () => void): HTMLElement {
   rm.className = "thumb-x";
   rm.innerHTML = icon("x");
   rm.title = t("Remover");
-  rm.addEventListener("click", onRemove);
+  rm.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onRemove();
+  });
   wrap.append(ic, label, rm);
   return wrap;
+}
+
+/** Abre o texto extraído de um documento num overlay (o que o modelo leu). */
+function openDocViewer(name: string, text: string) {
+  document.querySelector("#doc-viewer")?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "doc-viewer";
+  overlay.className = "lightbox doc-viewer";
+  const panel = document.createElement("div");
+  panel.className = "doc-viewer-panel";
+  panel.addEventListener("click", (e) => e.stopPropagation());
+  const head = document.createElement("div");
+  head.className = "doc-viewer-head";
+  const title = document.createElement("span");
+  title.className = "doc-viewer-title";
+  title.textContent = name;
+  const close = document.createElement("button");
+  close.className = "icon-x";
+  close.innerHTML = icon("x");
+  close.title = t("Fechar");
+  const body = document.createElement("pre");
+  body.className = "doc-viewer-body";
+  body.textContent = text.trim() || t("(sem texto extraído)");
+  head.append(title, close);
+  panel.append(head, body);
+  overlay.appendChild(panel);
+  const dismiss = () => {
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") dismiss();
+  };
+  overlay.addEventListener("click", dismiss);
+  close.addEventListener("click", dismiss);
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(overlay);
 }
 
 function renderPendingAttachments() {
