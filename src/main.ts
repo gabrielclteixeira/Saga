@@ -3868,7 +3868,7 @@ function wireModelCards(box: HTMLElement) {
   );
   box
     .querySelectorAll<HTMLButtonElement>("[data-pull]")
-    .forEach((b) => b.addEventListener("click", () => pullModelUi(b.dataset.pull!)));
+    .forEach((b) => b.addEventListener("click", () => pullModelUi(b.dataset.pull!, b.dataset.size)));
   // "Todas as variantes": lazy-fetch da lista completa de tags (com tamanhos), cache por cartão.
   box.querySelectorAll<HTMLButtonElement>("[data-all-tags]").forEach((b) =>
     b.addEventListener("click", async () => {
@@ -3895,14 +3895,14 @@ function wireModelCards(box: HTMLElement) {
             return `<div class="reg-tag-row">
               <span class="reg-tag-name">${escapeHtml(tg.name)}</span>
               <span class="reg-tag-meta">${escapeHtml(meta)}</span>
-              <button type="button" class="size-pill" data-pull="${escapeHtml(tg.name)}">${icon("download")}<span>${t("Instalar")}</span></button>
+              <button type="button" class="size-pill" data-pull="${escapeHtml(tg.name)}" data-size="${escapeHtml(tg.size || "")}">${icon("download")}<span>${t("Instalar")}</span></button>
             </div>`;
           })
           .join("");
         list.dataset.loaded = "1";
         list
           .querySelectorAll<HTMLButtonElement>("[data-pull]")
-          .forEach((p) => p.addEventListener("click", () => pullModelUi(p.dataset.pull!)));
+          .forEach((p) => p.addEventListener("click", () => pullModelUi(p.dataset.pull!, p.dataset.size)));
       } catch {
         list.innerHTML = `<div class="empty-sm">${t("Não foi possível obter as variantes.")}</div>`;
       }
@@ -4074,9 +4074,64 @@ function renderOptCommands() {
   if (el) el.textContent = ollamaOptCommands();
 }
 
-async function pullModelUi(name: string) {
+// ---- Aviso de recursos ao instalar (não bloqueia) ----
+let sysInfoCache: import("./api").SystemInfo | null = null;
+async function getSysInfo() {
+  if (!sysInfoCache) {
+    try {
+      sysInfoCache = await api.systemInfo();
+    } catch {
+      return null;
+    }
+  }
+  return sysInfoCache;
+}
+
+/** "16 GB" / "4.7GB" / "820 MB" → GB (number); 0 se não der. */
+function parseSizeGb(s?: string): number {
+  if (!s) return 0;
+  const m = s.match(/([\d.]+)\s*([gm])b/i);
+  if (!m) return 0;
+  const n = parseFloat(m[1]);
+  return m[2].toLowerCase() === "m" ? n / 1024 : n;
+}
+
+/** Estima o tamanho em disco/memória a partir da contagem de parâmetros no nome (Q4 ≈ 0.65 GB/B). */
+function estimateSizeGb(name: string): number {
+  const m = name.match(/[:\-](\d+(?:\.\d+)?)\s*b\b/i);
+  if (!m) return 0;
+  return parseFloat(m[1]) * 0.65;
+}
+
+/** Compara o tamanho do modelo com VRAM/RAM e devolve um aviso (ou null se couber). */
+function resourceWarning(info: import("./api").SystemInfo, needGb: number): string | null {
+  if (needGb <= 0) return null;
+  const sz = `~${needGb.toFixed(needGb < 10 ? 1 : 0)} GB`;
+  if (info.total_ram_gb > 0 && needGb > info.total_ram_gb) {
+    return t("{sz} pode exceder a RAM ({ram} GB) — a instalação prossegue, mas o modelo pode não correr.", {
+      sz,
+      ram: String(info.total_ram_gb),
+    });
+  }
+  if (info.total_vram_gb > 0 && needGb > info.total_vram_gb * 0.9) {
+    return t("{sz} excede a VRAM ({vram} GB) — corre na CPU/RAM, mais lento. A instalação prossegue.", {
+      sz,
+      vram: String(info.total_vram_gb),
+    });
+  }
+  return null;
+}
+
+async function pullModelUi(name: string, sizeStr?: string) {
   name = name.trim();
   if (!name) return;
+  // Aviso de recursos não-bloqueante (cabe na VRAM? na RAM?).
+  void getSysInfo().then((info) => {
+    if (!info) return;
+    const need = parseSizeGb(sizeStr) || estimateSizeGb(name);
+    const warn = resourceWarning(info, need);
+    if (warn) showHint(warn);
+  });
   // Toast global de download (visível em qualquer vista/scroll).
   const toast = document.querySelector<HTMLElement>("#dl-toast")!;
   const label = document.querySelector<HTMLElement>("#dl-toast-label")!;

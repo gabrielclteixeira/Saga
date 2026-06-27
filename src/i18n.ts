@@ -529,6 +529,10 @@ const EN: Record<string, string> = {
   "Desligado — só modelo local.": "Off — local model only.",
   "Anterior": "Back",
   "Procurar na conversa…": "Find in conversation…",
+  "{sz} pode exceder a RAM ({ram} GB) — a instalação prossegue, mas o modelo pode não correr.":
+    "{sz} may exceed RAM ({ram} GB) — install continues, but the model may not run.",
+  "{sz} excede a VRAM ({vram} GB) — corre na CPU/RAM, mais lento. A instalação prossegue.":
+    "{sz} exceeds VRAM ({vram} GB) — runs on CPU/RAM, slower. Install continues.",
   "Saltar configuração": "Skip setup",
   "Seguinte": "Next",
   "Percebi": "Got it",
