@@ -980,6 +980,17 @@ mark.find-current {
 .doc-viewer-toggle[hidden] {
   display: none;
 }
+/* X e "Extracted text" à mesma altura e centrados na barra */
+.doc-viewer-head .doc-viewer-toggle,
+.doc-viewer-head .icon-x {
+  height: 32px;
+  margin: 0;
+  align-self: center;
+}
+.doc-viewer-head .doc-viewer-toggle {
+  display: inline-flex;
+  align-items: center;
+}
 .doc-viewer-body-wrap {
   flex: 1;
   min-height: 0;
