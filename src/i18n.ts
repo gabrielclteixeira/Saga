@@ -423,6 +423,37 @@ const EN: Record<string, string> = {
   "Testar ligações": "Test connections",
   "Começar a usar": "Get started",
   "Saltar por agora": "Skip for now",
+  "Um assistente que corre no teu próprio computador. Sem contas, sem subscrição obrigatória — as tuas conversas ficam contigo.":
+    "An assistant that runs on your own computer. No accounts, no mandatory subscription — your conversations stay with you.",
+  "Local primeiro": "Local first",
+  "As respostas saem do modelo que corres em casa, via Ollama.":
+    "Answers come from the model you run at home, via Ollama.",
+  "Pesquisa na web": "Web search",
+  "Modelos com ferramentas conseguem procurar e ler páginas online.":
+    "Models with tools can search and read pages online.",
+  "Claude opcional": "Claude optional",
+  "Liga o Claude para escalar tarefas pesadas — só quando quiseres.":
+    "Connect Claude to escalate heavy tasks — only when you want to.",
+  "Escolhe o teu modelo": "Choose your model",
+  "Configuração manual": "Manual setup",
+  "Modelo ativo": "Active model",
+  "Liga o Claude (opcional)": "Connect Claude (optional)",
+  "Podes saltar isto e ficar 100% local. Liga o Claude mais tarde nas Definições se precisares de mais potência.":
+    "You can skip this and stay 100% local. Connect Claude later in Settings if you need more power.",
+  "Desligado (só local)": "Off (local only)",
+  "Desligado — só modelo local.": "Off — local model only.",
+  "Anterior": "Back",
+  "Saltar configuração": "Skip setup",
+  "Seguinte": "Next",
+  "Percebi": "Got it",
+  "Aqui ficam os Modelos, Workspace e Automações.":
+    "Models, Workspace and Automations live here.",
+  "Escreve a tua pergunta aqui. Boa viagem! ⛵":
+    "Type your question here. Bon voyage! ⛵",
+  "Resume este artigo: <cola um link>": "Summarize this article: <paste a link>",
+  "Escreve um e-mail breve a recusar uma reunião":
+    "Write a short email declining a meeting",
+  "Explica o que faz este código": "Explain what this code does",
   "✓ Ollama ligado — {n} modelo(s)": "✓ Ollama connected — {n} model(s)",
   " · modelo configurado não encontrado": " · configured model not found",
   "✗ Ollama não detetado neste endpoint": "✗ Ollama not detected at this endpoint",

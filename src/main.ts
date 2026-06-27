@@ -527,35 +527,53 @@ app.innerHTML = `
 
   <dialog id="wizard-dialog">
     <div class="settings wizard">
-      <h2>${t("Bem-vindo ao Saga ⛵")}</h2>
-      <p class="wiz-intro">${t("O Saga corre no teu modelo local. O Claude (CLI/subscrição) é opcional — liga-o para escalar tarefas mais pesadas quando quiseres. Podes mudar tudo depois nas Definições.")}</p>
+      <div class="wiz-dots" id="wiz-dots"></div>
 
-      <fieldset>
-        <legend>${t("Modelo local (Ollama)")}</legend>
+      <section class="wiz-step" data-step="0">
+        <div class="wiz-hero">
+          <img class="wiz-logo" src="/caravel-panel.svg" alt="Saga" />
+          <h2>${t("Bem-vindo ao Saga ⛵")}</h2>
+          <p class="wiz-intro">${t("Um assistente que corre no teu próprio computador. Sem contas, sem subscrição obrigatória — as tuas conversas ficam contigo.")}</p>
+        </div>
+        <ul class="wiz-points">
+          <li>${icon("doc")}<div><strong>${t("Local primeiro")}</strong><span>${t("As respostas saem do modelo que corres em casa, via Ollama.")}</span></div></li>
+          <li>${icon("search")}<div><strong>${t("Pesquisa na web")}</strong><span>${t("Modelos com ferramentas conseguem procurar e ler páginas online.")}</span></div></li>
+          <li>${icon("escalate")}<div><strong>${t("Claude opcional")}</strong><span>${t("Liga o Claude para escalar tarefas pesadas — só quando quiseres.")}</span></div></li>
+        </ul>
+      </section>
+
+      <section class="wiz-step" data-step="1" hidden>
+        <h2>${t("Escolhe o teu modelo")}</h2>
         <div class="wiz-status" id="wiz-ollama-status">${t("A verificar…")}</div>
-        <label>${t("Endpoint")} <input id="w_ollama_endpoint" type="text" /></label>
-        <label>${t("Modelo")} <input id="w_ollama_model" type="text" list="ollama-models" /></label>
-        <p class="wiz-hint">${t("Sem Ollama? Instala em <strong>ollama.com</strong> e corre <code>ollama pull llama3.2</code>.")}</p>
-      </fieldset>
+        <div id="wiz-rec" class="wiz-rec" hidden></div>
+        <details class="wiz-manual">
+          <summary>${t("Configuração manual")}</summary>
+          <label>${t("Endpoint")} <input id="w_ollama_endpoint" type="text" /></label>
+          <label>${t("Modelo ativo")} <input id="w_ollama_model" type="text" list="ollama-models" /></label>
+          <p class="wiz-hint">${t("Sem Ollama? Instala em <strong>ollama.com</strong> e corre <code>ollama pull llama3.2</code>.")}</p>
+        </details>
+      </section>
 
-      <fieldset>
-        <legend>${t("Claude")}</legend>
-        <div class="wiz-status" id="wiz-claude-status">${t("A verificar…")}</div>
+      <section class="wiz-step" data-step="2" hidden>
+        <h2>${t("Liga o Claude (opcional)")}</h2>
+        <p class="wiz-intro">${t("Podes saltar isto e ficar 100% local. Liga o Claude mais tarde nas Definições se precisares de mais potência.")}</p>
         <label>${t("Modo")}
           <select id="w_claude_mode">
-            <option value="off">${t("Desligado")}</option>
+            <option value="off">${t("Desligado (só local)")}</option>
             <option value="cli">${t("Claude CLI (subscrição)")}</option>
             <option value="api">${t("API (key)")}</option>
           </select>
         </label>
         <label id="wiz-key-wrap" hidden>${t("API key")} <input id="w_claude_api_key" type="password" /></label>
-      </fieldset>
+        <div class="wiz-status" id="wiz-claude-status">${t("Desligado — só modelo local.")}</div>
+      </section>
 
       <menu>
-        <button type="button" class="ghost" id="wiz-test">${t("Testar ligações")}</button>
-        <button type="button" class="primary" id="wiz-finish">${t("Começar a usar")}</button>
+        <button type="button" class="ghost" id="wiz-back" hidden>${t("Anterior")}</button>
+        <span class="wiz-spacer"></span>
+        <button type="button" class="ghost" id="wiz-skip">${t("Saltar configuração")}</button>
+        <button type="button" class="primary" id="wiz-next">${t("Seguinte")}</button>
       </menu>
-      <p class="wiz-skip"><a href="#" id="wiz-skip">${t("Saltar por agora")}</a></p>
     </div>
   </dialog>
 `;
@@ -611,10 +629,30 @@ function renderMessages() {
     img.alt = "Saga";
     const p = document.createElement("p");
     p.textContent = t(
-      "Faz uma pergunta. Tarefas leves ficam no modelo local; só o que é pesado escala para o Claude."
+      "Faz uma pergunta. Corre no teu modelo local; escala para o Claude quando quiseres."
     );
     empty.appendChild(img);
     empty.appendChild(p);
+    const chips = document.createElement("div");
+    chips.className = "empty-chips";
+    const suggestions = [
+      t("Resume este artigo: <cola um link>"),
+      t("Escreve um e-mail breve a recusar uma reunião"),
+      t("Explica o que faz este código"),
+    ];
+    for (const s of suggestions) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "empty-chip";
+      chip.textContent = s;
+      chip.addEventListener("click", () => {
+        els.input.value = s;
+        els.input.focus();
+        autoGrow();
+      });
+      chips.appendChild(chip);
+    }
+    empty.appendChild(chips);
     els.messages.appendChild(empty);
     return;
   }
@@ -1985,6 +2023,10 @@ function renderDiagnostics(d: Diagnostics) {
   c.textContent = (d.claude_ready ? "✓ " : "✗ ") + d.claude_detail;
 }
 
+const WIZ_STEPS = 3;
+let wizStep = 0;
+
+/** Persiste o que está nos campos e atualiza os diagnósticos visíveis. */
 async function runWizardTest() {
   const next = mergeWizardSettings(state.settings!);
   try {
@@ -2000,6 +2042,41 @@ async function runWizardTest() {
   }
 }
 
+function renderWizDots() {
+  const dots = document.querySelector("#wiz-dots")!;
+  dots.innerHTML = Array.from({ length: WIZ_STEPS }, (_, i) =>
+    `<span class="wiz-dot${i === wizStep ? " active" : ""}${i < wizStep ? " done" : ""}"></span>`
+  ).join("");
+}
+
+async function wizGoTo(step: number) {
+  wizStep = Math.max(0, Math.min(WIZ_STEPS - 1, step));
+  els.wizard
+    .querySelectorAll<HTMLElement>(".wiz-step")
+    .forEach((s) => s.toggleAttribute("hidden", Number(s.dataset.step) !== wizStep));
+  document.querySelector("#wiz-back")!.toggleAttribute("hidden", wizStep === 0);
+  document.querySelector("#wiz-next")!.textContent =
+    wizStep === WIZ_STEPS - 1 ? t("Começar a usar") : t("Seguinte");
+  renderWizDots();
+  if (wizStep === 1) {
+    // Passo do modelo: testa o Ollama e mostra a recomendação consciente do hardware.
+    void runWizardTest();
+    void renderRecommendation("#wiz-rec");
+  } else if (wizStep === 2) {
+    void runWizardTest();
+  }
+}
+
+async function wizNext() {
+  // Guarda o que está nos campos antes de avançar (não perde escolhas).
+  await runWizardTest();
+  if (wizStep >= WIZ_STEPS - 1) {
+    await finishWizard();
+  } else {
+    await wizGoTo(wizStep + 1);
+  }
+}
+
 async function openWizard() {
   const s = state.settings!;
   wizInput("w_ollama_endpoint").value = s.ollama_endpoint;
@@ -2007,8 +2084,8 @@ async function openWizard() {
   document.querySelector<HTMLSelectElement>("#w_claude_mode")!.value = s.claude_mode;
   wizInput("w_claude_api_key").value = s.claude_api_key;
   document.querySelector("#wiz-key-wrap")!.toggleAttribute("hidden", s.claude_mode !== "api");
+  await wizGoTo(0);
   els.wizard.showModal();
-  runWizardTest();
 }
 
 async function finishWizard() {
@@ -2021,8 +2098,44 @@ async function finishWizard() {
   }
   els.wizard.close();
   await refreshMemory();
-  // 1.ª configuração → aterra no hub Modelos para escolher/descarregar um modelo.
-  openModels();
+  applyComposerToggles();
+  // Em vez de mandar para o hub Modelos, aterra num chat com empty state amigável + mini-tour.
+  showView(null);
+  renderMessages();
+  maybeMiniTour();
+}
+
+/** Mini-tour: 1–2 dicas curtas apontando ao rail e ao composer (uma só vez). */
+function maybeMiniTour() {
+  if (localStorage.getItem("saga.tourDone") === "1") return;
+  localStorage.setItem("saga.tourDone", "1");
+  const tip = (anchorSel: string, text: string, place: "right" | "top") =>
+    new Promise<void>((resolve) => {
+      const anchor = document.querySelector<HTMLElement>(anchorSel);
+      if (!anchor) return resolve();
+      const r = anchor.getBoundingClientRect();
+      const pop = document.createElement("div");
+      pop.className = `mini-tour ${place}`;
+      pop.innerHTML = `<p>${text}</p><button type="button" class="primary">${t("Percebi")}</button>`;
+      document.body.appendChild(pop);
+      if (place === "right") {
+        pop.style.left = `${r.right + 12}px`;
+        pop.style.top = `${r.top}px`;
+      } else {
+        pop.style.left = `${Math.max(12, r.left)}px`;
+        pop.style.bottom = `${window.innerHeight - r.top + 12}px`;
+      }
+      anchor.classList.add("tour-glow");
+      pop.querySelector("button")!.addEventListener("click", () => {
+        anchor.classList.remove("tour-glow");
+        pop.remove();
+        resolve();
+      });
+    });
+  void (async () => {
+    await tip("#rail", t("Aqui ficam os Modelos, Workspace e Automações."), "right");
+    await tip("#composer", t("Escreve a tua pergunta aqui. Boa viagem! ⛵"), "top");
+  })();
 }
 
 async function checkForUpdates() {
@@ -2826,8 +2939,9 @@ const PICK_TIERS: { hw: string; model: string; note: string }[] = [
 ];
 
 /** Secção de recomendação para quem não sabe que modelo escolher. */
-async function renderRecommendation() {
-  const box = document.querySelector<HTMLElement>("#hub-rec")!;
+async function renderRecommendation(targetSel = "#hub-rec") {
+  const box = document.querySelector<HTMLElement>(targetSel)!;
+  if (!box) return;
   box.hidden = false;
   let machine = "";
   try {
@@ -3498,11 +3612,11 @@ async function init() {
   document.querySelector("#panel-collapse")!.addEventListener("click", () => setPanel(true));
   panelReopen.addEventListener("click", () => setPanel(false));
   setPanel(localStorage.getItem("saga.panelCollapsed") === "1");
-  document.querySelector("#wiz-test")!.addEventListener("click", runWizardTest);
-  document.querySelector("#wiz-finish")!.addEventListener("click", finishWizard);
+  document.querySelector("#wiz-next")!.addEventListener("click", () => void wizNext());
+  document.querySelector("#wiz-back")!.addEventListener("click", () => void wizGoTo(wizStep - 1));
   document.querySelector("#wiz-skip")!.addEventListener("click", (e) => {
     e.preventDefault();
-    finishWizard();
+    void finishWizard();
   });
   document.querySelector("#w_claude_mode")!.addEventListener("change", (e) => {
     const v = (e.target as HTMLSelectElement).value;
