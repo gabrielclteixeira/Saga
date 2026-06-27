@@ -1409,14 +1409,13 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     research: opts.research ?? state.research,
     subagents: opts.subagents ?? state.subagents,
   };
-  // Subagentes é só Claude. Pesquisa também força Claude, EXCETO se o web search local
-  // estiver ligado (Ollama) — aí o 🔎 pode correr no modelo local.
-  const localWeb =
-    state.settings?.local_provider === "ollama" && !!state.settings?.local_web_search;
-  // Só escala para o Claude se ele estiver mesmo utilizável (evita o erro de chave em falta).
+  // A pesquisa (🔎) corre localmente no Ollama (loop de ferramentas web_search/web_fetch);
+  // subagentes são só Claude. Só escala para o Claude se ele estiver mesmo utilizável e o
+  // provider local não souber pesquisar (ex.: LM Studio).
+  const canLocalSearch = state.settings?.local_provider === "ollama";
   if (!sendOpts.routeOverride && cloudEnabled()) {
     if (sendOpts.subagents) sendOpts.routeOverride = "claude";
-    else if (sendOpts.research && !localWeb) sendOpts.routeOverride = "claude";
+    else if (sendOpts.research && !canLocalSearch) sendOpts.routeOverride = "claude";
   }
   // Estado de espera mostrado na bolha vazia (persistente entre re-renders) até chegar conteúdo.
   const localReasons =
@@ -1851,12 +1850,14 @@ function setBusy(b: boolean) {
 function applyComposerToggles() {
   const s = state.settings;
   const cloud = cloudEnabled();
-  const localWeb = s?.local_provider === "ollama" && !!s?.local_web_search;
+  // 🔎 corre no Ollama (loop de ferramentas) ou no Claude — disponível a pedido, sem depender
+  // de a Pesquisa web estar sempre-ligada nas Definições.
+  const canSearch = s?.local_provider === "ollama" || cloud;
   // Seletor Local|Claude só faz sentido se houver Claude.
   document.querySelector("#route-pick")?.toggleAttribute("hidden", !cloud);
   if (!cloud && state.routeMode === "claude") setRouteMode("local");
-  // Toggles: 🔎 (local ou cloud) · 🧩/🧠 (só Claude).
-  document.querySelector("#btn-research")?.toggleAttribute("hidden", !(localWeb || cloud));
+  // Toggles: 🔎 (Ollama ou cloud) · 🧩/🧠 (só Claude).
+  document.querySelector("#btn-research")?.toggleAttribute("hidden", !canSearch);
   document.querySelector("#btn-subagents")?.toggleAttribute("hidden", !cloud);
   document.querySelector("#btn-think")?.toggleAttribute("hidden", !cloud);
   // O picker de agente está sempre disponível (funciona em local puro), por isso a barra e o
@@ -1889,13 +1890,14 @@ async function setActiveAgent(name: string | null) {
     const f = parseDocFields("agent", raw);
     state.activeAgent = { name: f.name || name, system: f.body };
     // Aplica as predefinições sugeridas pelo agente — só ativa o que é realmente utilizável
-    // (subagentes/pesquisa profunda precisam do Claude; pesquisa local precisa do web search).
-    const localWeb = state.settings?.local_provider === "ollama" && !!state.settings?.local_web_search;
+    // (🔎 corre no Ollama ou no Claude; subagentes precisam do Claude).
+    const canSearch = state.settings?.local_provider === "ollama" || cloudEnabled();
     setRouteMode(f.agentRoute === "claude" && cloudEnabled() ? "claude" : "local");
-    setToggle("research", !!f.agentResearch && (localWeb || cloudEnabled()));
+    setToggle("research", !!f.agentResearch && canSearch);
     setToggle("subagents", !!f.agentSubagents && cloudEnabled());
     updateAgentChip();
     showHint(t("Agente ativo: {n}", { n: state.activeAgent.name }));
+    if (state.research) maybeWarnSearch(); // avisa se faltar chave de pesquisa
   } catch (e) {
     showHint(t("Falha a carregar o agente: ") + e);
   }
@@ -1974,15 +1976,23 @@ function showHint(msg: string) {
 function maybeWarnSearch() {
   const s = state.settings;
   if (!s) return;
-  const localModel = s.local_provider === "ollama" ? s.ollama_model : s.openai_local_model;
-  if (!s.local_web_search) {
-    showHint(
-      state.routeMode === "local"
-        ? t("🔎 não vai pesquisar: ativa a Pesquisa web (Modelos → Avançado) para o modelo local pesquisar.")
-        : t("🔎 vai usar o Claude. Para pesquisar com o modelo local, ativa a Pesquisa web em Modelos → Avançado.")
-    );
-  } else if (s.local_provider === "ollama" && state.routeMode !== "claude" && !modelHasTools(localModel)) {
-    showHint(t("🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1.", { m: localModel }));
+  // Com Claude, a pesquisa funciona (web_search nativo).
+  if (state.routeMode === "claude" && cloudEnabled()) return;
+  // O 🔎 local só funciona no Ollama (o LM Studio não corre o loop de ferramentas).
+  if (s.local_provider !== "ollama") {
+    showHint(t("🔎 não pesquisa com o LM Studio — usa o Ollama ou ativa o Claude."));
+    return;
+  }
+  if (!modelHasTools(s.ollama_model)) {
+    showHint(t("🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1/gemma4.", { m: s.ollama_model }));
+    return;
+  }
+  // Sem chave de motor de pesquisa, cai para o DuckDuckGo (pouco fiável). Jina sem chave só lê
+  // páginas (web_fetch), não pesquisa.
+  const p = s.web_search_provider;
+  const hasKey = !!s.web_search_keys?.[p];
+  if (p !== "duckduckgo" && !hasKey) {
+    showHint(t("🔎 sem chave: configura um motor de pesquisa (Tavily/Brave/…) em Modelos → Avançado para resultados fiáveis."));
   }
 }
 

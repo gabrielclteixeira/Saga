@@ -440,6 +440,12 @@ const EN: Record<string, string> = {
     "🔎 will use Claude. To search with the local model, enable Web search in Models → Advanced.",
   "🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1.":
     "🔎 may not search: '{m}' can't call tools — use qwen3/llama3.1.",
+  "🔎 não pesquisa com o LM Studio — usa o Ollama ou ativa o Claude.":
+    "🔎 can't search with LM Studio — use Ollama or enable Claude.",
+  "🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1/gemma4.":
+    "🔎 may not search: '{m}' can't call tools — use qwen3/llama3.1/gemma4.",
+  "🔎 sem chave: configura um motor de pesquisa (Tavily/Brave/…) em Modelos → Avançado para resultados fiáveis.":
+    "🔎 no key: set a search engine (Tavily/Brave/…) in Models → Advanced for reliable results.",
   "Geral + ferramentas/web": "General + tools/web",
   "Pequenos / rápidos": "Small / fast",
   "Raciocínio": "Reasoning",

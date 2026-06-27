@@ -941,9 +941,10 @@ pub async fn send_message_stream(
                 num_ctx: settings.ollama_num_ctx,
                 temperature: settings.ollama_temperature,
             };
-            // Com pesquisa web local ligada, usa o loop de ferramentas — exceto quando há
-            // imagens: aí vai direto à visão (sem tools), que é o que o utilizador quer ver.
-            if settings.local_web_search && !prepared.has_images {
+            // Corre o loop de ferramentas (pesquisa web) quando a Pesquisa web local está
+            // sempre-ligada OU quando o 🔎/agente pediu pesquisa neste pedido — exceto se há
+            // imagens (aí vai direto à visão, sem tools).
+            if (settings.local_web_search || research) && !prepared.has_images {
                 let tx_t = channel.clone();
                 crate::web_agent::run(
                     &settings.ollama_endpoint,
