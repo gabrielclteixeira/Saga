@@ -4735,13 +4735,6 @@ function wireWorkspaceUi() {
     showHint(t("Comandos copiados."));
   };
   document.querySelector("#opt-copy")!.addEventListener("click", copyOptCmds);
-  // Traduz o código de resultado do (re)início do Ollama numa mensagem.
-  const optResultHint = (code: string, reverted: boolean) => {
-    const base = reverted ? t("Otimização revertida") : t("Otimizações aplicadas");
-    if (code === "headless") showHint(`${base} ${t("e Ollama reiniciado em segundo plano. ✓")}`);
-    else if (code === "gui") showHint(`${base}. ${t("O Ollama reabriu — podes fechar a janela.")}`);
-    else showHint(`${base}. ${t("Reinicia o Ollama para ter efeito.")}`);
-  };
   if (/Windows/i.test(navigator.userAgent)) {
     // Windows: split button — "Otimizar" + caret (▼) com "Copiar comandos" e "Reverter".
     document.querySelector("#opt-split")!.removeAttribute("hidden");
@@ -4752,8 +4745,13 @@ function wireWorkspaceUi() {
       btn.textContent = revert ? t("A reverter…") : t("A otimizar…");
       menu.setAttribute("hidden", "");
       try {
-        const code = revert ? await api.revertOllama() : await api.optimizeOllama();
-        optResultHint(code, revert);
+        if (revert) await api.revertOllama();
+        else await api.optimizeOllama();
+        showHint(
+          (revert ? t("Otimização revertida") : t("Otimizações aplicadas")) +
+            ". " +
+            t("Reinicia o Ollama (fecha e reabre) para ter efeito.")
+        );
       } catch (e) {
         showHint(t("Não foi possível otimizar: ") + String(e));
       } finally {

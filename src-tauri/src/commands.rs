@@ -657,122 +657,58 @@ pub async fn warm_model(state: State<'_, AppState>, model: Option<String>) -> Re
     Ok(())
 }
 
-/// Aplica (enable=true) ou reverte (enable=false) as otimizações do servidor Ollama
-/// (flash attention + KV cache q8_0 + keep-alive) e reinicia o Ollama. Só Windows, SEM admin.
-/// Devolve um código: "headless" (reiniciou em 2.º plano), "gui" (teve de reabrir a app),
-/// "manual" (variáveis aplicadas, mas reinicia tu). NUNCA deixa o Ollama em baixo.
+/// Aplica as otimizações do servidor Ollama (flash attention + KV cache q8_0 + keep-alive)
+/// definindo variáveis de ambiente do utilizador (setx — sem admin). NÃO mexe nos processos
+/// do Ollama: o utilizador reinicia-o (matar/relançar o Ollama provou-se frágil — deixava-o
+/// em baixo ou com servidores a competir pela porta → 100% CPU).
 #[tauri::command]
-pub async fn optimize_ollama(state: State<'_, AppState>) -> Result<String, String> {
-    let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();
-    tokio::task::spawn_blocking(move || set_ollama_opt_blocking(true, endpoint))
+pub async fn optimize_ollama() -> Result<(), String> {
+    tokio::task::spawn_blocking(|| set_ollama_opt_blocking(true))
         .await
         .map_err(|e| e.to_string())?
 }
 
-/// Reverte as otimizações (remove as variáveis) e reinicia o Ollama sem elas.
+/// Reverte as otimizações (remove as variáveis). O utilizador reinicia o Ollama.
 #[tauri::command]
-pub async fn revert_ollama_opt(state: State<'_, AppState>) -> Result<String, String> {
-    let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();
-    tokio::task::spawn_blocking(move || set_ollama_opt_blocking(false, endpoint))
+pub async fn revert_ollama_opt() -> Result<(), String> {
+    tokio::task::spawn_blocking(|| set_ollama_opt_blocking(false))
         .await
         .map_err(|e| e.to_string())?
 }
 
-#[cfg(windows)]
-const OLLAMA_OPT_VARS: [&str; 3] = [
-    "OLLAMA_FLASH_ATTENTION",
-    "OLLAMA_KV_CACHE_TYPE",
-    "OLLAMA_KEEP_ALIVE",
-];
-
-/// host:port do endpoint (ex.: "http://localhost:11434" → "localhost:11434").
-#[cfg(windows)]
-fn endpoint_host_port(endpoint: &str) -> String {
-    let s = endpoint.trim().trim_end_matches('/');
-    let s = s.split("://").last().unwrap_or(s);
-    let s = s.split('/').next().unwrap_or(s);
-    if s.is_empty() {
-        "127.0.0.1:11434".to_string()
-    } else {
-        s.to_string()
-    }
-}
-
-/// Espera até o servidor estar a aceitar ligações (ou desiste ao fim de ~6s).
-#[cfg(windows)]
-fn wait_until_up(host_port: &str, tries: u32) -> bool {
-    for _ in 0..tries {
-        if std::net::TcpStream::connect(host_port).is_ok() {
-            return true;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
-    false
-}
-
-fn set_ollama_opt_blocking(enable: bool, endpoint: String) -> Result<String, String> {
+fn set_ollama_opt_blocking(enable: bool) -> Result<(), String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         use std::process::Command;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
-        let ollama_dir = std::path::PathBuf::from(&local).join("Programs").join("Ollama");
-
-        // 1. Persistir (setx) ou remover (reg delete) as variáveis do ambiente do utilizador.
+        const VARS: [&str; 3] = ["OLLAMA_FLASH_ATTENTION", "OLLAMA_KV_CACHE_TYPE", "OLLAMA_KEEP_ALIVE"];
         if enable {
-            for (k, v) in [("OLLAMA_FLASH_ATTENTION", "1"), ("OLLAMA_KV_CACHE_TYPE", "q8_0"), ("OLLAMA_KEEP_ALIVE", "30m")] {
-                Command::new("setx").args([k, v]).creation_flags(CREATE_NO_WINDOW).output()
+            for (k, v) in [
+                ("OLLAMA_FLASH_ATTENTION", "1"),
+                ("OLLAMA_KV_CACHE_TYPE", "q8_0"),
+                ("OLLAMA_KEEP_ALIVE", "30m"),
+            ] {
+                Command::new("setx")
+                    .args([k, v])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output()
                     .map_err(|e| format!("setx {k} falhou: {e}"))?;
             }
         } else {
-            for k in OLLAMA_OPT_VARS {
+            // Remove as variáveis do ambiente do utilizador (reg delete; ignora se não existirem).
+            for k in VARS {
                 let _ = Command::new("reg")
                     .args(["delete", "HKCU\\Environment", "/v", k, "/f"])
                     .creation_flags(CREATE_NO_WINDOW)
                     .output();
             }
         }
-
-        // 2. Parar o Ollama (app + servidor).
-        for img in ["ollama app.exe", "ollama.exe"] {
-            let _ = Command::new("taskkill").args(["/IM", img, "/F"]).creation_flags(CREATE_NO_WINDOW).output();
-        }
-        std::thread::sleep(std::time::Duration::from_millis(1200)); // liberta a porta
-
-        // 3. Tentar relançar o servidor HEADLESS (sem janela) com as variáveis aplicadas/removidas.
-        let serve_exe = {
-            let p = ollama_dir.join("ollama.exe");
-            if p.exists() { p } else { std::path::PathBuf::from("ollama") }
-        };
-        let mut cmd = Command::new(&serve_exe);
-        cmd.arg("serve").creation_flags(CREATE_NO_WINDOW);
-        if enable {
-            cmd.env("OLLAMA_FLASH_ATTENTION", "1").env("OLLAMA_KV_CACHE_TYPE", "q8_0").env("OLLAMA_KEEP_ALIVE", "30m");
-        } else {
-            for k in OLLAMA_OPT_VARS {
-                cmd.env_remove(k);
-            }
-        }
-        let _ = cmd.spawn();
-
-        // 4. Confirmar que ficou MESMO a responder. Se sim, terminámos sem GUI.
-        let host_port = endpoint_host_port(&endpoint);
-        if wait_until_up(&host_port, 12) {
-            return Ok("headless".into());
-        }
-
-        // 5. Headless não pegou → reabrir a APP do Ollama para NUNCA ficar em baixo.
-        let app_exe = ollama_dir.join("ollama app.exe");
-        if app_exe.exists() && Command::new(&app_exe).spawn().is_ok() {
-            return Ok("gui".into());
-        }
-        // 6. Sem forma de relançar — variáveis ficaram aplicadas; utilizador reinicia.
-        Ok("manual".into())
+        Ok(())
     }
     #[cfg(not(windows))]
     {
-        let _ = (enable, endpoint);
+        let _ = enable;
         Err("Só disponível no Windows. Usa os comandos copiados.".into())
     }
 }

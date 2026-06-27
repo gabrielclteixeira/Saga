@@ -546,9 +546,8 @@ const EN: Record<string, string> = {
   "A reverter…": "Reverting…",
   "Otimizações aplicadas": "Optimizations applied",
   "Otimização revertida": "Optimization reverted",
-  "e Ollama reiniciado em segundo plano. ✓": "and Ollama restarted in the background. ✓",
-  "O Ollama reabriu — podes fechar a janela.": "Ollama reopened — you can close the window.",
-  "Reinicia o Ollama para ter efeito.": "Restart Ollama for it to take effect.",
+  "Reinicia o Ollama (fecha e reabre) para ter efeito.":
+    "Restart Ollama (quit and reopen) for it to take effect.",
   "Não foi possível otimizar: ": "Couldn't optimize: ",
   "Nenhum dos modelos instalados lê imagens. Instala um modelo com visão (ex.: gemma4) para poderes anexar imagens.":
     "None of the installed models can read images. Install a model with vision (e.g. gemma4) to attach images.",

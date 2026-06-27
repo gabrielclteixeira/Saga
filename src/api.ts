@@ -242,8 +242,8 @@ export const api = {
     invoke<Attachment>("attachment_from_path", { path }),
   warmModel: (model?: string) =>
     invoke<void>("warm_model", { model: model ?? null }),
-  optimizeOllama: () => invoke<string>("optimize_ollama"),
-  revertOllama: () => invoke<string>("revert_ollama_opt"),
+  optimizeOllama: () => invoke<void>("optimize_ollama"),
+  revertOllama: () => invoke<void>("revert_ollama_opt"),
   openLogs: () => invoke<void>("open_logs"),
   resetAccounting: () => invoke<Accounting>("reset_accounting"),
   getMemoryPreview: () => invoke<string>("get_memory_preview"),
