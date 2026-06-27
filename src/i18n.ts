@@ -390,6 +390,7 @@ const EN: Record<string, string> = {
     "Speeds up Ollama and saves VRAM (flash attention + smaller KV cache — fits more context on your GPU). Set these on the Ollama server and restart it.",
   "Copiar comandos": "Copy commands",
   "Comandos copiados.": "Commands copied.",
+  "Ir para a mensagem mais recente": "Jump to latest message",
   "A carregar…": "Loading…",
   "Sem variantes.": "No variants.",
   "Não foi possível obter as variantes.": "Couldn't load variants.",

@@ -149,6 +149,7 @@ app.innerHTML = `
       <div class="messages" id="messages">
         <div class="empty">${t("Faz uma pergunta. Corre no teu modelo local; escala para o Claude quando quiseres.")}</div>
       </div>
+      <button type="button" class="scroll-bottom" id="scroll-bottom" title="${t("Ir para a mensagem mais recente")}" aria-label="${t("Ir para a mensagem mais recente")}" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg></button>
       <div class="attachments" id="attachments"></div>
       <div class="route-mode" id="route-mode">
         <span class="route-pick" id="route-pick" hidden>
@@ -630,6 +631,20 @@ const CLAUDE_MODEL_PRESETS = [
   "claude-fable-5",
 ];
 
+// ---- Scroll do chat (não "puxar" quando o utilizador leu acima; botão "ir ao fundo") ----
+/** O utilizador está perto do fundo? (tolerância p/ não arrastar enquanto lê mensagens acima). */
+function isChatNearBottom(): boolean {
+  const m = els.messages;
+  return m.scrollHeight - m.scrollTop - m.clientHeight < 120;
+}
+function updateScrollBtn() {
+  document.querySelector("#scroll-bottom")?.toggleAttribute("hidden", isChatNearBottom());
+}
+function scrollChatToBottom() {
+  els.messages.scrollTop = els.messages.scrollHeight;
+  updateScrollBtn();
+}
+
 function fmtUsd(n: number): string {
   return "$" + n.toFixed(n < 0.01 ? 5 : 4);
 }
@@ -639,6 +654,8 @@ function fmtInt(n: number): string {
 }
 
 function renderMessages() {
+  // Só "cola" ao fundo se o utilizador já lá estava (senão respeita onde ele leu).
+  const stick = isChatNearBottom();
   els.messages.innerHTML = "";
   if (state.items.length === 0) {
     const empty = document.createElement("div");
@@ -674,6 +691,7 @@ function renderMessages() {
     }
     empty.appendChild(chips);
     els.messages.appendChild(empty);
+    updateScrollBtn();
     return;
   }
   const firstKept = state.compactedUpto > 0 ? state.items.findIndex((i) => !isCompacted(i)) : -1;
@@ -825,7 +843,8 @@ function renderMessages() {
 
     els.messages.appendChild(row);
   });
-  els.messages.scrollTop = els.messages.scrollHeight;
+  if (stick) els.messages.scrollTop = els.messages.scrollHeight;
+  updateScrollBtn();
   updateCtxEst();
 }
 
@@ -1273,6 +1292,7 @@ async function selectConversation(id: number) {
     resetCompaction();
   }
   renderMessages();
+  scrollChatToBottom(); // ao abrir uma Saga, mostra a mensagem mais recente
   renderSidebar();
   renderAccounting(await api.conversationAccounting(id));
 }
@@ -1432,14 +1452,17 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   state.items.push(assistant);
   setBusy(true);
   renderMessages();
+  scrollChatToBottom(); // novo turno (envio/regenerar) = salta para o fim
 
   const paintBubble = () => {
+    const stick = isChatNearBottom();
     const b = els.messages.lastElementChild?.querySelector(".bubble") as HTMLDivElement | null;
     if (b) {
       b.classList.remove("markdown"); // texto simples durante o streaming
       b.textContent = assistant.content;
     }
-    els.messages.scrollTop = els.messages.scrollHeight;
+    if (stick) els.messages.scrollTop = els.messages.scrollHeight;
+    else updateScrollBtn();
   };
 
   let start: { route: "local" | "claude"; model: string; reason: string } | null = null;
@@ -3941,6 +3964,8 @@ function wireWorkspaceUi() {
 async function init() {
   mountViewsInCenter();
   els.composer.addEventListener("submit", onSubmit);
+  els.messages.addEventListener("scroll", updateScrollBtn, { passive: true });
+  document.querySelector("#scroll-bottom")!.addEventListener("click", scrollChatToBottom);
   els.input.addEventListener("input", autoGrow);
   els.input.addEventListener("input", updateSlashMenu);
   els.input.addEventListener("blur", () => setTimeout(hideSlash, 150));
