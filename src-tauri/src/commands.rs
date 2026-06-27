@@ -582,16 +582,18 @@ pub fn system_info() -> SystemInfo {
     let cpu_cores = std::thread::available_parallelism()
         .map(|n| n.get() as u32)
         .unwrap_or(0);
+    // Sugestão por RAM, privilegiando modelos atuais e multimodais (Gemma 4: imagens +
+    // ferramentas + raciocínio) onde a memória chega, sem arriscar freezes em máquinas pequenas.
     let (recommended, why) = if total_ram_gb == 0 {
-        ("qwen3:8b", "sugestão equilibrada, com ferramentas/web")
-    } else if total_ram_gb < 9 {
-        ("llama3.2:3b", "RAM limitada — modelo pequeno e rápido")
-    } else if total_ram_gb < 18 {
-        ("qwen3:8b", "RAM média — 8B com ferramentas é confortável")
-    } else if total_ram_gb < 34 {
-        ("qwen3:14b", "boa RAM — 14B é o melhor equilíbrio")
+        ("gemma4:12b", "multimodal equilibrado — imagens, ferramentas e raciocínio")
+    } else if total_ram_gb < 10 {
+        ("llama3.2:3b", "RAM limitada — modelo pequeno e rápido (texto)")
+    } else if total_ram_gb < 16 {
+        ("qwen3:8b", "RAM média — 8B com ferramentas/raciocínio é confortável")
+    } else if total_ram_gb < 24 {
+        ("gemma4:12b", "boa RAM — Gemma 4 12B multimodal (imagens/ferramentas/raciocínio)")
     } else {
-        ("qwen3:14b", "muita RAM — 14B; com GPU 24 GB+ podes ir a 32B")
+        ("gemma4:26b-a4b-it-qat", "muita RAM — Gemma 4 MoE (4B ativos): rápido, multimodal e capaz")
     };
     SystemInfo {
         total_ram_gb,

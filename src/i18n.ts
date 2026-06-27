@@ -410,6 +410,8 @@ const EN: Record<string, string> = {
   "rápido e com ferramentas/web": "fast, with tools/web",
   "melhor equilíbrio": "best balance",
   "mais capaz (ou qwen3:32b)": "more capable (or qwen3:32b)",
+  "multimodal: lê imagens, ferramentas e raciocínio": "multimodal: reads images, tools and reasoning",
+  "MoE rápido e multimodal (ou qwen3:32b)": "fast MoE, multimodal (or qwen3:32b)",
   "🛠 faz pesquisa web · 🧠 raciocínio (não pesquisa) · 👁 lê imagens. Para o 🔎 funcionar, escolhe um modelo 🛠.":
     "🛠 does web search · 🧠 reasoning (no search) · 👁 reads images. For 🔎 to work, pick a 🛠 model.",
   "não consegui ler a RAM — sugestão equilibrada": "couldn't read the RAM — balanced suggestion",

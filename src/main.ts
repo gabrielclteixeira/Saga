@@ -3274,8 +3274,8 @@ function setHubSource(src: "ollama" | "lmstudio") {
 const PICK_TIERS: { hw: string; model: string; note: string }[] = [
   { hw: "Máquina fraca ou sem GPU", model: "llama3.2:3b", note: "leve — corre em quase qualquer máquina" },
   { hw: "Sem GPU (CPU) ou GPU pequena (~8 GB)", model: "qwen3:8b", note: "rápido e com ferramentas/web" },
-  { hw: "GPU média (~12 GB)", model: "qwen3:14b", note: "melhor equilíbrio" },
-  { hw: "GPU grande (16 GB+)", model: "mistral-small", note: "mais capaz (ou qwen3:32b)" },
+  { hw: "GPU média (~12 GB)", model: "gemma4:12b", note: "multimodal: lê imagens, ferramentas e raciocínio" },
+  { hw: "GPU grande (16 GB+)", model: "gemma4:26b-a4b-it-qat", note: "MoE rápido e multimodal (ou qwen3:32b)" },
 ];
 
 /** Secção de recomendação para quem não sabe que modelo escolher. */
