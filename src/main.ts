@@ -442,8 +442,6 @@ app.innerHTML = `
         </label>
         <div class="field-group" id="hub-ollama-fields">
           <label>${t("Endpoint")} <input id="hub-ollama-endpoint" type="text" placeholder="http://localhost:11434" /></label>
-          <label>${t("Modelo de visão (imagens)")} <select id="hub-vision"></select></label>
-          <div class="field-hint">${t("Usado quando o modelo ativo não vê imagens. Escolhe um dos modelos de visão instalados abaixo.")}</div>
         </div>
         <div class="field-group" id="hub-openai-local-fields" hidden>
           <label>${t("Endpoint")} <input id="hub-oai-local-endpoint" type="text" placeholder="http://localhost:1234/v1" /></label>
@@ -466,13 +464,6 @@ app.innerHTML = `
         <div class="reg-results" id="hub-search-results"></div>
         <div class="hub-progress" id="hub-progress" hidden><div class="hub-bar" id="hub-bar"></div></div>
         <div class="pull-status" id="hub-pull-status"></div>
-
-        <label id="hub-by-ollama">${t("Instalar por nome")}
-          <span class="row">
-            <input id="hub-pull-name" type="text" placeholder="${t("ex.: llama3.2")}" list="ollama-models" />
-            <button type="button" class="ghost" id="hub-pull-btn">${t("Puxar")}</button>
-          </span>
-        </label>
 
         <div class="hub-subtitle">${t("Instalados")}</div>
         <div class="models-list" id="hub-installed"></div>
@@ -4053,7 +4044,7 @@ async function renderRecommendation(targetSel = "#hub-rec") {
 function hubLoad(s: Settings) {
   hubSel("#hub-local-provider").value = s.local_provider;
   hubIn("#hub-ollama-endpoint").value = s.ollama_endpoint;
-  // #hub-vision é um <select> populado por renderInstalled() (modelos de visão instalados).
+  // O modelo de visão de recurso é definido na lista de instalados (toggle 👁), não num campo aqui.
   hubIn("#hub-oai-local-endpoint").value = s.openai_local_endpoint;
   hubIn("#hub-oai-local-key").value = s.openai_local_key;
   hubIn("#hub-oai-local-model").value = s.openai_local_model;
@@ -4165,7 +4156,7 @@ async function hubSave() {
     await saveModelsSettings({
       local_provider: hubSel("#hub-local-provider").value as Settings["local_provider"],
       ollama_endpoint: hubIn("#hub-ollama-endpoint").value.trim(),
-      ollama_vision_model: hubIn("#hub-vision").value.trim(),
+      // ollama_vision_model é definido na lista de instalados (toggle 👁), não aqui.
       openai_local_endpoint: hubIn("#hub-oai-local-endpoint").value.trim(),
       openai_local_key: hubIn("#hub-oai-local-key").value,
       openai_local_model: hubIn("#hub-oai-local-model").value.trim(),
@@ -4243,15 +4234,19 @@ async function renderInstalled() {
   }
   // alimenta o datalist partilhado (#ollama-models) para os campos com sugestões
   els.modelsList.innerHTML = models.map((m) => `<option value="${escapeHtml(m.name)}"></option>`).join("");
-  populateVisionSelect(models);
   if (models.length === 0) {
-    list.innerHTML = `<div class="empty-sm">${t("Sem modelos. Puxa um abaixo.")}</div>`;
+    list.innerHTML = `<div class="empty-sm">${t("Sem modelos. Instala um acima.")}</div>`;
     return;
   }
   const active = state.settings?.ollama_model;
+  const vision = state.settings?.ollama_vision_model?.trim() ?? "";
   list.innerHTML = models
-    .map(
-      (m) => `
+    .map((m) => {
+      // Toggle de visão (👁) só em modelos que veem: marca qual é o modelo de visão de recurso.
+      const visionToggle = modelCapabilities(m.name).vision
+        ? `<button type="button" class="vision-toggle${m.name === vision ? " on" : ""}" data-vision="${escapeHtml(m.name)}" title="${m.name === vision ? t("Modelo de visão atual (clica para remover)") : t("Usar como modelo de visão")}" aria-label="${t("Usar como modelo de visão")}">${icon("eye")}</button>`
+        : "";
+      return `
     <div class="model-item${m.name === active ? " active" : ""}">
       <div class="model-main">
         <strong>${escapeHtml(m.name)} <span class="qp-caps">${capBadges(m.name)}</span></strong>
@@ -4259,37 +4254,32 @@ async function renderInstalled() {
       </div>
       <div class="model-actions">
         ${m.name === active ? `<span class="model-badge">${t("ativo")}</span>` : `<button type="button" class="ghost" data-activate="${escapeHtml(m.name)}">${t("Ativar")}</button>`}
+        ${visionToggle}
         <button type="button" class="icon-x" data-del="${escapeHtml(m.name)}" title="${t("Apagar")}" aria-label="${t("Apagar")}">${icon("x")}</button>
       </div>
-    </div>`
-    )
+    </div>`;
+    })
     .join("");
   list
     .querySelectorAll<HTMLButtonElement>("[data-activate]")
     .forEach((b) => b.addEventListener("click", () => setActiveModel(b.dataset.activate!)));
   list
+    .querySelectorAll<HTMLButtonElement>("[data-vision]")
+    .forEach((b) => b.addEventListener("click", () => setVisionModel(b.dataset.vision!)));
+  list
     .querySelectorAll<HTMLButtonElement>("[data-del]")
     .forEach((b) => b.addEventListener("click", () => deleteModelUi(b.dataset.del!)));
 }
 
-/** Popula o seletor de modelo de visão com os modelos de visão instalados (+ "nenhum").
- *  Preserva o valor atual mesmo que não esteja instalado, para não perder a definição. */
-function populateVisionSelect(models: OllamaModel[]) {
-  const sel = document.querySelector<HTMLSelectElement>("#hub-vision");
-  if (!sel) return;
-  const current = state.settings?.ollama_vision_model?.trim() ?? "";
-  const names = [...new Set(models.filter((m) => modelCapabilities(m.name).vision).map((m) => m.name))];
-  if (current && !names.includes(current)) names.unshift(current); // não perde a definição atual
-  sel.innerHTML =
-    `<option value="">${t("— Nenhum —")}</option>` +
-    names.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
-  sel.value = current;
-  // Auto-guarda à mudança (consistente com o "Ativar" dos modelos — sem botão Guardar à parte).
-  sel.onchange = () => void saveModelsSettings({ ollama_vision_model: sel.value });
-}
-
 async function setActiveModel(name: string) {
   await saveModelsSettings({ ollama_model: name, local_provider: "ollama" });
+  await renderInstalled();
+}
+
+/** Define (ou remove, se já for) o modelo de visão de recurso a partir da lista de instalados. */
+async function setVisionModel(name: string) {
+  const current = state.settings?.ollama_vision_model?.trim() ?? "";
+  await saveModelsSettings({ ollama_vision_model: current === name ? "" : name });
   await renderInstalled();
 }
 
@@ -4715,9 +4705,6 @@ function wireWorkspaceUi() {
     document.querySelector("#hub-claude-custom-wrap")!.toggleAttribute("hidden", v !== "__custom__");
     if (v !== "__custom__") hubIn("#hub-claude-model").value = v;
   });
-  document.querySelector("#hub-pull-btn")!.addEventListener("click", () =>
-    pullModelUi(hubIn("#hub-pull-name").value)
-  );
   wireModelSearch();
   document.querySelector("#hub-lm-refresh")!.addEventListener("click", () => void renderLmInstalled());
   document.querySelector("#hub-temp-auto")!.addEventListener("change", (e) => {

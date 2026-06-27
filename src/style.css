@@ -2439,6 +2439,34 @@ dialog::backdrop {
   border-radius: 999px;
   padding: 2px 8px;
 }
+/* Toggle 👁 que marca o modelo de visão de recurso (na lista de instalados) */
+.model-actions .vision-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.model-actions .vision-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.model-actions .vision-toggle.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.vision-toggle .ic {
+  width: 16px;
+  height: 16px;
+}
 /* Secção "Avançado" colapsável no hub Modelos. */
 .hub-advanced {
   border: 1px solid var(--border);
