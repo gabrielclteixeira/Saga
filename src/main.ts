@@ -488,12 +488,12 @@ app.innerHTML = `
           <p class="wiz-hint">${t("Precisa de um modelo Ollama com suporte a ferramentas (ex.: llama3.1, qwen2.5). Com isto desligado, o 🔎 força o Claude.")}</p>
           <label>${t("Motor")}
             <select id="hub-web-provider">
-              <option value="jina">${t("Jina (recomendado)")}</option>
+              <option value="duckduckgo">${t("DuckDuckGo (sem chave — recomendado)")}</option>
+              <option value="jina">Jina</option>
               <option value="tavily">Tavily</option>
               <option value="brave">Brave</option>
               <option value="serper">Serper</option>
               <option value="exa">Exa</option>
-              <option value="duckduckgo">${t("DuckDuckGo (sem chave — pouco fiável)")}</option>
             </select>
           </label>
           <label id="hub-web-key-wrap"><span id="hub-web-key-text"></span> <input id="hub-web-key" type="password" /></label>
@@ -2009,13 +2009,13 @@ function maybeWarnSearch() {
     showHint(t("🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1/gemma4.", { m: s.ollama_model }));
     return;
   }
-  // O motor selecionado precisa de chave e não tem → cai para o DuckDuckGo (pouco fiável).
-  // (Inclui o Jina: sem chave só lê páginas/web_fetch, não pesquisa.)
+  // DuckDuckGo é keyless e funciona (com limites de ritmo) → sem aviso.
+  // Um motor com chave mas sem chave definida cai para o DuckDuckGo — nota suave, não alarme.
   const p = s.web_search_provider;
   const hasKey = !!s.web_search_keys?.[p];
   if (p !== "duckduckgo" && !hasKey) {
     const label = WEB_PROVIDER_META[p]?.label ?? p;
-    showHint(t("🔎 falta a chave {p}: adiciona-a em Modelos → Avançado para pesquisa fiável (sem chave usa o DuckDuckGo, pouco fiável).", { p: label }));
+    showHint(t("🔎 sem chave {p} → usa o DuckDuckGo (keyless, funciona com limites). Adiciona a chave {p} para mais fiabilidade/volume.", { p: label }));
   }
 }
 
@@ -3405,7 +3405,7 @@ function applyWebProviderUi(loadValue: boolean) {
   const hint = document.querySelector<HTMLElement>("#hub-web-hint")!;
   if (!meta) {
     wrap.hidden = true;
-    hint.textContent = t("Sem chave (DuckDuckGo) é pouco fiável e costuma devolver vazio. Escolhe um motor com chave para pesquisa fiável.");
+    hint.textContent = t("DuckDuckGo não precisa de chave e funciona logo; tem limites de ritmo (pode falhar em rajadas). Para mais fiabilidade/volume, escolhe um motor com chave.");
     return;
   }
   wrap.hidden = false;

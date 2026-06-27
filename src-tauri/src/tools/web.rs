@@ -206,15 +206,22 @@ async fn duckduckgo_search(query: &str, max: usize) -> Result<Vec<WebResult>> {
 
 /// POST de pesquisa a um endpoint DuckDuckGo (html ou lite), com headers de browser.
 async fn ddg_post(endpoint: &str, query: &str, max: usize) -> Result<Vec<WebResult>> {
-    let html = http()
+    let resp = http()
         .post(endpoint)
         .header("Accept", "text/html,application/xhtml+xml")
         .header("Accept-Language", "en-US,en;q=0.9")
         .header("Referer", "https://duckduckgo.com/")
+        .header("Origin", "https://duckduckgo.com")
         .form(&[("q", query), ("kl", "wt-wt")])
         .send()
         .await
-        .map_err(|e| anyhow!("DuckDuckGo: {e}"))?
+        .map_err(|e| anyhow!("DuckDuckGo: {e}"))?;
+    // 202/429 = rate-limit/desafio anti-bot → falha (o chamador tenta o endpoint "lite").
+    let status = resp.status();
+    if status.as_u16() == 202 || status.as_u16() == 429 || !status.is_success() {
+        return Err(anyhow!("DuckDuckGo limitou o ritmo ({status})"));
+    }
+    let html = resp
         .text()
         .await
         .map_err(|e| anyhow!("DuckDuckGo resposta inválida: {e}"))?;

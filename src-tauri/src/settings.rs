@@ -108,7 +108,9 @@ impl Default for Settings {
                 .to_string(),
             confirm_mode: "off".into(),
             local_web_search: false,
-            web_search_provider: "jina".into(),
+            // DuckDuckGo: keyless, funciona logo (com limites de ritmo). Motores com chave
+            // (Tavily/Jina/…) ficam disponíveis para mais fiabilidade/volume.
+            web_search_provider: "duckduckgo".into(),
             web_search_keys: BTreeMap::new(),
             onboarding_done: false,
         }

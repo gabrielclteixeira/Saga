@@ -194,6 +194,11 @@ const EN: Record<string, string> = {
   "DuckDuckGo (sem chave)": "DuckDuckGo (no key)",
   "Tavily (chave — melhor qualidade)": "Tavily (key — better quality)",
   "DuckDuckGo (sem chave — pouco fiável)": "DuckDuckGo (no key — unreliable)",
+  "DuckDuckGo (sem chave — recomendado)": "DuckDuckGo (no key — recommended)",
+  "DuckDuckGo não precisa de chave e funciona logo; tem limites de ritmo (pode falhar em rajadas). Para mais fiabilidade/volume, escolhe um motor com chave.":
+    "DuckDuckGo needs no key and works out of the box; it has rate limits (may fail in bursts). For more reliability/volume, choose a keyed engine.",
+  "🔎 sem chave {p} → usa o DuckDuckGo (keyless, funciona com limites). Adiciona a chave {p} para mais fiabilidade/volume.":
+    "🔎 no {p} key → using DuckDuckGo (keyless, works with limits). Add a {p} key for more reliability/volume.",
   "Tavily (chave grátis — recomendado)": "Tavily (free key — recommended)",
   "Tavily (recomendado)": "Tavily (recommended)",
   "Jina (recomendado)": "Jina (recommended)",
