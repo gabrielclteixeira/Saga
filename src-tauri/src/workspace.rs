@@ -289,13 +289,24 @@ pub fn seed_defaults(root: &str) {
     if !pdf.exists() {
         let _ = write_doc(root, "skill", "pdf", PDF_SKILL);
     }
-    for (name, body) in [
-        ("engenheiro-de-software", AGENT_ENGINEER),
-        ("investigador-web", AGENT_RESEARCHER),
-        ("redator", AGENT_WRITER),
+    // O identificador de um agente é o seu NOME DE EXIBIÇÃO; o ficheiro é `sanitize(nome).md`
+    // (igual a skills/workflows criados na UI), para que picker/leitura/edição resolvam o mesmo
+    // caminho. (nome de exibição, slug da 1.ª versão, corpo)
+    for (display, legacy_slug, body) in [
+        ("Engenheiro de Software", "engenheiro-de-software", AGENT_ENGINEER),
+        ("Investigador Web", "investigador-web", AGENT_RESEARCHER),
+        ("Redator", "redator", AGENT_WRITER),
     ] {
-        if !agents_dir(root).join(format!("{name}.md")).exists() {
-            let _ = write_doc(root, "agent", name, body);
+        let Some(canonical) = doc_path(root, "agent", display) else {
+            continue;
+        };
+        // Migra ficheiros da 1.ª versão (nome-slug ≠ sanitize(nome)) sem perder edições.
+        let legacy = agents_dir(root).join(format!("{legacy_slug}.md"));
+        if legacy.exists() && !canonical.exists() {
+            let _ = fs::rename(&legacy, &canonical);
+        }
+        if !canonical.exists() {
+            let _ = write_doc(root, "agent", display, body);
         }
     }
 }
