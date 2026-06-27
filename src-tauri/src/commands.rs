@@ -27,14 +27,17 @@ use crate::{agent, memory, providers};
 /// resposta — o modelo pára a meio. Aqui subimos a janela para caber o prompt + uma
 /// folga para a resposta, arredondando para múltiplos de 1024 e limitando por um teto
 /// (para não rebentar a VRAM). Nunca descemos abaixo do valor configurado pelo utilizador.
+///
+/// `estimate_tokens` (caracteres÷4) SUBESTIMA ~15% em português (acentos tokenizam mais);
+/// se confiarmos nela à risca, a contagem real do prompt come a folga e a resposta corta-se
+/// (visto: estimado 15k → num_ctx 17408, mas o prompt real eram 17199 → só 209 p/ resposta).
+/// Por isso inflacionamos a estimativa antes de dimensionar a janela.
 fn effective_num_ctx(base: u32, messages: &[ChatMessage]) -> u32 {
-    const RESERVE: u64 = 2048; // espaço reservado para a resposta
+    const RESERVE: u64 = 4096; // espaço reservado para a resposta (resumos querem espaço)
     const CAP: u64 = 32768; // teto para limitar o uso de VRAM/latência
-    let prompt: u64 = messages
-        .iter()
-        .map(|m| estimate_tokens(&m.content))
-        .sum();
-    let needed = prompt + RESERVE;
+    const FUDGE: f64 = 1.3; // margem para a subestimação do tokenizer (PT/acentos)
+    let prompt: u64 = messages.iter().map(|m| estimate_tokens(&m.content)).sum();
+    let needed = (prompt as f64 * FUDGE) as u64 + RESERVE;
     // Arredonda para cima ao próximo múltiplo de 1024.
     let rounded = needed.div_ceil(1024) * 1024;
     let target = rounded.min(CAP).max(base as u64);
