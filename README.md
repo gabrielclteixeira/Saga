@@ -187,7 +187,19 @@ control + page numbers via the `page.pdf()` path) · **system tray & start-on-lo
 automations are scheduled) · **document attachments** (PDF / Word / Excel / text — extracted to text in Rust and
 folded into context; images still go to vision) · **drag & drop** files onto the chat · **in-chat find**
 (Ctrl/⌘+F over the current conversation) · **rich PDF templates** (Report / Article / Technical) ·
-**resource-aware install warning** (flags models that likely exceed VRAM/RAM, non-blocking).
+**resource-aware install warning** (flags models that likely exceed VRAM/RAM, non-blocking) ·
+**rich document viewer** (open an attachment as the real file — PDF in the webview's native viewer, Word via
+docx-preview, Excel via SheetJS — with a toggle to the extracted text the model actually read) ·
+**grounded local deep-research** (small-model Self-Ask: decompose the question → search each sub-question →
+Chain-of-Verification → answer only from the gathered evidence, anchored to today's date — closes the
+current-facts gap at $0) · **adaptive context window** (sizes Ollama `num_ctx` to the prompt so long inputs don't
+truncate the reply) · **model warm-up** (preloads the local model into VRAM on composer focus / launch for a
+near-instant first token) · **live working feedback** (animated dots + ticking elapsed timer + phased status while
+the model works) · **per-message generation time** · **vision model picker** (choose the image fallback from the
+installed vision models; warns when none of the installed models can see) · **Claude CLI vision** (the CLI reads
+image attachments; the prompt is piped via stdin so long conversations don't hit the command-line length limit) ·
+**one-click Ollama optimize** (flash attention + q8_0 KV cache env vars, Windows) · **DuckDuckGo rate limiter**
+(global request pacing + cooldown to avoid the keyless anti-bot blocks).
 
 **Next:**
 
