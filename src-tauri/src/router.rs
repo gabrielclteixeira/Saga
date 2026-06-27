@@ -39,6 +39,32 @@ fn model_supports_vision(name: &str) -> bool {
         || n.contains("gemma3:27b")
 }
 
+/// Injeta o texto dos documentos anexados no conteúdo da mensagem. Devolve uma cópia
+/// das mensagens com o preâmbulo do documento à frente do texto do utilizador; as
+/// imagens ficam intactas (seguem para a visão). Mensagens sem documentos são copiadas tal e qual.
+fn fold_documents(messages: &[ChatMessage]) -> Vec<ChatMessage> {
+    messages
+        .iter()
+        .map(|m| {
+            let docs: Vec<&crate::providers::Attachment> =
+                m.attachments.iter().filter(|a| a.kind == "document").collect();
+            if docs.is_empty() {
+                return m.clone();
+            }
+            let mut preamble = String::new();
+            for d in &docs {
+                let name = if d.name.is_empty() { "documento" } else { &d.name };
+                preamble.push_str(&format!("[Documento anexado: {name}]\n{}\n\n", d.text));
+            }
+            ChatMessage {
+                role: m.role.clone(),
+                content: format!("{preamble}{}", m.content),
+                attachments: m.attachments.clone(),
+            }
+        })
+        .collect()
+}
+
 /// Comprime o contexto de memória via modelo local, para enviar menos tokens ao Claude.
 async fn compress_context(raw: &str, settings: &Settings) -> String {
     if raw.trim().is_empty() {
@@ -165,7 +191,14 @@ pub async fn prepare(
     route_override: Option<&str>,
     model_override: Option<&str>,
 ) -> Result<Prepared> {
-    let has_images = messages.iter().any(|m| !m.attachments.is_empty());
+    // Só imagens forçam o caminho de visão; documentos são texto e seguem o caminho normal.
+    let has_images = messages
+        .iter()
+        .any(|m| m.attachments.iter().any(|a| a.kind == "image"));
+    // Dobra o texto dos documentos anexados no conteúdo da mensagem (uma só vez, aqui no
+    // router; a persistência guarda o conteúdo original, sem o preâmbulo).
+    let folded = fold_documents(messages);
+    let messages = &folded[..];
 
     // Local-first: corre no modelo local, exceto quando o utilizador escala explicitamente para o Claude.
     let (route, reason) = if route_override == Some("claude") {

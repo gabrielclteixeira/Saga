@@ -864,6 +864,58 @@ mark.find-current {
   height: 11px;
 }
 
+/* "Chip" de documento anexado (PDF/Word/Excel/texto) */
+.doc-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 220px;
+  height: 40px;
+  padding: 0 12px 0 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.doc-chip-ic {
+  display: inline-flex;
+  color: var(--accent);
+}
+.doc-chip-ic .ic {
+  width: 18px;
+  height: 18px;
+}
+.doc-chip-name {
+  font-size: 12.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.doc-chip .thumb-x {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.doc-chip .thumb-x .ic {
+  width: 11px;
+  height: 11px;
+}
+.doc-chip.msg-doc {
+  height: 36px;
+}
+
 /* Miniaturas dentro das mensagens */
 .msg-thumbs {
   display: flex;

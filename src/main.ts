@@ -127,6 +127,16 @@ function icon(name: string): string {
 }
 
 initLang();
+
+/** Extensões de documento aceites (texto extraído no backend). Imagens vão por `image/*`. */
+const DOC_EXTS = [
+  "pdf", "docx", "txt", "md", "markdown", "csv", "tsv", "json", "log",
+  "xlsx", "xls", "xlsm", "ods", "yaml", "yml", "toml", "xml",
+  "rs", "py", "js", "ts", "html", "css", "sql",
+];
+/** Filtro do seletor de ficheiros: imagens + os tipos de documento acima. */
+const ATTACH_ACCEPT = "image/*," + DOC_EXTS.map((e) => "." + e).join(",");
+
 const app = document.querySelector<HTMLDivElement>("#app")!;
 app.innerHTML = `
   <header class="topbar">
@@ -178,8 +188,8 @@ app.innerHTML = `
       </div>
       <div class="slash-menu" id="slash-menu" hidden></div>
       <form class="composer" id="composer">
-        <button type="button" class="attach-btn" id="btn-attach" title="${t("Anexar imagem")}" aria-label="${t("Anexar imagem")}"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-        <input type="file" id="file-input" accept="image/*" multiple hidden />
+        <button type="button" class="attach-btn" id="btn-attach" title="${t("Anexar ficheiro")}" aria-label="${t("Anexar ficheiro")}"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+        <input type="file" id="file-input" accept="${ATTACH_ACCEPT}" multiple hidden />
         <textarea id="input" rows="1" placeholder="${t("Escreve uma mensagem…")}" autocomplete="off"></textarea>
         <button type="submit" id="send">${t("Enviar")}</button>
       </form>
@@ -869,6 +879,18 @@ function renderMessagesInner() {
       const thumbs = document.createElement("div");
       thumbs.className = "msg-thumbs";
       for (const a of item.attachments) {
+        if (a.kind === "document") {
+          const chip = document.createElement("span");
+          chip.className = "doc-chip msg-doc";
+          chip.title = a.name || "";
+          chip.innerHTML = `<span class="doc-chip-ic">${icon("doc")}</span>`;
+          const nm = document.createElement("span");
+          nm.className = "doc-chip-name";
+          nm.textContent = a.name || t("documento");
+          chip.appendChild(nm);
+          thumbs.appendChild(chip);
+          continue;
+        }
         const img = document.createElement("img");
         img.src = `data:${a.media_type};base64,${a.data_base64}`;
         img.addEventListener("click", () => openLightbox(img.src));
@@ -1222,26 +1244,83 @@ async function refreshMemory() {
 }
 
 // ---- Anexos ----
-function fileToAttachment(file: File): Promise<Attachment> {
+function fileExt(name: string): string {
+  const i = name.lastIndexOf(".");
+  return i >= 0 ? name.slice(i + 1).toLowerCase() : "";
+}
+
+/** É um ficheiro de imagem? (tipo MIME ou extensão conhecida) */
+function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/");
+}
+
+/** Aceitamos este ficheiro? Imagens ou um dos tipos de documento conhecidos. */
+function isAcceptedFile(file: File): boolean {
+  return isImageFile(file) || DOC_EXTS.includes(fileExt(file.name));
+}
+
+/** Lê os bytes do ficheiro como base64 (sem o cabeçalho data:). */
+function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const result = String(reader.result); // data:<media>;base64,<data>
       const comma = result.indexOf(",");
-      const header = result.slice(0, comma);
-      const data = result.slice(comma + 1);
-      const semi = header.indexOf(";");
-      const media = header.slice(5, semi > 0 ? semi : undefined) || file.type || "image/png";
-      resolve({ kind: "image", media_type: media, data_base64: data });
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
     };
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
 }
 
+/** Converte um ficheiro em anexo: imagem (base64 p/ visão) ou documento (texto extraído). */
+async function fileToAttachment(file: File): Promise<Attachment> {
+  const base64 = await fileToBase64(file);
+  if (isImageFile(file)) {
+    return { kind: "image", media_type: file.type || "image/png", data_base64: base64 };
+  }
+  // Documento: o backend extrai o texto; guardamos só o texto (não os bytes crus).
+  const text = await api.extractFileText(file.name, base64);
+  return {
+    kind: "document",
+    media_type: file.type || "application/octet-stream",
+    data_base64: "",
+    name: file.name,
+    text,
+  };
+}
+
+/** Constrói um "chip" de documento (ícone + nome + remover) para as barras de anexos. */
+function docChipEl(a: Attachment, onRemove: () => void): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "doc-chip";
+  wrap.title = a.name || "";
+  const ic = document.createElement("span");
+  ic.className = "doc-chip-ic";
+  ic.innerHTML = icon("doc");
+  const label = document.createElement("span");
+  label.className = "doc-chip-name";
+  label.textContent = a.name || t("documento");
+  const rm = document.createElement("button");
+  rm.className = "thumb-x";
+  rm.innerHTML = icon("x");
+  rm.title = t("Remover");
+  rm.addEventListener("click", onRemove);
+  wrap.append(ic, label, rm);
+  return wrap;
+}
+
 function renderPendingAttachments() {
   els.attachmentsBar.innerHTML = "";
   state.pendingAttachments.forEach((a, idx) => {
+    const remove = () => {
+      state.pendingAttachments.splice(idx, 1);
+      renderPendingAttachments();
+    };
+    if (a.kind === "document") {
+      els.attachmentsBar.appendChild(docChipEl(a, remove));
+      return;
+    }
     const wrap = document.createElement("div");
     wrap.className = "thumb";
     const img = document.createElement("img");
@@ -1251,10 +1330,7 @@ function renderPendingAttachments() {
     rm.className = "thumb-x";
     rm.innerHTML = icon("x");
     rm.title = t("Remover");
-    rm.addEventListener("click", () => {
-      state.pendingAttachments.splice(idx, 1);
-      renderPendingAttachments();
-    });
+    rm.addEventListener("click", remove);
     wrap.appendChild(img);
     wrap.appendChild(rm);
     els.attachmentsBar.appendChild(wrap);
@@ -1286,10 +1362,15 @@ async function onFilesSelected() {
   const files = els.fileInput.files;
   if (!files) return;
   for (const file of Array.from(files)) {
+    if (!isAcceptedFile(file)) {
+      showHint(t("Tipo de ficheiro não suportado: {name}", { name: file.name }));
+      continue;
+    }
     try {
       state.pendingAttachments.push(await fileToAttachment(file));
     } catch (e) {
       console.error("falha a ler ficheiro", e);
+      showHint(t("Não foi possível ler {name}.", { name: file.name }));
     }
   }
   els.fileInput.value = "";
@@ -1978,8 +2059,9 @@ async function onSubmit(ev: Event) {
   els.input.style.height = "auto";
 
   // Aviso (não bloqueia): imagem + modelo local sem visão + modelo de visão não instalado → 404 certo.
+  // Só relevante para imagens — documentos são texto e não exigem visão.
   if (
-    attachments.length &&
+    attachments.some((a) => a.kind === "image") &&
     state.routeMode !== "claude" &&
     state.settings?.local_provider === "ollama"
   ) {
@@ -2009,12 +2091,20 @@ async function editUserMessage(index: number) {
   thumbs.className = "edit-thumbs attachments";
   const fileInput = document.createElement("input");
   fileInput.type = "file";
-  fileInput.accept = "image/*";
+  fileInput.accept = ATTACH_ACCEPT;
   fileInput.multiple = true;
   fileInput.hidden = true;
   const renderEditThumbs = () => {
     thumbs.innerHTML = "";
     editAtts.forEach((a, i) => {
+      const remove = () => {
+        editAtts.splice(i, 1);
+        renderEditThumbs();
+      };
+      if (a.kind === "document") {
+        thumbs.appendChild(docChipEl(a, remove));
+        return;
+      }
       const wrap = document.createElement("div");
       wrap.className = "thumb";
       const img = document.createElement("img");
@@ -2023,18 +2113,15 @@ async function editUserMessage(index: number) {
       const rm = document.createElement("button");
       rm.innerHTML = icon("x");
       rm.title = t("Remover");
-      rm.addEventListener("click", () => {
-        editAtts.splice(i, 1);
-        renderEditThumbs();
-      });
+      rm.addEventListener("click", remove);
       wrap.append(img, rm);
       thumbs.appendChild(wrap);
     });
     const add = document.createElement("button");
     add.type = "button";
     add.className = "edit-add-img";
-    add.textContent = t("+ Imagem");
-    add.title = t("Adicionar imagem");
+    add.textContent = t("+ Ficheiro");
+    add.title = t("Anexar ficheiro");
     add.addEventListener("click", () => fileInput.click());
     thumbs.appendChild(add);
   };
@@ -2042,7 +2129,7 @@ async function editUserMessage(index: number) {
     const files = fileInput.files;
     if (files) {
       for (const f of Array.from(files)) {
-        if (f.type.startsWith("image/")) editAtts.push(await fileToAttachment(f));
+        if (isAcceptedFile(f)) editAtts.push(await fileToAttachment(f));
       }
     }
     fileInput.value = "";

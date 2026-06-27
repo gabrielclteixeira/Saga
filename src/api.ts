@@ -1,9 +1,11 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 
 export interface Attachment {
-  kind: "image";
+  kind: "image" | "document";
   media_type: string;
-  data_base64: string;
+  data_base64: string; // dados da imagem; vazio em documentos
+  name?: string; // nome do ficheiro (documentos)
+  text?: string; // texto extraído (documentos)
 }
 
 export interface ChatMessage {
@@ -231,6 +233,8 @@ export const api = {
   logFrontend: (level: "error" | "warn" | "info", message: string) =>
     invoke<void>("log_frontend", { level, message }),
   logDir: () => invoke<string>("log_dir"),
+  extractFileText: (name: string, dataBase64: string) =>
+    invoke<string>("extract_file_text", { name, dataBase64 }),
   openLogs: () => invoke<void>("open_logs"),
   resetAccounting: () => invoke<Accounting>("reset_accounting"),
   getMemoryPreview: () => invoke<string>("get_memory_preview"),

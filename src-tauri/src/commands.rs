@@ -595,6 +595,19 @@ pub fn open_logs(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Extrai texto de um documento anexado (PDF/Word/Excel/texto) a partir dos bytes
+/// em base64. Corre em blocking pois a extração (PDF/zip) é CPU-bound e síncrona.
+#[tauri::command]
+pub async fn extract_file_text(name: String, data_base64: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.trim())
+        .map_err(|e| format!("base64 inválido: {e}"))?;
+    tokio::task::spawn_blocking(move || crate::extract::extract(&name, &bytes))
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn list_ollama_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();

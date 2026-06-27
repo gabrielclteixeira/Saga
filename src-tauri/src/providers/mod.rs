@@ -7,12 +7,20 @@ pub mod openai_compat;
 
 use serde::{Deserialize, Serialize};
 
-/// Anexo de uma mensagem (atualmente só imagens, em base64).
+/// Anexo de uma mensagem: imagem (base64, vai para a visão) ou documento
+/// (texto já extraído, injetado no contexto). Os campos extra têm `default`
+/// para round-trip transparente com anexos só-imagem antigos.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Attachment {
-    pub kind: String,       // "image"
-    pub media_type: String, // ex.: "image/png"
-    pub data_base64: String,
+    pub kind: String, // "image" | "document"
+    #[serde(default)]
+    pub media_type: String, // ex.: "image/png" (imagens)
+    #[serde(default)]
+    pub data_base64: String, // dados da imagem (vazio em documentos)
+    #[serde(default)]
+    pub name: String, // nome do ficheiro (documentos)
+    #[serde(default)]
+    pub text: String, // texto extraído (documentos)
 }
 
 /// Mensagem de conversa, partilhada entre frontend, router e providers.

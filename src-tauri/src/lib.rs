@@ -1,6 +1,7 @@
 mod accounting;
 mod agent;
 mod commands;
+mod extract;
 mod lmstudio;
 mod mcp;
 mod memory;
@@ -174,6 +175,7 @@ pub fn run() {
             commands::log_frontend,
             commands::log_dir,
             commands::open_logs,
+            commands::extract_file_text,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
