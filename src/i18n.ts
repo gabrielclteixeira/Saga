@@ -378,6 +378,18 @@ const EN: Record<string, string> = {
   "Clica num tamanho para instalar:": "Click a size to install:",
   "Usar id": "Use id",
   "Todas as variantes": "All variants",
+  "Instalar um modelo (Ollama)": "Install a model (Ollama)",
+  "Os modelos descarregam-se na app do LM Studio. Aqui escolhes um já descarregado.":
+    "Models are downloaded in the LM Studio app. Here you pick one already downloaded.",
+  "Descarregados (LM Studio)": "Downloaded (LM Studio)",
+  "Temperatura automática (recomendada do modelo)": "Automatic temperature (model recommended)",
+  "Auto deixa cada modelo usar a amostragem afinada do seu Modelfile (melhor por modelo). Desliga para forçar um valor.":
+    "Auto lets each model use its Modelfile's tuned sampling (best per model). Turn off to force a value.",
+  "Otimizar o Ollama (servidor)": "Optimize Ollama (server)",
+  "Acelera o Ollama e poupa VRAM (flash attention + cache KV menor — permite contexto maior na tua GPU). Define no servidor do Ollama e reinicia-o.":
+    "Speeds up Ollama and saves VRAM (flash attention + smaller KV cache — fits more context on your GPU). Set these on the Ollama server and restart it.",
+  "Copiar comandos": "Copy commands",
+  "Comandos copiados.": "Commands copied.",
   "A carregar…": "Loading…",
   "Sem variantes.": "No variants.",
   "Não foi possível obter as variantes.": "Couldn't load variants.",

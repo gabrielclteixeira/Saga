@@ -26,6 +26,7 @@ export interface Settings {
   ollama_vision_model: string;
   ollama_num_ctx: number;
   ollama_temperature: number;
+  ollama_temperature_auto: boolean;
   claude_mode: "off" | "cli" | "api";
   claude_api_key: string;
   claude_model: string;
@@ -121,15 +122,9 @@ export interface LmModel {
   state: string;
 }
 
-export interface LmCatalogModel {
-  slug: string;
-  name: string;
-  sizes: string[];
-  url: string;
-}
-
 export interface SystemInfo {
   total_ram_gb: number;
+  total_vram_gb: number;
   cpu_cores: number;
   recommended: string;
   note: string;
@@ -239,17 +234,6 @@ export const api = {
   ollamaRegistryTags: (model: string) =>
     invoke<RegistryTag[]>("ollama_registry_tags", { model }),
   lmstudioList: () => invoke<LmModel[]>("lmstudio_list"),
-  lmstudioSearch: (query: string) =>
-    invoke<LmCatalogModel[]>("lmstudio_search", { query }),
-  lmstudioDownload: (
-    model: string,
-    quant: string,
-    onEvent: (ev: PullEvent) => void
-  ): Promise<void> => {
-    const channel = new Channel<PullEvent>();
-    channel.onmessage = onEvent;
-    return invoke<void>("lmstudio_download", { model, quant, channel });
-  },
   deleteOllamaModel: (model: string) =>
     invoke<void>("delete_ollama_model", { model }),
   pullOllamaModel: (

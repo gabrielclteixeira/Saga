@@ -407,15 +407,16 @@ app.innerHTML = `
           <label>${t("Endpoint")} <input id="hub-oai-local-endpoint" type="text" placeholder="http://localhost:1234/v1" /></label>
           <label>${t("API key (opcional)")} <input id="hub-oai-local-key" type="password" /></label>
           <label>${t("Modelo")} <input id="hub-oai-local-model" type="text" placeholder="${t("ex.: ID no LM Studio")}" /></label>
+          <p class="wiz-hint">${t("Os modelos descarregam-se na app do LM Studio. Aqui escolhes um já descarregado.")}</p>
+          <div class="hub-subtitle">${t("Descarregados (LM Studio)")}</div>
+          <div class="models-list" id="hub-lm-installed"></div>
+          <div class="pull-status" id="hub-lm-status"></div>
+          <button type="button" class="ghost" id="hub-lm-refresh">${t("Atualizar")}</button>
         </div>
       </fieldset>
 
       <fieldset id="hub-install">
-        <legend>${t("Instalar um modelo")}</legend>
-        <div class="seg-toggle" id="hub-source-toggle" role="tablist">
-          <button type="button" class="seg active" data-src="ollama">Ollama</button>
-          <button type="button" class="seg" data-src="lmstudio">LM Studio</button>
-        </div>
+        <legend>${t("Instalar um modelo (Ollama)")}</legend>
         <div class="search-box">
           ${icon("search")}
           <input id="hub-search" type="search" placeholder="${t("ex.: gemma, qwen, llama…")}" autocomplete="off" />
@@ -423,7 +424,6 @@ app.innerHTML = `
         <div class="reg-results" id="hub-search-results"></div>
         <div class="hub-progress" id="hub-progress" hidden><div class="hub-bar" id="hub-bar"></div></div>
         <div class="pull-status" id="hub-pull-status"></div>
-        <div class="pull-status" id="hub-lm-status" hidden></div>
 
         <label id="hub-by-ollama">${t("Instalar por nome")}
           <span class="row">
@@ -431,18 +431,9 @@ app.innerHTML = `
             <button type="button" class="ghost" id="hub-pull-btn">${t("Puxar")}</button>
           </span>
         </label>
-        <label id="hub-by-lm" hidden>${t("Instalar por id / URL HuggingFace")}
-          <span class="row">
-            <input id="hub-lm-install" type="text" placeholder="ibm/granite-4-micro" />
-            <input id="hub-lm-quant" type="text" placeholder="Q4_K_M" class="quant-in" />
-            <button type="button" class="ghost" id="hub-lm-install-btn">${t("Instalar")}</button>
-          </span>
-        </label>
 
         <div class="hub-subtitle">${t("Instalados")}</div>
         <div class="models-list" id="hub-installed"></div>
-        <div class="models-list" id="hub-lm-installed" hidden></div>
-        <button type="button" class="ghost" id="hub-lm-refresh" hidden>${t("Atualizar")}</button>
       </fieldset>
 
       <fieldset>
@@ -512,8 +503,16 @@ app.innerHTML = `
           <legend>${t("Modelo local (avançado)")}</legend>
           <label>${t("Contexto (num_ctx)")} <input id="hub-num-ctx" type="number" min="2048" step="1024" /></label>
           <p class="wiz-hint">${t("Maior = o modelo lê mais (resultados de pesquisa + histórico). 8192 é um bom valor; usa mais RAM.")}</p>
-          <label>${t("Temperatura")} <input id="hub-temp" type="number" min="0" max="1.5" step="0.1" /></label>
-          <p class="wiz-hint">${t("Mais baixa (~0.4) = respostas mais factuais e menos divagantes.")}</p>
+          <label class="ws-check"><input type="checkbox" id="hub-temp-auto" /> ${t("Temperatura automática (recomendada do modelo)")}</label>
+          <label id="hub-temp-wrap">${t("Temperatura")} <input id="hub-temp" type="number" min="0" max="1.5" step="0.1" /></label>
+          <p class="wiz-hint">${t("Auto deixa cada modelo usar a amostragem afinada do seu Modelfile (melhor por modelo). Desliga para forçar um valor.")}</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>${t("Otimizar o Ollama (servidor)")}</legend>
+          <p class="wiz-hint">${t("Acelera o Ollama e poupa VRAM (flash attention + cache KV menor — permite contexto maior na tua GPU). Define no servidor do Ollama e reinicia-o.")}</p>
+          <pre class="opt-cmds" id="opt-cmds"></pre>
+          <button type="button" class="ghost" id="opt-copy">${t("Copiar comandos")}</button>
         </fieldset>
 
         <fieldset>
@@ -3266,39 +3265,12 @@ async function openModels() {
   if (!state.settings) return;
   hubLoad(state.settings);
   applyHubProviderFields();
-  setHubSource(state.settings.local_provider === "openai" ? "lmstudio" : "ollama");
+  renderQuickPicks();
+  void renderInstalled();
+  renderOptCommands();
   showView("models");
   void renderHubStatus();
   void renderRecommendation();
-}
-
-/** Fonte de instalação ativa no navegador de modelos (independente do provider ativo). */
-let hubSource: "ollama" | "lmstudio" = "ollama";
-
-function setHubSource(src: "ollama" | "lmstudio") {
-  hubSource = src;
-  const isLm = src === "lmstudio";
-  document
-    .querySelectorAll<HTMLButtonElement>("#hub-source-toggle .seg")
-    .forEach((b) => b.classList.toggle("active", b.dataset.src === src));
-  document.querySelector("#hub-by-ollama")!.toggleAttribute("hidden", isLm);
-  document.querySelector("#hub-by-lm")!.toggleAttribute("hidden", !isLm);
-  document.querySelector("#hub-installed")!.toggleAttribute("hidden", isLm);
-  document.querySelector("#hub-lm-installed")!.toggleAttribute("hidden", !isLm);
-  document.querySelector("#hub-lm-refresh")!.toggleAttribute("hidden", !isLm);
-  document.querySelector("#hub-lm-status")!.toggleAttribute("hidden", !isLm);
-  const search = document.querySelector<HTMLInputElement>("#hub-search")!;
-  search.value = "";
-  search.placeholder = isLm
-    ? t("ex.: gemma, qwen, gpt-oss…")
-    : t("ex.: gemma, qwen, llama…");
-  if (isLm) {
-    renderLmEmpty();
-    void renderLmInstalled();
-  } else {
-    renderQuickPicks();
-    void renderInstalled();
-  }
 }
 
 /** Guia "qual escolher": escolhe pela VRAM da placa gráfica (ou RAM se não houver GPU). */
@@ -3317,8 +3289,9 @@ async function renderRecommendation(targetSel = "#hub-rec") {
   let machine = "";
   try {
     const info = await api.systemInfo();
+    const vram = info.total_vram_gb > 0 ? ` · ${info.total_vram_gb} GB VRAM` : "";
     machine =
-      `<div class="hub-rec-line">${t("A tua máquina")}: ${info.total_ram_gb} GB RAM · ${info.cpu_cores} cores — ` +
+      `<div class="hub-rec-line">${t("A tua máquina")}: ${info.total_ram_gb} GB RAM${vram} · ${info.cpu_cores} cores — ` +
       `${t("sugestão")}: <code>${escapeHtml(info.recommended)}</code> <span class="rec-cap">${capBadges(info.recommended)}</span></div>`;
   } catch {
     /* sem info de sistema — mostra só os escalões */
@@ -3378,6 +3351,8 @@ function hubLoad(s: Settings) {
   applyWebProviderUi(true);
   hubIn("#hub-num-ctx").value = String(s.ollama_num_ctx);
   hubIn("#hub-temp").value = String(s.ollama_temperature);
+  hubIn("#hub-temp-auto").checked = s.ollama_temperature_auto;
+  document.querySelector("#hub-temp-wrap")!.toggleAttribute("hidden", s.ollama_temperature_auto);
   hubIn("#hub-memory-dir").value = s.memory_dir;
   hubIn("#hub-claude-md").value = s.claude_md_path;
   hubIn("#hub-workspace-dir").value = s.workspace_dir;
@@ -3435,6 +3410,9 @@ function applyHubProviderFields() {
   const cp = hubSel("#hub-cloud-provider").value;
   document.querySelector("#hub-ollama-fields")!.toggleAttribute("hidden", lp !== "ollama");
   document.querySelector("#hub-openai-local-fields")!.toggleAttribute("hidden", lp !== "openai");
+  // O navegador "Instalar (Ollama)" só faz sentido com o Ollama ativo.
+  document.querySelector("#hub-install")!.toggleAttribute("hidden", lp !== "ollama");
+  if (lp === "openai") void renderLmInstalled(); // lista de descarregados do LM Studio
   document.querySelector("#hub-claude-fields")!.toggleAttribute("hidden", cp !== "claude");
   document.querySelector("#hub-openai-cloud-fields")!.toggleAttribute("hidden", cp !== "openai");
 }
@@ -3475,6 +3453,7 @@ async function hubSave() {
       web_search_keys: webSearchKeysPatch(),
       ollama_num_ctx: Math.max(2048, parseInt(hubIn("#hub-num-ctx").value) || 8192),
       ollama_temperature: Math.min(1.5, Math.max(0, parseFloat(hubIn("#hub-temp").value) || 0.4)),
+      ollama_temperature_auto: hubIn("#hub-temp-auto").checked,
       memory_dir: hubIn("#hub-memory-dir").value,
       claude_md_path: hubIn("#hub-claude-md").value,
       workspace_dir: hubIn("#hub-workspace-dir").value,
@@ -3589,7 +3568,7 @@ function regCapBadges(caps: string[]): string {
 }
 
 let modelSearchTimer: number | undefined;
-/** Caixa de pesquisa única: despacha para ollama.com ou lmstudio.ai conforme a fonte. */
+/** Caixa de pesquisa do registo do Ollama (ollama.com). */
 function wireModelSearch() {
   const box = document.querySelector<HTMLInputElement>("#hub-search");
   const results = document.querySelector<HTMLElement>("#hub-search-results");
@@ -3598,20 +3577,15 @@ function wireModelSearch() {
     const q = box.value.trim();
     if (modelSearchTimer) clearTimeout(modelSearchTimer);
     if (!q) {
-      hubSource === "lmstudio" ? renderLmEmpty() : renderQuickPicks();
+      renderQuickPicks();
       return;
     }
     results.innerHTML = `<div class="reg-loading">${t("A procurar…")}</div>`;
     modelSearchTimer = window.setTimeout(async () => {
       try {
-        if (hubSource === "lmstudio") renderLmResults(await api.lmstudioSearch(q));
-        else renderRegistryResults(await api.searchOllamaRegistry(q));
+        renderRegistryResults(await api.searchOllamaRegistry(q));
       } catch {
-        results.innerHTML = `<div class="empty-sm">${
-          hubSource === "lmstudio"
-            ? t("Não foi possível contactar o lmstudio.ai.")
-            : t("Não foi possível contactar o ollama.com.")
-        }</div>`;
+        results.innerHTML = `<div class="empty-sm">${t("Não foi possível contactar o ollama.com.")}</div>`;
       }
     }, 300);
   });
@@ -3762,76 +3736,6 @@ async function renderLmInstalled() {
     .forEach((b) => b.addEventListener("click", () => setActiveLmModel(b.dataset.use!)));
 }
 
-/** Estado vazio do LM Studio (antes de pesquisar). */
-function renderLmEmpty() {
-  document.querySelector<HTMLElement>("#hub-search-results")!.innerHTML =
-    `<div class="empty-sm">${t("Pesquisa o catálogo do LM Studio (lmstudio.ai) ou instala por id abaixo.")}</div>`;
-}
-
-/** Render dos resultados do catálogo LM Studio (cartões) no contentor partilhado. */
-function renderLmResults(models: import("./api").LmCatalogModel[]) {
-  const box = document.querySelector<HTMLElement>("#hub-search-results")!;
-  if (!models.length) {
-    box.innerHTML = `<div class="empty-sm">${t("Sem resultados.")}</div>`;
-    return;
-  }
-  box.innerHTML = models
-    .map(
-      (m) => `<div class="reg-card">
-        <div class="reg-card-top">
-          <div class="reg-id">
-            <a class="reg-name" href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.name)}</a>
-          </div>
-          <button type="button" class="reg-sizes-btn" data-use="${escapeHtml(m.slug)}">${icon("download")}<span>${t("Usar id")}</span></button>
-        </div>
-        ${m.sizes.length ? `<div class="reg-metrics">${m.sizes.map(escapeHtml).join(" · ")}</div>` : ""}
-        <div class="reg-desc">${t("Abre a página para confirmar o id; “Usar id” preenche o campo de instalação abaixo.")}</div>
-      </div>`
-    )
-    .join("");
-  box.querySelectorAll<HTMLButtonElement>("[data-use]").forEach((b) =>
-    b.addEventListener("click", () => {
-      const input = document.querySelector<HTMLInputElement>("#hub-lm-install")!;
-      input.value = b.dataset.use!;
-      input.focus();
-      input.scrollIntoView({ block: "center", behavior: "smooth" });
-    })
-  );
-}
-
-/** Instala um modelo no LM Studio por id/URL, com progresso no toast global. */
-async function lmInstallUi() {
-  const model = (document.querySelector("#hub-lm-install") as HTMLInputElement).value.trim();
-  const quant = (document.querySelector("#hub-lm-quant") as HTMLInputElement).value.trim();
-  if (!model) return;
-  const toast = document.querySelector<HTMLElement>("#dl-toast")!;
-  const label = document.querySelector<HTMLElement>("#dl-toast-label")!;
-  const bar = document.querySelector<HTMLElement>("#dl-toast-bar")!;
-  toast.hidden = false;
-  bar.style.width = "0%";
-  label.textContent = `${t("A descarregar")} ${model}…`;
-  const hideSoon = (ms: number) => setTimeout(() => (toast.hidden = true), ms);
-  try {
-    await api.lmstudioDownload(model, quant, (ev) => {
-      if (ev.kind === "Progress") {
-        if (ev.percent >= 0) bar.style.width = ev.percent.toFixed(0) + "%";
-        label.textContent = `${model}: ${ev.status}${ev.percent >= 0 ? ` — ${ev.percent.toFixed(0)}%` : ""}`;
-      } else if (ev.kind === "Done") {
-        bar.style.width = "100%";
-        label.textContent = `✓ ${model} ${t("descarregado")}`;
-        void renderLmInstalled();
-        hideSoon(2500);
-      } else {
-        label.textContent = "✗ " + ev.message;
-        hideSoon(6000);
-      }
-    });
-  } catch (e) {
-    label.textContent = "✗ " + e;
-    hideSoon(6000);
-  }
-}
-
 /** Badges de capacidade (🛠 tools · 👁 visão · 🧠 raciocínio) com tooltip. */
 function capBadges(name: string): string {
   const c = modelCapabilities(name);
@@ -3851,9 +3755,9 @@ function renderQuickPicks() {
       (g) =>
         `<div class="catalog-group">${escapeHtml(t(g.group))}</div>` +
         g.models
-          .map(
-            (m) =>
-              `<div class="reg-card compact">
+          .map((m) => {
+            const base = escapeHtml(m.name.split(":")[0]); // base p/ "Todas as variantes"
+            return `<div class="reg-card compact">
                 <div class="reg-card-top">
                   <div class="reg-id">
                     <span class="reg-name plain">${escapeHtml(m.name)}</span>
@@ -3862,11 +3766,46 @@ function renderQuickPicks() {
                   </div>
                   <button type="button" class="size-pill" data-pull="${escapeHtml(m.name)}">${icon("download")}<span>${t("Instalar")}</span></button>
                 </div>
-              </div>`
-          )
+                <button type="button" class="reg-all-btn" data-all-tags="${base}">${t("Todas as variantes")}</button>
+                <div class="reg-tag-list" hidden></div>
+              </div>`;
+          })
           .join("")
     ).join("");
   wireModelCards(box);
+}
+
+/** Comandos para ativar as otimizações do servidor Ollama, consoante o SO. */
+function ollamaOptCommands(): string {
+  const ua = navigator.userAgent;
+  if (/Windows/i.test(ua)) {
+    return [
+      "setx OLLAMA_FLASH_ATTENTION 1",
+      "setx OLLAMA_KV_CACHE_TYPE q8_0",
+      "setx OLLAMA_KEEP_ALIVE 30m",
+      ":: depois fecha o Ollama (tray) e abre de novo",
+    ].join("\n");
+  }
+  if (/Mac OS X|Macintosh/i.test(ua)) {
+    return [
+      "launchctl setenv OLLAMA_FLASH_ATTENTION 1",
+      "launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0",
+      "launchctl setenv OLLAMA_KEEP_ALIVE 30m",
+      "# depois reinicia a app do Ollama",
+    ].join("\n");
+  }
+  return [
+    "# sudo systemctl edit ollama   →   [Service]",
+    'Environment="OLLAMA_FLASH_ATTENTION=1"',
+    'Environment="OLLAMA_KV_CACHE_TYPE=q8_0"',
+    'Environment="OLLAMA_KEEP_ALIVE=30m"',
+    "# depois: sudo systemctl restart ollama",
+  ].join("\n");
+}
+
+function renderOptCommands() {
+  const el = document.querySelector("#opt-cmds");
+  if (el) el.textContent = ollamaOptCommands();
 }
 
 async function pullModelUi(name: string) {
@@ -3964,10 +3903,7 @@ function wireWorkspaceUi() {
   // Hub Modelos
   document.querySelector("#hub-save")!.addEventListener("click", hubSave);
   document.querySelector("#hub-close")!.addEventListener("click", () => showView(null));
-  document.querySelector("#hub-local-provider")!.addEventListener("change", () => {
-    applyHubProviderFields();
-    setHubSource(hubSel("#hub-local-provider").value === "openai" ? "lmstudio" : "ollama");
-  });
+  document.querySelector("#hub-local-provider")!.addEventListener("change", applyHubProviderFields);
   document.querySelector("#hub-cloud-provider")!.addEventListener("change", applyHubProviderFields);
   document.querySelector("#hub-web-provider")!.addEventListener("change", () => applyWebProviderUi(true));
   document.querySelector("#hub-claude-preset")!.addEventListener("change", () => {
@@ -3979,13 +3915,15 @@ function wireWorkspaceUi() {
     pullModelUi(hubIn("#hub-pull-name").value)
   );
   wireModelSearch();
-  document
-    .querySelectorAll<HTMLButtonElement>("#hub-source-toggle .seg")
-    .forEach((b) =>
-      b.addEventListener("click", () => setHubSource(b.dataset.src as "ollama" | "lmstudio"))
-    );
-  document.querySelector("#hub-lm-install-btn")!.addEventListener("click", lmInstallUi);
   document.querySelector("#hub-lm-refresh")!.addEventListener("click", () => void renderLmInstalled());
+  document.querySelector("#hub-temp-auto")!.addEventListener("change", (e) => {
+    const auto = (e.target as HTMLInputElement).checked;
+    document.querySelector("#hub-temp-wrap")!.toggleAttribute("hidden", auto);
+  });
+  document.querySelector("#opt-copy")!.addEventListener("click", () => {
+    navigator.clipboard?.writeText(ollamaOptCommands());
+    showHint(t("Comandos copiados."));
+  });
 
   document.querySelectorAll<HTMLButtonElement>(".rail-btn").forEach((b) =>
     b.addEventListener("click", () => {

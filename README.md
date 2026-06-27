@@ -175,7 +175,8 @@ azulejo identity + animated caravel loader · OS-keychain secrets · CI release 
 **compact / clear a Saga** (local-model summarization) · **PDF export** (print-to-PDF + `create_pdf` tool + bundled
 skill) · **English / Portuguese UI** · per-provider keychain keys · **signed auto-update** (minisign artifacts +
 `latest.json`, background download on launch) · external links open in the system browser ·
-**live model browser** (search ollama.com + lmstudio.ai catalogs with capability badges, one-click install/pull) ·
+**live Ollama model browser** (search ollama.com with capability badges, full per-model variant/quant list, one-click
+pull; per-model tuning via Modelfile defaults; VRAM-aware suggestion; LM Studio supported for chat, downloads via its own app) ·
 **monochrome inline-SVG icon set** (`currentColor`, matching the side rail) ·
 **clear Skills / Playbooks / Workflows / Agents distinction** (per-type help in the workspace) ·
 **rich first-time experience** (multi-step welcome, hardware-aware model pick with one-click install, optional

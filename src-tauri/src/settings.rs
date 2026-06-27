@@ -18,6 +18,8 @@ pub struct Settings {
     pub ollama_num_ctx: u32,
     /// Temperatura do Ollama (mais baixa = menos alucinação/divagação).
     pub ollama_temperature: f32,
+    /// Auto = não enviar temperatura; usa o default afinado do Modelfile de cada modelo.
+    pub ollama_temperature_auto: bool,
     /// "api" | "cli" | "off"
     pub claude_mode: String,
     pub claude_api_key: String,
@@ -74,6 +76,7 @@ impl Default for Settings {
             ollama_vision_model: "llama3.2-vision".into(),
             ollama_num_ctx: 8192,
             ollama_temperature: 0.4,
+            ollama_temperature_auto: true,
             claude_mode: "cli".into(),
             claude_api_key: String::new(),
             claude_model: "claude-haiku-4-5-20251001".into(),
@@ -276,5 +279,14 @@ impl Settings {
             .get(&self.web_search_provider)
             .cloned()
             .unwrap_or_default()
+    }
+
+    /// Temperatura a enviar ao Ollama: `None` em modo Auto (usa o default do Modelfile).
+    pub fn ollama_temp_opt(&self) -> Option<f32> {
+        if self.ollama_temperature_auto {
+            None
+        } else {
+            Some(self.ollama_temperature)
+        }
     }
 }

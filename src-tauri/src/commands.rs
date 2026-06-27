@@ -395,7 +395,7 @@ pub async fn generate_doc(
         _ => {
             let g = providers::ollama::GenOpts {
                 num_ctx: settings.ollama_num_ctx,
-                temperature: settings.ollama_temperature,
+                temperature: settings.ollama_temp_opt(),
             };
             providers::ollama::chat(&settings.ollama_endpoint, &settings.ollama_model, &messages, g).await
         }
@@ -572,13 +572,33 @@ pub async fn list_ollama_models(state: State<'_, AppState>) -> Result<Vec<String
         .map_err(|e| e.to_string())
 }
 
-/// Info da máquina + modelo local recomendado (com base na RAM).
+/// Info da máquina + modelo local recomendado (por VRAM se houver GPU, senão por RAM).
 #[derive(Serialize)]
 pub struct SystemInfo {
     pub total_ram_gb: u64,
+    /// VRAM da GPU (NVIDIA) em GB; 0 se não detetada.
+    pub total_vram_gb: u64,
     pub cpu_cores: u32,
     pub recommended: String,
     pub note: String,
+}
+
+/// VRAM total da GPU NVIDIA via `nvidia-smi` (0 se ausente/erro). Cobre o caso comum (NVIDIA).
+fn detect_vram_gb() -> u64 {
+    let out = std::process::Command::new("nvidia-smi")
+        .args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
+        .output();
+    let Ok(out) = out else { return 0 };
+    if !out.status.success() {
+        return 0;
+    }
+    // Uma linha por GPU (MiB); usa a maior.
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| l.trim().parse::<f64>().ok())
+        .map(|mib| (mib / 1024.0).round() as u64)
+        .max()
+        .unwrap_or(0)
 }
 
 #[tauri::command]
@@ -590,21 +610,32 @@ pub fn system_info() -> SystemInfo {
     let cpu_cores = std::thread::available_parallelism()
         .map(|n| n.get() as u32)
         .unwrap_or(0);
-    // Sugestão por RAM, privilegiando modelos atuais e multimodais (Gemma 4: imagens +
-    // ferramentas + raciocínio) onde a memória chega, sem arriscar freezes em máquinas pequenas.
-    let (recommended, why) = if total_ram_gb == 0 {
+    let total_vram_gb = detect_vram_gb();
+
+    // Com GPU, o gargalo é a VRAM: escolhe um modelo que CAIBA na VRAM (corre 100% na GPU =
+    // rápido), deixando ~2 GB de folga para o cache KV. Sem GPU, decide pela RAM.
+    let (recommended, why) = if total_vram_gb >= 22 {
+        ("gemma4:26b-a4b-it-qat", "VRAM grande — Gemma 4 MoE (4B ativos): rápido, multimodal e capaz")
+    } else if total_vram_gb >= 11 {
+        ("gemma4:12b", "cabe na VRAM — Gemma 4 12B multimodal (imagens/ferramentas/raciocínio)")
+    } else if total_vram_gb >= 8 {
+        ("gemma4:e4b", "VRAM média — Gemma 4 e4b multimodal e leve")
+    } else if total_vram_gb >= 5 {
+        ("qwen3:8b", "VRAM pequena — 8B com ferramentas/raciocínio (texto)")
+    } else if total_vram_gb > 0 {
+        ("llama3.2:3b", "VRAM muito pequena — modelo leve para caber na GPU")
+    } else if total_ram_gb == 0 {
         ("gemma4:12b", "multimodal equilibrado — imagens, ferramentas e raciocínio")
     } else if total_ram_gb < 10 {
-        ("llama3.2:3b", "RAM limitada — modelo pequeno e rápido (texto)")
-    } else if total_ram_gb < 16 {
-        ("qwen3:8b", "RAM média — 8B com ferramentas/raciocínio é confortável")
+        ("llama3.2:3b", "sem GPU, RAM limitada — modelo pequeno e rápido (CPU)")
     } else if total_ram_gb < 24 {
-        ("gemma4:12b", "boa RAM — Gemma 4 12B multimodal (imagens/ferramentas/raciocínio)")
+        ("qwen3:8b", "sem GPU — 8B em CPU é confortável (ferramentas/raciocínio)")
     } else {
-        ("gemma4:26b-a4b-it-qat", "muita RAM — Gemma 4 MoE (4B ativos): rápido, multimodal e capaz")
+        ("gemma4:12b", "sem GPU, muita RAM — Gemma 4 12B em CPU (mais lento, mas capaz)")
     };
     SystemInfo {
         total_ram_gb,
+        total_vram_gb,
         cpu_cores,
         recommended: recommended.into(),
         note: why.into(),
@@ -698,7 +729,8 @@ pub async fn pull_ollama_model(
     }
 }
 
-// ---- LM Studio (modelos via REST local + catálogo lmstudio.ai) ----
+// ---- LM Studio (modelos já descarregados, via REST local) ----
+// Os downloads fazem-se na app do LM Studio; aqui só listamos para usar como provider de chat.
 #[tauri::command]
 pub async fn lmstudio_list(
     state: State<'_, AppState>,
@@ -710,48 +742,6 @@ pub async fn lmstudio_list(
     crate::lmstudio::list_downloaded(&endpoint, &key)
         .await
         .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn lmstudio_search(
-    query: String,
-) -> Result<Vec<crate::lmstudio::LmCatalogModel>, String> {
-    crate::lmstudio::search_catalog(&query, 30)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn lmstudio_download(
-    state: State<'_, AppState>,
-    model: String,
-    quant: String,
-    channel: Channel<PullEvent>,
-) -> Result<(), String> {
-    let (endpoint, key) = {
-        let s = state.settings.lock().unwrap();
-        (s.openai_local_endpoint.clone(), s.openai_local_key.clone())
-    };
-    let tx = channel.clone();
-    let result = crate::lmstudio::download(&endpoint, &key, &model, &quant, move |status, percent| {
-        let _ = tx.send(PullEvent::Progress {
-            status: status.to_string(),
-            percent,
-        });
-    })
-    .await;
-    match result {
-        Ok(_) => {
-            let _ = channel.send(PullEvent::Done);
-            Ok(())
-        }
-        Err(e) => {
-            let _ = channel.send(PullEvent::Error {
-                message: e.to_string(),
-            });
-            Ok(())
-        }
-    }
 }
 
 #[tauri::command]
@@ -939,7 +929,7 @@ pub async fn send_message_stream(
         router::Route::Local => {
             let gopts = providers::ollama::GenOpts {
                 num_ctx: settings.ollama_num_ctx,
-                temperature: settings.ollama_temperature,
+                temperature: settings.ollama_temp_opt(),
             };
             // Corre o loop de ferramentas (pesquisa web) quando a Pesquisa web local está
             // sempre-ligada OU quando o 🔎/agente pediu pesquisa neste pedido — exceto se há

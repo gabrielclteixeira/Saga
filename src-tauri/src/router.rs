@@ -119,7 +119,7 @@ fn with_system(context: &str, messages: &[ChatMessage]) -> Vec<ChatMessage> {
 fn gopts(s: &Settings) -> providers::ollama::GenOpts {
     providers::ollama::GenOpts {
         num_ctx: s.ollama_num_ctx,
-        temperature: s.ollama_temperature,
+        temperature: s.ollama_temp_opt(),
     }
 }
 

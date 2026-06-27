@@ -113,8 +113,6 @@ pub fn run() {
             commands::search_ollama_registry,
             commands::ollama_registry_tags,
             commands::lmstudio_list,
-            commands::lmstudio_search,
-            commands::lmstudio_download,
             commands::list_ollama_models_detailed,
             commands::delete_ollama_model,
             commands::test_mcp_server,

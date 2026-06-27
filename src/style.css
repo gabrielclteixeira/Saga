@@ -2321,6 +2321,20 @@ dialog::backdrop {
   flex-wrap: wrap;
   gap: 6px;
 }
+/* Painel "Otimizar o Ollama" — comandos de ambiente */
+.opt-cmds {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 6px 0;
+  overflow-x: auto;
+}
 /* "Todas as variantes" — toggle + lista completa de tags (com tamanhos) */
 .reg-all-btn {
   margin-top: 10px;

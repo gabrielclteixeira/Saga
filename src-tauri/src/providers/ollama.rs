@@ -7,21 +7,26 @@ use serde::{Deserialize, Serialize};
 use super::{ChatMessage, LlmResponse};
 
 /// Opções de geração do Ollama (contexto + criatividade).
+/// `temperature: None` = não sobrepor — usa o default afinado do Modelfile de cada modelo.
 #[derive(Clone, Copy)]
 pub struct GenOpts {
     pub num_ctx: u32,
-    pub temperature: f32,
+    pub temperature: Option<f32>,
 }
 impl Default for GenOpts {
     fn default() -> Self {
         Self {
             num_ctx: 8192,
-            temperature: 0.4,
+            temperature: None,
         }
     }
 }
 fn opts_json(o: GenOpts) -> serde_json::Value {
-    serde_json::json!({ "num_ctx": o.num_ctx, "temperature": o.temperature })
+    let mut v = serde_json::json!({ "num_ctx": o.num_ctx });
+    if let Some(t) = o.temperature {
+        v["temperature"] = serde_json::json!(t);
+    }
+    v
 }
 
 /// Mantém o modelo carregado em memória entre pedidos (evita o cold-start de recarregar
