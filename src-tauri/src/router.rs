@@ -146,6 +146,7 @@ fn gopts(s: &Settings) -> providers::ollama::GenOpts {
     providers::ollama::GenOpts {
         num_ctx: s.ollama_num_ctx,
         temperature: s.ollama_temp_opt(),
+        num_predict: None,
     }
 }
 

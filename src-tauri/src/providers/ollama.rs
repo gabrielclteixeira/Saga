@@ -12,12 +12,15 @@ use super::{ChatMessage, LlmResponse};
 pub struct GenOpts {
     pub num_ctx: u32,
     pub temperature: Option<f32>,
+    /// Teto de tokens de resposta. `None` = sem limite (omite `num_predict`).
+    pub num_predict: Option<i32>,
 }
 impl Default for GenOpts {
     fn default() -> Self {
         Self {
             num_ctx: 8192,
             temperature: None,
+            num_predict: None,
         }
     }
 }
@@ -25,6 +28,9 @@ fn opts_json(o: GenOpts) -> serde_json::Value {
     let mut v = serde_json::json!({ "num_ctx": o.num_ctx });
     if let Some(t) = o.temperature {
         v["temperature"] = serde_json::json!(t);
+    }
+    if let Some(n) = o.num_predict {
+        v["num_predict"] = serde_json::json!(n);
     }
     v
 }

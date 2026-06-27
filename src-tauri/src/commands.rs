@@ -421,6 +421,7 @@ pub async fn generate_doc(
             let g = providers::ollama::GenOpts {
                 num_ctx: effective_num_ctx(settings.ollama_num_ctx, &messages),
                 temperature: settings.ollama_temp_opt(),
+                num_predict: None,
             };
             providers::ollama::chat(&settings.ollama_endpoint, &settings.ollama_model, &messages, g).await
         }
@@ -1161,6 +1162,7 @@ pub async fn send_message_stream(
             let gopts = providers::ollama::GenOpts {
                 num_ctx,
                 temperature: settings.ollama_temp_opt(),
+                num_predict: None,
             };
             // 🔎 explícito (research) → pipeline FUNDAMENTADA (decompõe → pesquisa cada sub-pergunta
             // → verifica → sintetiza). Pesquisa web passiva (sempre-ligada, sem 🔎) → loop leve.

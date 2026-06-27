@@ -177,18 +177,21 @@ recente em {year}?', 'confirma o preço/data atual de Y'). Responde APENAS com u
     let evidence = truncate(&evidence, EVIDENCE_CAP);
     let synth_sys = format!(
         "Hoje é {today}. Recebeste EVIDÊNCIAS de pesquisa web para responder à pergunta do utilizador. \
-Escreve a resposta final em Markdown, completa e estruturada, baseada SÓ nas evidências — não acrescentes \
-factos da tua memória. Dá prioridade à informação ATUAL ({year}); se as evidências contradisserem o teu \
-conhecimento prévio, segue as evidências. Distingue o confirmado do incerto e diz claramente se algo não \
-estiver nas evidências. NÃO inventes preços, números nem URLs. NÃO acrescentes secção de fontes (é adicionada \
-automaticamente)."
+Escreve a resposta final em Markdown, baseada SÓ nas evidências — não acrescentes factos da tua memória. \
+Dá prioridade à informação ATUAL ({year}); se as evidências contradisserem o teu conhecimento prévio, segue \
+as evidências. NÃO inventes preços, números nem URLs. NÃO acrescentes secção de fontes (é adicionada \
+automaticamente).\n\nSê CONCISO e direto: estrutura com títulos curtos e listas, dá valores/gamas concretos \
+quando existirem, e responde ao essencial. NÃO repitas ressalvas nem encha — algumas centenas de palavras \
+chegam. Se faltar um dado, di-lo numa linha e segue em frente."
     );
     let synth_user = format!("Pergunta:\n{question}\n\nEvidências recolhidas:\n{evidence}");
     let synth_msgs = vec![msg("system", synth_sys), msg("user", synth_user)];
-    // Janela suficiente para a evidência grande (independente do tamanho da conversa original).
-    let need = (evidence.chars().count() / 3 + question.len() / 3 + 2048) as u32;
+    // Janela = prompt (estimado com folga p/ PT) + orçamento de resposta; teto na VRAM.
+    const ANSWER_BUDGET: u32 = 4096; // teto de tokens da resposta (num_predict)
+    let prompt_tok = ((evidence.chars().count() + question.chars().count()) as f64 / 4.0 * 1.3) as u32 + 512;
     let synth_opts = GenOpts {
-        num_ctx: need.clamp(opts.num_ctx, 32768),
+        num_ctx: (prompt_tok + ANSWER_BUDGET + 512).clamp(opts.num_ctx, 32768),
+        num_predict: Some(ANSWER_BUDGET as i32),
         ..opts
     };
     let resp = ollama::chat_stream(
