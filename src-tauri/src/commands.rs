@@ -1236,8 +1236,8 @@ pub async fn send_message_stream(
             .await
         }
         router::Route::Claude => {
-            // Imagens exigem API (a CLI não as suporta).
-            let use_api = prepared.has_images || settings.claude_mode == "api";
+            // CLI e API leem imagens (a CLI via ficheiros temporários + tool Read).
+            let use_api = settings.claude_mode == "api";
             let any_mcp = settings
                 .mcp_servers
                 .iter()
