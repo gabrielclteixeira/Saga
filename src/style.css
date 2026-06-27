@@ -1141,6 +1141,19 @@ mark.find-current {
 .artifact-controls button {
   margin: 0;
 }
+.pdf-theme {
+  height: 30px;
+  padding: 0 8px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pdf-theme:hover {
+  border-color: var(--accent);
+}
 .artifact-body {
   flex: 1;
   min-height: 0;

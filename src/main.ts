@@ -216,6 +216,11 @@ app.innerHTML = `
       <span class="artifact-controls">
         <button type="button" class="ghost" id="artifact-gallery">${t("Galeria")}</button>
         <button type="button" class="ghost" id="artifact-toggle" hidden>${t("Código")}</button>
+        <select class="pdf-theme" id="artifact-pdf-theme" title="${t("Estilo do PDF")}" aria-label="${t("Estilo do PDF")}">
+          <option value="report">${t("Relatório")}</option>
+          <option value="article">${t("Artigo")}</option>
+          <option value="technical">${t("Técnico")}</option>
+        </select>
         <button type="button" class="ghost" id="artifact-pdf">${t("PDF")}</button>
         <button type="button" class="ghost" id="artifact-export">${t("Guardar")}</button>
         <button type="button" class="ghost" id="artifact-copy">${t("Copiar")}</button>
@@ -2387,6 +2392,8 @@ function exportArtifactPdf() {
     printHtml(a.code, true);
     return;
   }
+  const sel = document.querySelector<HTMLSelectElement>("#artifact-pdf-theme");
+  const theme = (sel?.value as PdfTheme) || "report";
   let inner: string;
   if (a.kind === "markdown") {
     inner = renderMarkdown(a.code);
@@ -2395,7 +2402,7 @@ function exportArtifactPdf() {
   } else {
     inner = `<pre>${escapeHtml(a.code)}</pre>`;
   }
-  printHtml(inner, false, deriveDocTitle(a));
+  printHtml(inner, false, deriveDocTitle(a), theme);
 }
 
 /** Deriva um título para a capa: 1.º heading do markdown, senão o tipo de artefacto. */
@@ -2451,10 +2458,44 @@ const PRINT_CSS = `
   th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
   tbody tr:nth-child(even) { background: var(--soft); }
   hr { border: none; border-top: 1px solid var(--line); margin: 1.6em 0; }
+
+  /* ── Tema "Artigo" — editorial, serifado, medida estreita ── */
+  body[data-theme="article"] {
+    --ink: #241f1c; --accent: #7a2e3a; --muted: #6a5d57; --line: #e0d6cf; --soft: #f6f1ec;
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    font-size: 12pt; line-height: 1.7;
+  }
+  body[data-theme="article"] { max-width: 165mm; margin: 0 auto; }
+  body[data-theme="article"] .doc-cover { text-align: center; border-bottom-width: 1px; padding-bottom: 20px; }
+  body[data-theme="article"] .doc-cover h1 { font-size: 30pt; }
+  body[data-theme="article"] h2 { border-bottom: none; font-style: italic; }
+  body[data-theme="article"] thead { background: transparent; color: var(--ink); border-bottom: 2px solid var(--accent); }
+  body[data-theme="article"] th { border: none; border-bottom: 1px solid var(--line); }
+  body[data-theme="article"] td { border: none; border-bottom: 1px solid var(--line); }
+
+  /* ── Tema "Técnico" — monoespaçado nos títulos, denso, grelha ── */
+  body[data-theme="technical"] {
+    --ink: #16201f; --accent: #0f6e6e; --muted: #4c5a59; --line: #cdd9d8; --soft: #eef4f4;
+    font-size: 10.5pt; line-height: 1.55;
+  }
+  body[data-theme="technical"] h1,
+  body[data-theme="technical"] h2,
+  body[data-theme="technical"] h3,
+  body[data-theme="technical"] .doc-cover .eyebrow {
+    font-family: "Cascadia Code", ui-monospace, Menlo, monospace;
+  }
+  body[data-theme="technical"] .doc-cover { border-bottom-style: double; border-bottom-width: 4px; }
+  body[data-theme="technical"] h2 {
+    background: var(--soft); padding: 5px 10px; border-bottom: none; border-left: 4px solid var(--accent);
+  }
+  body[data-theme="technical"] th, body[data-theme="technical"] td { border: 1px solid var(--accent); }
+  body[data-theme="technical"] pre { border-color: var(--accent); }
 `;
 
+type PdfTheme = "report" | "article" | "technical";
+
 /** Imprime HTML num iframe oculto (o webview oferece "Guardar como PDF"). */
-function printHtml(bodyHtml: string, isFullDoc: boolean, title?: string) {
+function printHtml(bodyHtml: string, isFullDoc: boolean, title?: string, theme: PdfTheme = "report") {
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
   iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
@@ -2474,7 +2515,7 @@ function printHtml(bodyHtml: string, isFullDoc: boolean, title?: string) {
     : "";
   const wrapped = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
     title || "Saga"
-  )}</title><style>${PRINT_CSS}</style></head><body>${cover}${bodyHtml}</body></html>`;
+  )}</title><style>${PRINT_CSS}</style></head><body data-theme="${theme}">${cover}${bodyHtml}</body></html>`;
   doc.open();
   doc.write(isFullDoc ? bodyHtml : wrapped);
   doc.close();

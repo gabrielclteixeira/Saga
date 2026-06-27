@@ -163,7 +163,8 @@ impl Dispatcher<'_> {
                 "create_pdf" => {
                     let title = params.get("title").and_then(|x| x.as_str()).unwrap_or("documento");
                     let body = params.get("html").and_then(|x| x.as_str()).unwrap_or("");
-                    let html = wrap_print_html(title, body);
+                    let theme = params.get("theme").and_then(|x| x.as_str()).unwrap_or("report");
+                    let html = wrap_print_html(title, body, theme);
                     b.call("pdf", &json!({ "title": title, "html": html })).await
                 }
                 other => Ok(format!("ferramenta desconhecida: {other}")),
@@ -195,17 +196,33 @@ p code,li code{background:var(--soft);padding:1px 5px;border-radius:4px;}\
 img,svg{max-width:100%;height:auto;}\
 table{border-collapse:collapse;width:100%;margin:1em 0;font-size:10pt;page-break-inside:avoid;}\
 thead{background:var(--accent);color:#fff;}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;}\
-tbody tr:nth-child(even){background:var(--soft);}hr{border:none;border-top:1px solid var(--line);margin:1.6em 0;}";
+tbody tr:nth-child(even){background:var(--soft);}hr{border:none;border-top:1px solid var(--line);margin:1.6em 0;}\
+body[data-theme=article]{--ink:#241f1c;--accent:#7a2e3a;--muted:#6a5d57;--line:#e0d6cf;--soft:#f6f1ec;font-family:Georgia,'Iowan Old Style','Times New Roman',serif;font-size:12pt;line-height:1.7;max-width:165mm;margin:0 auto;}\
+body[data-theme=article] .doc-cover{text-align:center;border-bottom-width:1px;padding-bottom:20px;}\
+body[data-theme=article] .doc-cover h1{font-size:30pt;}\
+body[data-theme=article] h2{border-bottom:none;font-style:italic;}\
+body[data-theme=article] thead{background:transparent;color:var(--ink);border-bottom:2px solid var(--accent);}\
+body[data-theme=article] th,body[data-theme=article] td{border:none;border-bottom:1px solid var(--line);}\
+body[data-theme=technical]{--ink:#16201f;--accent:#0f6e6e;--muted:#4c5a59;--line:#cdd9d8;--soft:#eef4f4;font-size:10.5pt;line-height:1.55;}\
+body[data-theme=technical] h1,body[data-theme=technical] h2,body[data-theme=technical] h3,body[data-theme=technical] .doc-cover .eyebrow{font-family:'Cascadia Code',ui-monospace,Menlo,monospace;}\
+body[data-theme=technical] .doc-cover{border-bottom-style:double;border-bottom-width:4px;}\
+body[data-theme=technical] h2{background:var(--soft);padding:5px 10px;border-bottom:none;border-left:4px solid var(--accent);}\
+body[data-theme=technical] th,body[data-theme=technical] td{border:1px solid var(--accent);}\
+body[data-theme=technical] pre{border-color:var(--accent);}";
 
 /// Embrulha um corpo HTML num documento completo com estilo de impressão (para o create_pdf).
-fn wrap_print_html(title: &str, body: &str) -> String {
+fn wrap_print_html(title: &str, body: &str, theme: &str) -> String {
     let esc = title
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;");
+    let theme = match theme {
+        "article" | "technical" => theme,
+        _ => "report",
+    };
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>{esc}</title><style>{PRINT_CSS}</style></head>\
-<body><header class=\"doc-cover\"><p class=\"eyebrow\">Saga</p><h1>{esc}</h1></header>{body}</body></html>"
+<body data-theme=\"{theme}\"><header class=\"doc-cover\"><p class=\"eyebrow\">Saga</p><h1>{esc}</h1></header>{body}</body></html>"
     )
 }
 

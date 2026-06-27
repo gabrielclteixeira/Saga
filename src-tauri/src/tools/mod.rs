@@ -62,7 +62,8 @@ pub fn browser_tools_schema() -> serde_json::Value {
                 "type": "object",
                 "properties": {
                     "title": { "type": "string", "description": "título do documento (também o nome do ficheiro)" },
-                    "html": { "type": "string", "description": "corpo do documento em HTML" }
+                    "html": { "type": "string", "description": "corpo do documento em HTML" },
+                    "theme": { "type": "string", "enum": ["report", "article", "technical"], "description": "estilo visual: 'report' (corporativo, omissão), 'article' (editorial serifado), 'technical' (denso, monoespaçado)" }
                 },
                 "required": ["title", "html"]
             }
