@@ -2017,18 +2017,6 @@ dialog::backdrop {
   border-radius: 999px;
   padding: 2px 8px;
 }
-.quickpicks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-  margin-bottom: 4px;
-}
-/* O container exterior tem a classe `quickpicks` mas alberga títulos/grupos + linhas
-   de `.quickpicks` — tem de ser bloco, senão os cabeçalhos fluem inline (desalinhados). */
-#hub-quickpicks {
-  display: block;
-}
 /* Secção "Avançado" colapsável no hub Modelos. */
 .hub-advanced {
   border: 1px solid var(--border);
@@ -2136,18 +2124,67 @@ dialog::backdrop {
   color: var(--muted);
   line-height: 1.5;
 }
-.catalog-title {
-  margin-top: 10px;
-  color: var(--muted);
-  font-size: 12px;
+/* Navegador de modelos — segmented toggle Ollama | LM Studio */
+.seg-toggle {
+  display: inline-flex;
+  gap: 0;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+  margin-bottom: 10px;
 }
-/* Navegador de modelos (resultados de pesquisa ollama.com). */
+.seg-toggle .seg {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 5px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.seg-toggle .seg.active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+/* Caixa de pesquisa com lupa embutida */
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 12px;
+}
+.search-box:focus-within {
+  border-color: var(--accent);
+}
+.search-box .ic {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.search-box input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 9px 0;
+  font: inherit;
+  color: var(--text);
+  outline: none;
+}
+/* Navegador de modelos (resultados de pesquisa / catálogo). */
 .reg-results {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin: 6px 0;
-  max-height: 320px;
+  margin: 10px 0;
+  max-height: 440px;
   overflow-y: auto;
 }
 .reg-results[hidden] {
@@ -2158,28 +2195,43 @@ dialog::backdrop {
   font-size: 12px;
   padding: 8px 2px;
 }
-.reg-item {
+.reg-card {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px 10px;
+  border-radius: 12px;
+  padding: 12px 14px;
   background: var(--bg-2);
 }
-.reg-head {
+.reg-card.compact {
+  padding: 8px 12px;
+}
+.reg-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.reg-id {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 .reg-name {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--accent);
   text-decoration: none;
+  font-size: 13.5px;
 }
 .reg-name:hover {
   text-decoration: underline;
 }
-.reg-meta {
-  margin-left: auto;
+.reg-name.plain {
+  color: var(--text);
+  text-decoration: none;
+}
+.reg-metrics {
+  margin-top: 6px;
   font-size: 11px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -2187,13 +2239,72 @@ dialog::backdrop {
 .reg-desc {
   font-size: 12px;
   color: var(--muted);
-  margin: 4px 0 6px;
+  margin: 6px 0 0;
   line-height: 1.45;
+}
+/* Botão "Tamanhos" no topo direito do cartão */
+.reg-sizes-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.reg-sizes-btn:hover,
+.reg-sizes-btn.open {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.reg-sizes-btn .ic {
+  width: 14px;
+  height: 14px;
+}
+.reg-card-sizes {
+  margin-top: 10px;
+}
+.reg-card-sizes[hidden] {
+  display: none;
+}
+.reg-sizes-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 6px;
 }
 .reg-sizes {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+/* Pill de instalação (download) — usado em cartões de pesquisa e no catálogo */
+.size-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.size-pill:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.size-pill .ic {
+  width: 13px;
+  height: 13px;
 }
 .hub-subtitle {
   margin-top: 10px;

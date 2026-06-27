@@ -368,6 +368,14 @@ const EN: Record<string, string> = {
   "Instalar por id / URL HuggingFace": "Install by id / HuggingFace URL",
   "Descarregados": "Downloaded",
   "Instalar": "Install",
+  "Instalar um modelo": "Install a model",
+  "Tamanhos": "Sizes",
+  "Clica num tamanho para instalar:": "Click a size to install:",
+  "Usar id": "Use id",
+  "Pesquisa o catálogo do LM Studio (lmstudio.ai) ou instala por id abaixo.":
+    "Search the LM Studio catalog (lmstudio.ai), or install by id below.",
+  "Abre a página para confirmar o id; “Usar id” preenche o campo de instalação abaixo.":
+    "Open the page to confirm the id; “Use id” fills the install field below.",
   "Usar": "Use",
   "LM Studio inacessível — abre a app e liga o servidor (Developer).":
     "LM Studio unreachable — open the app and start the server (Developer tab).",
