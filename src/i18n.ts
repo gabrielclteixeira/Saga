@@ -535,6 +535,7 @@ const EN: Record<string, string> = {
   "(sem texto extraído)": "(no extracted text)",
   "Texto extraído": "Extracted text",
   "Ver PDF": "View PDF",
+  "Ver documento": "View document",
   "+ Ficheiro": "+ File",
   "documento": "document",
   "Tipo de ficheiro não suportado: {name}": "Unsupported file type: {name}",

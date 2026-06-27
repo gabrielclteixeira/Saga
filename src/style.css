@@ -1002,6 +1002,62 @@ mark.find-current {
   border: none;
   background: #fff;
 }
+/* Render rico de Word/Excel (docx-preview / SheetJS) */
+.doc-viewer-rich {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.doc-viewer-loading {
+  padding: 24px 18px;
+  color: var(--muted);
+}
+/* docx-preview traz o seu próprio "papel" cinzento + páginas brancas centradas */
+.docx-render {
+  width: 100%;
+}
+.xlsx-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+.xlsx-tabs button {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+.xlsx-tabs button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.xlsx-view {
+  background: #fff;
+  color: #111;
+  padding: 8px;
+  overflow: auto;
+}
+.xlsx-view table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.xlsx-view td,
+.xlsx-view th {
+  border: 1px solid #d4d4d4;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
 .doc-viewer-body {
   flex: 1;
   margin: 0;

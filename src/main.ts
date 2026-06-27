@@ -1370,23 +1370,69 @@ function docChipEl(a: Attachment, onRemove: () => void): HTMLElement {
   return wrap;
 }
 
-/** Converte base64 num Blob (para object URL — ex.: render do PDF original). */
-function base64ToBlob(b64: string, type: string): Blob {
+/** Decodifica base64 para bytes (para alimentar as bibliotecas de render). */
+function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new Blob([bytes], { type });
+  return bytes;
 }
 
-/** Abre um documento num overlay. PDFs renderizam o ficheiro original (vista nativa do
- *  webview); outros tipos mostram o texto extraído. Quando há ambos, há um botão para
- *  alternar entre o PDF e o texto que o modelo leu. */
+/** Tipo de render rico disponível para o anexo (precisa dos bytes guardados). */
+function richDocKind(a: Attachment): "pdf" | "docx" | "xlsx" | "" {
+  if (!a.data_base64) return "";
+  const ext = (a.name || "").split(".").pop()?.toLowerCase() || "";
+  if (ext === "pdf" || a.media_type === "application/pdf") return "pdf";
+  if (ext === "docx") return "docx";
+  if (["xlsx", "xls", "xlsm", "ods"].includes(ext)) return "xlsx";
+  return "";
+}
+
+/** Render do .docx fiel ao layout (docx-preview, carregado a pedido). */
+async function renderDocx(a: Attachment, host: HTMLElement) {
+  const { renderAsync } = await import("docx-preview");
+  const wrap = document.createElement("div");
+  wrap.className = "docx-render";
+  host.appendChild(wrap);
+  await renderAsync(base64ToBytes(a.data_base64), wrap, undefined, {
+    className: "docx",
+    inWrapper: true,
+    ignoreLastRenderedPageBreak: true,
+  });
+}
+
+/** Render da folha de cálculo em tabelas, uma por separador (SheetJS, a pedido). */
+async function renderXlsx(a: Attachment, host: HTMLElement) {
+  const XLSX = await import("xlsx");
+  const wb = XLSX.read(base64ToBytes(a.data_base64), { type: "array" });
+  const tabs = document.createElement("div");
+  tabs.className = "xlsx-tabs";
+  const view = document.createElement("div");
+  view.className = "xlsx-view";
+  const show = (sheet: string, btn: HTMLButtonElement) => {
+    view.innerHTML = XLSX.utils.sheet_to_html(wb.Sheets[sheet]);
+    tabs.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+  };
+  wb.SheetNames.forEach((sheet, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = sheet;
+    b.addEventListener("click", () => show(sheet, b));
+    tabs.appendChild(b);
+    if (i === 0) setTimeout(() => show(sheet, b), 0);
+  });
+  if (wb.SheetNames.length > 1) host.appendChild(tabs);
+  host.appendChild(view);
+}
+
+/** Abre um documento num overlay com render rico (PDF nativo, Word via docx-preview,
+ *  Excel via SheetJS) e um botão para alternar com o texto extraído (o que o modelo leu). */
 function openDocViewer(a: Attachment) {
   document.querySelector("#doc-viewer")?.remove();
   const name = a.name || t("documento");
   const text = (a.text || "").trim();
-  const isPdf = a.media_type === "application/pdf" || /\.pdf$/i.test(name);
-  const hasPdf = isPdf && !!a.data_base64;
+  const rich = richDocKind(a);
 
   const overlay = document.createElement("div");
   overlay.id = "doc-viewer";
@@ -1414,35 +1460,61 @@ function openDocViewer(a: Attachment) {
   overlay.appendChild(panel);
 
   let blobUrl = "";
-  // mode: "pdf" mostra o ficheiro; "text" mostra o texto extraído.
-  let mode: "pdf" | "text" = hasPdf ? "pdf" : "text";
-  const render = () => {
+  // "rich" = ver o documento; "text" = ver o texto extraído.
+  let mode: "rich" | "text" = rich ? "rich" : "text";
+
+  const showText = () => {
+    const pre = document.createElement("pre");
+    pre.className = "doc-viewer-body";
+    pre.textContent = text || t("(sem texto extraído)");
+    bodyWrap.appendChild(pre);
+  };
+
+  const render = async () => {
     bodyWrap.innerHTML = "";
-    if (mode === "pdf") {
-      if (!blobUrl) blobUrl = URL.createObjectURL(base64ToBlob(a.data_base64, "application/pdf"));
+    if (mode === "text" || !rich) {
+      showText();
+    } else if (rich === "pdf") {
+      if (!blobUrl)
+        blobUrl = URL.createObjectURL(
+          new Blob([base64ToBytes(a.data_base64) as BlobPart], { type: "application/pdf" })
+        );
       const frame = document.createElement("iframe");
       frame.className = "doc-viewer-pdf";
       frame.src = blobUrl;
       bodyWrap.appendChild(frame);
     } else {
-      const pre = document.createElement("pre");
-      pre.className = "doc-viewer-body";
-      pre.textContent = text || t("(sem texto extraído)");
-      bodyWrap.appendChild(pre);
+      // docx / xlsx: render assíncrono com estado de carregamento + fallback para texto.
+      const loading = document.createElement("div");
+      loading.className = "doc-viewer-loading";
+      loading.textContent = t("A carregar…");
+      bodyWrap.appendChild(loading);
+      const surface = document.createElement("div");
+      surface.className = "doc-viewer-rich";
+      try {
+        if (rich === "docx") await renderDocx(a, surface);
+        else await renderXlsx(a, surface);
+        bodyWrap.innerHTML = "";
+        bodyWrap.appendChild(surface);
+      } catch (e) {
+        console.error("falha a renderizar documento", e);
+        bodyWrap.innerHTML = "";
+        showText();
+      }
     }
-    // O botão de alternância só faz sentido quando temos PDF E texto.
-    if (hasPdf && text) {
+    // Alterna documento ↔ texto, quando há ambos.
+    if (rich && text) {
       toggle.hidden = false;
-      toggle.textContent = mode === "pdf" ? t("Texto extraído") : t("Ver PDF");
+      toggle.textContent = mode === "rich" ? t("Texto extraído") : t("Ver documento");
     } else {
       toggle.hidden = true;
     }
   };
   toggle.addEventListener("click", () => {
-    mode = mode === "pdf" ? "text" : "pdf";
-    render();
+    mode = mode === "rich" ? "text" : "rich";
+    void render();
   });
-  render();
+  void render();
 
   const dismiss = () => {
     if (blobUrl) URL.revokeObjectURL(blobUrl);
