@@ -64,11 +64,20 @@ where
 {
     let sys = format!("Hoje é {}. {SYSTEM}", chrono::Local::now().format("%Y-%m-%d"));
     let mut messages: Vec<Value> = vec![json!({ "role": "system", "content": sys })];
-    messages.extend(
-        full_messages
+    messages.extend(full_messages.iter().map(|m| {
+        // Preserva imagens anexadas (Ollama: campo `images` por mensagem) para modelos com visão.
+        let imgs: Vec<&str> = m
+            .attachments
             .iter()
-            .map(|m| json!({ "role": m.role, "content": m.content })),
-    );
+            .filter(|a| a.kind == "image")
+            .map(|a| a.data_base64.as_str())
+            .collect();
+        if imgs.is_empty() {
+            json!({ "role": m.role, "content": m.content })
+        } else {
+            json!({ "role": m.role, "content": m.content, "images": imgs })
+        }
+    }));
     let tools = tools_schema();
 
     let mut total_in = 0u64;
