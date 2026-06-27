@@ -1002,26 +1002,39 @@ mark.find-current {
   border: none;
   background: #fff;
 }
-/* Render rico de Word/Excel (docx-preview / SheetJS) */
+/* Render rico de Word/Excel (docx-preview / SheetJS).
+   Baseline de texto escuro: o conteúdo do documento não herda a cor clara do tema. */
 .doc-viewer-rich {
   flex: 1;
   min-height: 0;
+  color: #1b1b1b;
+}
+/* Word: docx-preview traz o seu próprio "papel" cinzento + páginas brancas centradas. */
+.docx-host {
   overflow: auto;
+  background: #50545a;
+}
+.docx-render {
+  width: 100%;
+}
+/* Excel: separadores (estilo da app) + iframe isolado com a tabela. */
+.xlsx-host {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+.doc-viewer-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: none;
+  background: #fff;
 }
 .doc-viewer-loading {
   padding: 24px 18px;
   color: var(--muted);
 }
-/* docx-preview traz o seu próprio "papel" cinzento + páginas brancas centradas */
-.docx-render {
-  width: 100%;
-}
 .xlsx-tabs {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
@@ -1041,22 +1054,6 @@ mark.find-current {
 .xlsx-tabs button.active {
   border-color: var(--accent);
   color: var(--accent);
-}
-.xlsx-view {
-  background: #fff;
-  color: #111;
-  padding: 8px;
-  overflow: auto;
-}
-.xlsx-view table {
-  border-collapse: collapse;
-  font-size: 12px;
-}
-.xlsx-view td,
-.xlsx-view th {
-  border: 1px solid #d4d4d4;
-  padding: 2px 7px;
-  white-space: nowrap;
 }
 .doc-viewer-body {
   flex: 1;

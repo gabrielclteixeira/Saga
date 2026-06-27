@@ -1388,8 +1388,10 @@ function richDocKind(a: Attachment): "pdf" | "docx" | "xlsx" | "" {
   return "";
 }
 
-/** Render do .docx fiel ao layout (docx-preview, carregado a pedido). */
+/** Render do .docx fiel ao layout (docx-preview, carregado a pedido). O `host` força
+ *  um baseline de texto escuro para o conteúdo do Word não herdar a cor clara do tema. */
 async function renderDocx(a: Attachment, host: HTMLElement) {
+  host.classList.add("docx-host");
   const { renderAsync } = await import("docx-preview");
   const wrap = document.createElement("div");
   wrap.className = "docx-render";
@@ -1401,29 +1403,44 @@ async function renderDocx(a: Attachment, host: HTMLElement) {
   });
 }
 
-/** Render da folha de cálculo em tabelas, uma por separador (SheetJS, a pedido). */
+/** CSS limpo para o iframe da folha de cálculo (isolado do tema da app). */
+const XLSX_FRAME_CSS =
+  "body{margin:0;padding:10px;font:13px -apple-system,Segoe UI,Roboto,sans-serif;color:#111;background:#fff}" +
+  "table{border-collapse:collapse}" +
+  "td,th{border:1px solid #d4d4d4;padding:3px 8px;white-space:nowrap}" +
+  "tr:first-child td{background:#f2f2f2;font-weight:600}";
+
+/** Render da folha de cálculo num iframe isolado (uma tabela por separador, SheetJS). */
 async function renderXlsx(a: Attachment, host: HTMLElement) {
+  host.classList.add("xlsx-host");
   const XLSX = await import("xlsx");
   const wb = XLSX.read(base64ToBytes(a.data_base64), { type: "array" });
-  const tabs = document.createElement("div");
-  tabs.className = "xlsx-tabs";
-  const view = document.createElement("div");
-  view.className = "xlsx-view";
-  const show = (sheet: string, btn: HTMLButtonElement) => {
-    view.innerHTML = XLSX.utils.sheet_to_html(wb.Sheets[sheet]);
-    tabs.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
+  const frame = document.createElement("iframe");
+  frame.className = "doc-viewer-frame";
+  const showSheet = (sheet: string) => {
+    frame.srcdoc =
+      `<!doctype html><meta charset="utf-8"><style>${XLSX_FRAME_CSS}</style>` +
+      XLSX.utils.sheet_to_html(wb.Sheets[sheet]);
   };
-  wb.SheetNames.forEach((sheet, i) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = sheet;
-    b.addEventListener("click", () => show(sheet, b));
-    tabs.appendChild(b);
-    if (i === 0) setTimeout(() => show(sheet, b), 0);
-  });
-  if (wb.SheetNames.length > 1) host.appendChild(tabs);
-  host.appendChild(view);
+  if (wb.SheetNames.length > 1) {
+    const tabs = document.createElement("div");
+    tabs.className = "xlsx-tabs";
+    wb.SheetNames.forEach((sheet, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = sheet;
+      if (i === 0) b.classList.add("active");
+      b.addEventListener("click", () => {
+        tabs.querySelectorAll("button").forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        showSheet(sheet);
+      });
+      tabs.appendChild(b);
+    });
+    host.appendChild(tabs);
+  }
+  host.appendChild(frame);
+  showSheet(wb.SheetNames[0]);
 }
 
 /** Abre um documento num overlay com render rico (PDF nativo, Word via docx-preview,
