@@ -58,9 +58,31 @@ fn parse_json_array(text: &str) -> Vec<String> {
 }
 
 /// Uma chamada estruturada ao modelo local (sem thinking, para a saída ficar limpa).
+/// Capa a resposta — só precisamos de um pequeno array JSON, não de divagações.
 async fn ask(endpoint: &str, model: &str, system: &str, user: &str, opts: GenOpts) -> Result<LlmResponse> {
     let msgs = vec![msg("system", system.to_string()), msg("user", user.to_string())];
-    ollama::chat_stream(endpoint, model, &msgs, opts, false, |_| {}, |_| {}).await
+    let capped = GenOpts {
+        num_predict: Some(2048),
+        ..opts
+    };
+    ollama::chat_stream(endpoint, model, &msgs, capped, false, |_| {}, |_| {}).await
+}
+
+/// Pesquisa com tolerância ao limite de ritmo: o DuckDuckGo sem chave bloqueia rajadas, por
+/// isso, em caso de vazio/erro, espera e tenta uma vez mais.
+async fn search_resilient(provider: &str, api_key: &str, query: &str, n: usize) -> Vec<web::WebResult> {
+    if let Ok(r) = web::web_search(provider, api_key, query, n).await {
+        if !r.is_empty() {
+            return r;
+        }
+    }
+    if provider == "duckduckgo" || provider.is_empty() {
+        tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
+        if let Ok(r) = web::web_search(provider, api_key, query, n).await {
+            return r;
+        }
+    }
+    Vec::new()
 }
 
 /// Acrescenta as fontes novas (sem duplicar por URL).
@@ -120,15 +142,20 @@ pesquisável e mencionar {year} quando fizer sentido. Responde APENAS com um arr
     // ── Fase 2: recolher factos por sub-pergunta (Self-Ask, conduzido pelo andaime) ───────
     let mut evidence = String::new();
     let mut fetches = 0usize;
-    for sq in &subqs {
+    let mut got_any = false; // alguma pesquisa devolveu resultados?
+    for (i, sq) in subqs.iter().enumerate() {
+        if i > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(1200)).await; // ritma (anti-bloqueio)
+        }
         on_tool("web_search", sq);
-        let results = web::web_search(provider, api_key, sq, 5).await.unwrap_or_default();
+        let results = search_resilient(provider, api_key, sq, 5).await;
         collect_sources(&mut sources, &results);
         evidence.push_str(&format!("### {sq}\n"));
         if results.is_empty() {
             evidence.push_str("(sem resultados de pesquisa)\n\n");
             continue;
         }
+        got_any = true;
         evidence.push_str(&truncate(&web::format_results(&results), 1200));
         // Abre a melhor página para detalhe (limitado no total).
         if fetches < MAX_FETCH {
@@ -159,17 +186,38 @@ recente em {year}?', 'confirma o preço/data atual de Y'). Responde APENAS com u
         let vz = ask(endpoint, model, &verify_sys, &vuser, opts).await?;
         total_in += vz.input_tokens;
         total_out += vz.output_tokens;
-        for vq in parse_json_array(&vz.text).into_iter().take(n_verify) {
+        for (i, vq) in parse_json_array(&vz.text).into_iter().take(n_verify).enumerate() {
+            if i > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+            }
             on_tool("web_search", &vq);
-            let results = web::web_search(provider, api_key, &vq, 4).await.unwrap_or_default();
+            let results = search_resilient(provider, api_key, &vq, 4).await;
             collect_sources(&mut sources, &results);
             if !results.is_empty() {
+                got_any = true;
                 evidence.push_str(&format!(
                     "### Verificação: {vq}\n{}\n\n",
                     truncate(&web::format_results(&results), 800)
                 ));
             }
         }
+    }
+
+    // Todas as pesquisas falharam (tipicamente bloqueio/limite do DuckDuckGo sem chave): em vez de
+    // uma resposta oca a partir de evidência vazia, dá uma mensagem acionável.
+    if !got_any {
+        let blocked = "A pesquisa web não devolveu resultados — o DuckDuckGo (sem chave) costuma \
+bloquear rajadas de pesquisas, e esta investigação fez várias seguidas. Tenta de novo daqui a um minuto, \
+ou — para pesquisa fiável — adiciona uma chave gratuita (Tavily ou Brave) em Modelos → Avançado."
+            .to_string();
+        on_delta(&blocked);
+        return Ok(LlmResponse {
+            text: blocked,
+            input_tokens: total_in,
+            output_tokens: total_out,
+            reported_cost_usd: 0.0,
+            sources: Vec::new(),
+        });
     }
 
     // ── Fase 4: sintetizar SÓ a partir das evidências (streaming) ─────────────────────────
