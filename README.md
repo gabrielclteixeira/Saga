@@ -184,7 +184,10 @@ Claude, friendly empty state + mini-tour) · **Agents** (reusable personas — *
 Researcher*, *Writer* — system prompt + suggested toggles/route, picked in the composer) ·
 **rich PDF design** (polished print theme: cover, type scale, styled headings/tables/callouts/code, page-break
 control + page numbers via the `page.pdf()` path) · **system tray & start-on-login** (close-to-tray when
-automations are scheduled).
+automations are scheduled) · **document attachments** (PDF / Word / Excel / text — extracted to text in Rust and
+folded into context; images still go to vision) · **drag & drop** files onto the chat · **in-chat find**
+(Ctrl/⌘+F over the current conversation) · **rich PDF templates** (Report / Article / Technical) ·
+**resource-aware install warning** (flags models that likely exceed VRAM/RAM, non-blocking).
 
 **Next:**
 
@@ -193,29 +196,12 @@ automations are scheduled).
   install. Goal: double-click the installer and it just works.
 - **Code-sign & notarize installers** — the updater is signed and auto-update is live; still pending is OS-level
   **code-signing + notarization** (Apple Developer ID / Windows Authenticode) to drop the "unknown publisher" warnings.
-- **Rich PDF templates** — build on the new print theme with selectable templates (Report / Article / Technical)
-  via `data-theme` and embedded fonts/diagrams.
-- **Resource-aware install warning** — before pulling a model that likely exceeds the machine's RAM/VRAM (e.g. a
-  32B model on 16 GB RAM), show a non-blocking warning that it may freeze and suggest a smaller size — but let the
-  user proceed anyway. Inform and advise; don't gate. Reuses `system_info` (RAM/cores) + the model's size; surfaces
-  at the install pill / "Pull" action in the model browser.
 - **Plan mode (tackle complex problems)** — a dedicated planning step where, for a hard/multi-step request, the
   model first drafts an explicit step-by-step **plan** (goal, steps, files/tools it'll touch), shows it for the
   user to review/approve or tweak, and only then executes — tracking progress step by step. Works on the **local**
   model (a planning system prompt + a structured plan the UI renders), not just Claude; today's only decomposition
   is the Claude-only subagents planner (`orchestrator.rs`), hidden and non-interactive. Goal: turn "do this big
   thing" into review-then-execute instead of one opaque shot. Reuses the agentic tool loop for execution.
-- **More attachment file types** — today attachments are **images only** (`kind: "image"` → vision models).
-  Add the common document types — **PDF, Word (.docx), Excel (.xlsx), .txt/.md/.csv** — by extracting their text
-  in the Rust backend (e.g. `pdf-extract`/`lopdf`, `docx-rs`, `calamine` for spreadsheets) and feeding it to the
-  model as context. Images keep going to vision; documents become extracted text so any local model can use them.
-  Show the file as a chip with type/size; large files get truncated with a note.
-- **Drag & drop** — drop files (images + the document types above) anywhere on the composer/chat to attach them,
-  with a drop-zone highlight. Reuses the attachment pipeline (`fileToAttachment` + the new extractors); complements
-  the existing paste (`onPaste`) and file-picker paths.
-- **In-chat find (Ctrl/⌘+F)** — a find bar to search **within the current conversation** (highlight matches,
-  next/prev, match count), distinct from the existing cross-Saga full-text search ("Pesquisar Sagas"). Scrolls to
-  and highlights hits in the messages list; Esc closes.
 
 ### Browser tool setup
 
