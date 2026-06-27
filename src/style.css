@@ -2834,17 +2834,22 @@ dialog::backdrop {
 .split-btn[hidden] {
   display: none;
 }
+/* Cantos arredondados como o "Copiar comandos" (o .primary do hub não traz radius). */
+.split-btn .primary {
+  min-height: 32px;
+  padding: 6px 14px;
+  font-size: 12px;
+  margin-top: 0;
+}
 .split-btn #opt-apply {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
+  border-radius: 8px 0 0 8px;
 }
 .split-caret {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0 7px;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
+  border-radius: 0 8px 8px 0;
   border-left: 1px solid color-mix(in srgb, var(--on-accent) 35%, transparent);
 }
 .split-caret .ic {

@@ -179,6 +179,7 @@ pub fn run() {
             commands::attachment_from_path,
             commands::warm_model,
             commands::optimize_ollama,
+            commands::revert_ollama_opt,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

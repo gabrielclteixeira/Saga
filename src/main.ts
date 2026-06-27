@@ -551,6 +551,7 @@ app.innerHTML = `
               <button type="button" class="primary split-caret" id="opt-more" title="${t("Mais opções")}" aria-label="${t("Mais opções")}" aria-haspopup="true">${icon("chevron")}</button>
               <div class="split-menu" id="opt-menu" hidden>
                 <button type="button" id="opt-copy">${t("Copiar comandos")}</button>
+                <button type="button" id="opt-revert">${t("Reverter otimização")}</button>
               </div>
             </div>
             <button type="button" class="ghost" id="opt-copy-plain" hidden>${t("Copiar comandos")}</button>
@@ -4734,29 +4735,38 @@ function wireWorkspaceUi() {
     showHint(t("Comandos copiados."));
   };
   document.querySelector("#opt-copy")!.addEventListener("click", copyOptCmds);
+  // Traduz o código de resultado do (re)início do Ollama numa mensagem.
+  const optResultHint = (code: string, reverted: boolean) => {
+    const base = reverted ? t("Otimização revertida") : t("Otimizações aplicadas");
+    if (code === "headless") showHint(`${base} ${t("e Ollama reiniciado em segundo plano. ✓")}`);
+    else if (code === "gui") showHint(`${base}. ${t("O Ollama reabriu — podes fechar a janela.")}`);
+    else showHint(`${base}. ${t("Reinicia o Ollama para ter efeito.")}`);
+  };
   if (/Windows/i.test(navigator.userAgent)) {
-    // Windows: split button — "Otimizar" + caret (▼) com "Copiar comandos".
+    // Windows: split button — "Otimizar" + caret (▼) com "Copiar comandos" e "Reverter".
     document.querySelector("#opt-split")!.removeAttribute("hidden");
-    const optApply = document.querySelector<HTMLButtonElement>("#opt-apply")!;
-    optApply.addEventListener("click", async () => {
-      optApply.disabled = true;
-      const label = optApply.textContent;
-      optApply.textContent = t("A otimizar…");
+    const menu = document.querySelector<HTMLElement>("#opt-menu")!;
+    const runOpt = async (btn: HTMLButtonElement, revert: boolean) => {
+      btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = revert ? t("A reverter…") : t("A otimizar…");
+      menu.setAttribute("hidden", "");
       try {
-        const restarted = await api.optimizeOllama();
-        showHint(
-          restarted
-            ? t("Otimizações aplicadas e Ollama reiniciado em segundo plano. ✓")
-            : t("Otimizações aplicadas. Fecha e reabre o Ollama para terem efeito.")
-        );
+        const code = revert ? await api.revertOllama() : await api.optimizeOllama();
+        optResultHint(code, revert);
       } catch (e) {
         showHint(t("Não foi possível otimizar: ") + String(e));
       } finally {
-        optApply.disabled = false;
-        optApply.textContent = label;
+        btn.disabled = false;
+        btn.textContent = label;
       }
+    };
+    const optApply = document.querySelector<HTMLButtonElement>("#opt-apply")!;
+    optApply.addEventListener("click", () => void runOpt(optApply, false));
+    document.querySelector<HTMLButtonElement>("#opt-revert")!.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void runOpt(optApply, true);
     });
-    const menu = document.querySelector<HTMLElement>("#opt-menu")!;
     document.querySelector("#opt-more")!.addEventListener("click", (e) => {
       e.stopPropagation();
       menu.toggleAttribute("hidden");
