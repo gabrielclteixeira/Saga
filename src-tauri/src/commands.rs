@@ -535,6 +535,27 @@ pub async fn approve_action(
     Ok(())
 }
 
+// ---- Arranque com o sistema (autostart) ----
+
+/// Está a app configurada para arrancar com o sistema?
+#[tauri::command]
+pub fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+/// Liga/desliga o arranque com o sistema.
+#[tauri::command]
+pub fn set_autostart(app: tauri::AppHandle, enable: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let m = app.autolaunch();
+    if enable {
+        m.enable().map_err(|e| e.to_string())
+    } else {
+        m.disable().map_err(|e| e.to_string())
+    }
+}
+
 #[tauri::command]
 pub async fn list_ollama_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();

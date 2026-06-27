@@ -352,4 +352,7 @@ export const api = {
     }),
   deleteSchedule: (id: number) => invoke<void>("delete_schedule", { id }),
   runScheduleNow: (id: number) => invoke<string>("run_schedule_now", { id }),
+  // Arranque com o sistema
+  getAutostart: () => invoke<boolean>("get_autostart"),
+  setAutostart: (enable: boolean) => invoke<void>("set_autostart", { enable }),
 };

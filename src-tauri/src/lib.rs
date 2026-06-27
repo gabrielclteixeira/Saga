@@ -16,7 +16,28 @@ mod web_agent;
 mod workspace;
 
 use commands::AppState;
-use tauri::Manager;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{Manager, WindowEvent};
+use tauri_plugin_autostart::MacosLauncher;
+
+/// Traz a janela principal para a frente (cria/mostra/foca).
+fn show_main(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
+/// Há automações agendadas ativas? (Se sim, fechar a janela esconde-a para o tray.)
+fn has_enabled_schedules(app: &tauri::AppHandle) -> bool {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().unwrap();
+    store::list_schedules(&conn)
+        .map(|v| v.iter().any(|s| s.enabled))
+        .unwrap_or(false)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,6 +48,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            None,
+        ))
         .manage(AppState::new())
         .setup(|app| {
             scheduler::spawn_loop(app.handle().clone());
@@ -35,6 +60,48 @@ pub fn run() {
                 let state = app.state::<AppState>();
                 let dir = state.settings.lock().unwrap().workspace_dir.clone();
                 workspace::seed_defaults(&dir);
+            }
+
+            // Ícone na bandeja do sistema: clique mostra a janela; menu Mostrar/Sair.
+            let show_i = MenuItem::with_id(app, "show", "Mostrar Saga", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+            let _tray = TrayIconBuilder::with_id("main-tray")
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("Saga")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => show_main(app),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main(tray.app_handle());
+                    }
+                })
+                .build(app)?;
+
+            // Fechar a janela esconde-a para o tray se houver automações agendadas ativas
+            // (para continuarem a correr); caso contrário, deixa a app sair normalmente.
+            if let Some(win) = app.get_webview_window("main") {
+                let handle = app.handle().clone();
+                win.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        if has_enabled_schedules(&handle) {
+                            api.prevent_close();
+                            if let Some(w) = handle.get_webview_window("main") {
+                                let _ = w.hide();
+                            }
+                        }
+                    }
+                });
             }
             Ok(())
         })
@@ -81,6 +148,8 @@ pub fn run() {
             commands::update_schedule,
             commands::delete_schedule,
             commands::run_schedule_now,
+            commands::get_autostart,
+            commands::set_autostart,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

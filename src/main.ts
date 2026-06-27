@@ -246,6 +246,12 @@ app.innerHTML = `
         <div class="pull-status" id="update-status"></div>
       </fieldset>
 
+      <fieldset>
+        <legend>${t("Sistema")}</legend>
+        <label class="ws-check"><input type="checkbox" id="set-autostart" /> ${t("Iniciar com o sistema")}</label>
+        <p class="wiz-hint">${t("Mantém as automações agendadas a correr. Fechar a janela com automações ativas envia o Saga para a bandeja do sistema.")}</p>
+      </fieldset>
+
       <p class="settings-about">
         <img src="/favicon.svg" alt="" class="about-mark" />
         Saga <span id="about-version"></span> · ${t("feito por")}
@@ -1488,6 +1494,14 @@ function toggleComposerFlag(flag: "thinking" | "research" | "subagents") {
 }
 function openSettingsDialog() {
   els.dialog.showModal();
+  // Reflete o estado real do arranque com o sistema (pode falhar em ambientes sem suporte).
+  api
+    .getAutostart()
+    .then((on) => {
+      const cb = document.querySelector<HTMLInputElement>("#set-autostart");
+      if (cb) cb.checked = on;
+    })
+    .catch(() => {});
 }
 
 function slashCommands(): SlashCmd[] {
@@ -3851,6 +3865,13 @@ async function init() {
   document.querySelector("#artifact-gallery")!.addEventListener("click", openGallery);
   document.querySelector("#btn-export-saga")!.addEventListener("click", exportSaga);
   document.querySelector("#btn-check-update")!.addEventListener("click", checkForUpdates);
+  document.querySelector("#set-autostart")!.addEventListener("change", (e) => {
+    const on = (e.target as HTMLInputElement).checked;
+    api.setAutostart(on).catch((err) => {
+      showHint(t("Falha a configurar o arranque: ") + err);
+      (e.target as HTMLInputElement).checked = !on;
+    });
+  });
   // Abre QUALQUER link externo (Sobre, Fontes, markdown) no browser do sistema (Tauri não o faz sozinho).
   document.addEventListener("click", (e) => {
     const a = (e.target as HTMLElement | null)?.closest?.("a") as HTMLAnchorElement | null;

@@ -225,6 +225,11 @@ const EN: Record<string, string> = {
   // Settings — Aparência / Atualizações
   "Aparência": "Appearance",
   "Atualizações": "Updates",
+  "Sistema": "System",
+  "Iniciar com o sistema": "Start on login",
+  "Mantém as automações agendadas a correr. Fechar a janela com automações ativas envia o Saga para a bandeja do sistema.":
+    "Keeps scheduled automations running. Closing the window while automations are active sends Saga to the system tray.",
+  "Falha a configurar o arranque: ": "Failed to set startup: ",
   "Idioma": "Language",
   "Português": "Portuguese",
   "English": "English",
