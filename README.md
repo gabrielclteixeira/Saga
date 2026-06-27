@@ -175,36 +175,25 @@ azulejo identity + animated caravel loader · OS-keychain secrets · CI release 
 **compact / clear a Saga** (local-model summarization) · **PDF export** (print-to-PDF + `create_pdf` tool + bundled
 skill) · **English / Portuguese UI** · per-provider keychain keys · **signed auto-update** (minisign artifacts +
 `latest.json`, background download on launch) · external links open in the system browser ·
-**live model browser** (search ollama.com + lmstudio.ai catalogs with capability badges, one-click install/pull).
+**live model browser** (search ollama.com + lmstudio.ai catalogs with capability badges, one-click install/pull) ·
+**monochrome inline-SVG icon set** (`currentColor`, matching the side rail) ·
+**clear Skills / Playbooks / Workflows / Agents distinction** (per-type help in the workspace) ·
+**rich first-time experience** (multi-step welcome, hardware-aware model pick with one-click install, optional
+Claude, friendly empty state + mini-tour) · **Agents** (reusable personas — *Software Engineer*, *Expert Web
+Researcher*, *Writer* — system prompt + suggested toggles/route, picked in the composer) ·
+**rich PDF design** (polished print theme: cover, type scale, styled headings/tables/callouts/code, page-break
+control + page numbers via the `page.pdf()` path) · **system tray & start-on-login** (close-to-tray when
+automations are scheduled).
 
 **Next:**
 
-- **Monochromatic icon set** — replace the colourful emoji glyphs (🔎 🧩 🧠 📄 ↻ ⤴, the Sources/Search/Think
-  chips, etc.) with a consistent **monochrome inline-SVG icon set** using `currentColor`, matching the side-rail
-  icons. The multicolor emoji clash with the dark palette; a single-hue set makes the chrome read as one
-  cohesive design.
-- **Clarify Skills vs Playbooks vs Workflows** — review and sharpen what each workspace doc type is *for*
-  (auto-surfaced skills vs on-demand playbooks vs runnable agentic workflows), so the distinction is obvious in
-  the UI and prompts; today the boundaries blur. Tighten naming, help text, and how each is exposed to the model.
-- **Rich first-time experience** — a polished onboarding beyond the current wizard: a welcoming intro, a guided
-  hardware-aware model pick **and one-click download** with progress, a quick tour of the core surfaces (Sagas,
-  Workspace, web search, optional Claude), sensible defaults applied automatically, and a friendly empty state.
-  Goal: from first launch to a working local chat in under a minute, no docs needed.
 - **Zero-setup distribution** — bundle/auto-install Ollama as a managed sidecar (auto-pull a small default
   model on first run), package the Playwright sidecar (`externalBin`) so the browser tool needs no manual
-  install, and round off the first-run wizard. Goal: double-click the installer and it just works.
+  install. Goal: double-click the installer and it just works.
 - **Code-sign & notarize installers** — the updater is signed and auto-update is live; still pending is OS-level
   **code-signing + notarization** (Apple Developer ID / Windows Authenticode) to drop the "unknown publisher" warnings.
-- **Agents** — reusable personas that specialize the model for a task (e.g. *Software Engineer* with
-  workspace/tools on, *Expert Web Researcher* with web search + deep-research on, *Writer*, …). Each agent is a
-  system prompt plus suggested toggles/route, selectable per-Saga or per-message; builds on the existing
-  skills/workspace but at the persona level.
-- **Rich PDF design** — upgrade the PDF skill/export beyond plain markdown: a polished, self-contained print
-  theme (type scale + accent, cover block, styled headings/tables/callouts/code, page-break control) rendered
-  via the Playwright `page.pdf()` path with a running header/footer + page numbers and embedded fonts.
-  Selectable templates (Report / Article / Technical) and optional embedded diagrams/charts — artifact-grade
-  documents, not a dumped markdown print.
-- **Tray & autostart** — keep automations running without the window open.
+- **Rich PDF templates** — build on the new print theme with selectable templates (Report / Article / Technical)
+  via `data-theme` and embedded fonts/diagrams.
 
 ### Browser tool setup
 
