@@ -41,8 +41,25 @@ fn has_enabled_schedules(app: &tauri::AppHandle) -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Captura panics do Rust (main + tasks do tokio) no log — senão morrem em silêncio.
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let loc = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_default();
+        log::error!("PANIC em {loc}: {info}");
+        prev_hook(info);
+    }));
+
     tauri::Builder::default()
-        .plugin(tauri_plugin_log::Builder::default().build())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                // Corta o ruído de DEBUG do updater (afogava o log).
+                .level_for("tauri_plugin_updater", log::LevelFilter::Warn)
+                .build(),
+        )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
@@ -54,6 +71,12 @@ pub fn run() {
         ))
         .manage(AppState::new())
         .setup(|app| {
+            log::info!(
+                "Saga {} · {} {} a arrancar",
+                app.package_info().version,
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            );
             scheduler::spawn_loop(app.handle().clone());
             // Os defaults do workspace (skill pdf + agentes) são semeados pelo frontend, no
             // arranque, com o idioma da UI (comando `ensure_workspace_defaults`).
@@ -90,6 +113,7 @@ pub fn run() {
                 let handle = app.handle().clone();
                 win.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {
+                        log::warn!("janela: CloseRequested");
                         if has_enabled_schedules(&handle) {
                             api.prevent_close();
                             if let Some(w) = handle.get_webview_window("main") {
@@ -147,6 +171,9 @@ pub fn run() {
             commands::run_schedule_now,
             commands::get_autostart,
             commands::set_autostart,
+            commands::log_frontend,
+            commands::log_dir,
+            commands::open_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

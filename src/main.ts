@@ -254,6 +254,15 @@ app.innerHTML = `
         <legend>${t("Sistema")}</legend>
         <label class="ws-check"><input type="checkbox" id="set-autostart" /> ${t("Iniciar com o sistema")}</label>
         <p class="wiz-hint">${t("Mantém as automações agendadas a correr. Fechar a janela com automações ativas envia o Saga para a bandeja do sistema.")}</p>
+        <div class="log-row">
+          <span class="log-label">${t("Diagnóstico / Logs")}</span>
+          <code class="log-path" id="log-path">—</code>
+          <span class="row">
+            <button type="button" class="ghost" id="btn-open-logs">${t("Abrir pasta de logs")}</button>
+            <button type="button" class="ghost" id="btn-copy-logpath">${t("Copiar caminho")}</button>
+          </span>
+        </div>
+        <p class="wiz-hint">${t("Se a app falhar, abre/partilha o ficheiro Saga.log desta pasta.")}</p>
       </fieldset>
 
       <p class="settings-about">
@@ -1625,6 +1634,14 @@ function openSettingsDialog() {
     .then((on) => {
       const cb = document.querySelector<HTMLInputElement>("#set-autostart");
       if (cb) cb.checked = on;
+    })
+    .catch(() => {});
+  // Mostra o caminho da pasta de logs (para o utilizador abrir/partilhar em caso de crash).
+  api
+    .logDir()
+    .then((dir) => {
+      const el = document.querySelector("#log-path");
+      if (el) el.textContent = dir;
     })
     .catch(() => {});
 }
@@ -4031,6 +4048,16 @@ function wireWorkspaceUi() {
 }
 
 async function init() {
+  // Captura erros de JS / promessas rejeitadas para o log (diagnóstico de crashes).
+  window.addEventListener("error", (e) => {
+    const stack = (e.error as Error | undefined)?.stack ?? "";
+    void api.logFrontend("error", `${e.message} @ ${e.filename}:${e.lineno}:${e.colno}\n${stack}`).catch(() => {});
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    const r = e.reason;
+    const msg = r instanceof Error ? `${r.message}\n${r.stack ?? ""}` : String(r);
+    void api.logFrontend("error", `unhandledrejection: ${msg}`).catch(() => {});
+  });
   mountViewsInCenter();
   els.composer.addEventListener("submit", onSubmit);
   els.messages.addEventListener("scroll", updateScrollBtn, { passive: true });
@@ -4135,6 +4162,16 @@ async function init() {
       showHint(t("Falha a configurar o arranque: ") + err);
       (e.target as HTMLInputElement).checked = !on;
     });
+  });
+  document.querySelector("#btn-open-logs")!.addEventListener("click", () => {
+    api.openLogs().catch((err) => showHint(t("Falha a abrir os logs: ") + err));
+  });
+  document.querySelector("#btn-copy-logpath")!.addEventListener("click", () => {
+    const p = document.querySelector("#log-path")?.textContent ?? "";
+    if (p && p !== "—") {
+      navigator.clipboard?.writeText(p);
+      showHint(t("Caminho copiado."));
+    }
   });
   // Abre QUALQUER link externo (Sobre, Fontes, markdown) no browser do sistema (Tauri não o faz sozinho).
   document.addEventListener("click", (e) => {

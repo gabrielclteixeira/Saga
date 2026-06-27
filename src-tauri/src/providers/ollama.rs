@@ -155,6 +155,11 @@ pub async fn chat_raw(
             body["think"] = serde_json::json!(false);
         }
     }
+    log::debug!(
+        "ollama chat_raw model={model} num_ctx={} tools={}",
+        opts.num_ctx,
+        body.get("tools").is_some()
+    );
     let client = reqwest::Client::new();
     let resp = client
         .post(&url)
@@ -238,6 +243,7 @@ pub async fn chat_stream<F: FnMut(&str), G: FnMut(&str)>(
         keep_alive: KEEP_ALIVE,
         think: think.then_some(true),
     };
+    log::debug!("ollama chat_stream model={model} num_ctx={} think={think} msgs={}", opts.num_ctx, wire.len());
 
     let client = reqwest::Client::new();
     let resp = client

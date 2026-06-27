@@ -85,7 +85,7 @@ where
     let mut final_text = String::new();
     let mut sources: Vec<(String, String)> = Vec::new(); // (title, url)
 
-    for _ in 0..MAX_TURNS {
+    for round in 0..MAX_TURNS {
         let resp = ollama::chat_raw(endpoint, model, json!(messages), Some(tools.clone()), opts).await?;
         total_in += resp.get("prompt_eval_count").and_then(|x| x.as_u64()).unwrap_or(0);
         total_out += resp.get("eval_count").and_then(|x| x.as_u64()).unwrap_or(0);
@@ -96,6 +96,7 @@ where
             .and_then(|x| x.as_array())
             .cloned()
             .unwrap_or_default();
+        log::info!("[web] ronda {round}: {} tool_calls", tool_calls.len());
 
         if tool_calls.is_empty() {
             if let Some(c) = msg.get("content").and_then(|x| x.as_str()) {
@@ -118,7 +119,15 @@ where
                 "web_search" => {
                     let q = args.get("query").and_then(|x| x.as_str()).unwrap_or("");
                     on_tool("web_search", q);
-                    match web::web_search(provider, api_key, q, 5).await {
+                    let res = web::web_search(provider, api_key, q, 5).await;
+                    log::info!(
+                        "[web] web_search '{q}' ({provider}) → {}",
+                        match &res {
+                            Ok(rs) => format!("{} resultados", rs.len()),
+                            Err(e) => format!("erro: {e}"),
+                        }
+                    );
+                    match res {
                         Ok(rs) if !rs.is_empty() => {
                             for r in &rs {
                                 if !r.url.is_empty() && !sources.iter().any(|(_, u)| u == &r.url) {
@@ -145,7 +154,15 @@ do motor em Modelos → Avançado. Não inventes resultados."
                 "web_fetch" => {
                     let u = args.get("url").and_then(|x| x.as_str()).unwrap_or("");
                     on_tool("web_fetch", u);
-                    web::web_fetch(u).await.unwrap_or_else(|e| format!("erro: {e}"))
+                    let r = web::web_fetch(u).await;
+                    log::info!(
+                        "[web] web_fetch {u} → {}",
+                        match &r {
+                            Ok(t) => format!("{} chars", t.chars().count()),
+                            Err(e) => format!("erro: {e}"),
+                        }
+                    );
+                    r.unwrap_or_else(|e| format!("erro: {e}"))
                 }
                 other => format!("ferramenta desconhecida: {other}"),
             };

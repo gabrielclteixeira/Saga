@@ -396,6 +396,13 @@ const EN: Record<string, string> = {
   "Copiar comandos": "Copy commands",
   "Comandos copiados.": "Commands copied.",
   "Ir para a mensagem mais recente": "Jump to latest message",
+  "Diagnóstico / Logs": "Diagnostics / Logs",
+  "Abrir pasta de logs": "Open logs folder",
+  "Copiar caminho": "Copy path",
+  "Se a app falhar, abre/partilha o ficheiro Saga.log desta pasta.":
+    "If the app fails, open/share the Saga.log file in this folder.",
+  "Falha a abrir os logs: ": "Failed to open logs: ",
+  "Caminho copiado.": "Path copied.",
   "Pesquisas web (este mês)": "Web searches (this month)",
   "Ainda sem pesquisas este mês.": "No searches yet this month.",
   "sem limite fixo": "no fixed limit",

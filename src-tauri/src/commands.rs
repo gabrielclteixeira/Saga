@@ -564,6 +564,37 @@ pub fn set_autostart(app: tauri::AppHandle, enable: bool) -> Result<(), String> 
     }
 }
 
+// ---- Diagnóstico / logs ----
+
+/// Regista no log um evento vindo do frontend (erros de JS, rejeições não tratadas).
+#[tauri::command]
+pub fn log_frontend(level: String, message: String) {
+    match level.as_str() {
+        "error" => log::error!("[ui] {message}"),
+        "warn" => log::warn!("[ui] {message}"),
+        _ => log::info!("[ui] {message}"),
+    }
+}
+
+/// Caminho da pasta de logs (para mostrar/partilhar nas Definições).
+#[tauri::command]
+pub fn log_dir(app: tauri::AppHandle) -> Result<String, String> {
+    app.path()
+        .app_log_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .map_err(|e| e.to_string())
+}
+
+/// Abre a pasta de logs no explorador de ficheiros (via opener, do lado Rust).
+#[tauri::command]
+pub fn open_logs(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = app.path().app_log_dir().map_err(|e| e.to_string())?;
+    app.opener()
+        .open_path(dir.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn list_ollama_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();
@@ -907,6 +938,15 @@ pub async fn send_message_stream(
         router::Route::Claude if cloud_openai => settings.openai_cloud_model.clone(),
         _ => prepared.model.clone(),
     };
+
+    // Breadcrumb: contexto do turno (útil para ver a última ação antes de um crash).
+    log::info!(
+        "turn conv={conversation_id} route={} model={effective_model} research={research} subagents={subagents} think={thinking} msgs={} images={} web_search={}",
+        prepared.route.as_str(),
+        prepared.full_messages.len(),
+        prepared.has_images,
+        settings.local_web_search || research
+    );
 
     let _ = channel.send(StreamEvent::Start {
         route: prepared.route.as_str().to_string(),

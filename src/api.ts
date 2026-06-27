@@ -227,6 +227,11 @@ export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
   getAccounting: () => invoke<Accounting>("get_accounting"),
+  // Diagnóstico / logs
+  logFrontend: (level: "error" | "warn" | "info", message: string) =>
+    invoke<void>("log_frontend", { level, message }),
+  logDir: () => invoke<string>("log_dir"),
+  openLogs: () => invoke<void>("open_logs"),
   resetAccounting: () => invoke<Accounting>("reset_accounting"),
   getMemoryPreview: () => invoke<string>("get_memory_preview"),
   diagnostics: () => invoke<Diagnostics>("diagnostics"),
