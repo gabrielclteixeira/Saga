@@ -58,11 +58,20 @@ async function handle(action, params) {
       try {
         const p = await browser.newPage();
         await p.setContent(String(params.html || ""), { waitUntil: "networkidle" });
+        const docTitle = String(params.title || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
         await p.pdf({
           path: out,
           format: "A4",
           printBackground: true,
-          margin: { top: "18mm", bottom: "18mm", left: "16mm", right: "16mm" },
+          displayHeaderFooter: true,
+          // Cabeçalho discreto com o título · rodapé com número de página (centrado).
+          headerTemplate: `<div style="width:100%;font-size:7pt;color:#9aa7b4;padding:0 16mm;font-family:'Segoe UI',sans-serif;">${docTitle}</div>`,
+          footerTemplate:
+            '<div style="width:100%;font-size:7pt;color:#9aa7b4;text-align:center;font-family:\'Segoe UI\',sans-serif;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
+          margin: { top: "20mm", bottom: "18mm", left: "16mm", right: "16mm" },
         });
       } finally {
         await browser.close();

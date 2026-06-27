@@ -1986,11 +1986,66 @@ function exportArtifactPdf() {
   } else {
     inner = `<pre>${escapeHtml(a.code)}</pre>`;
   }
-  printHtml(inner, false);
+  printHtml(inner, false, deriveDocTitle(a));
 }
 
+/** Deriva um título para a capa: 1.º heading do markdown, senão o tipo de artefacto. */
+function deriveDocTitle(a: Artifact): string {
+  if (a.kind === "markdown") {
+    const m = a.code.match(/^\s*#\s+(.+)$/m);
+    if (m) return m[1].trim();
+  }
+  return t("Documento");
+}
+
+/** Tema de impressão polido, partilhado pelo Export PDF e pelo create_pdf (sidecar). */
+const PRINT_CSS = `
+  :root { --ink: #1c2b3a; --accent: #2f6ea5; --muted: #5a6b7d; --line: #d8e0e8; --soft: #f3f6fa; }
+  @page { margin: 20mm 18mm; }
+  * { box-sizing: border-box; }
+  body {
+    font: 11.5pt/1.65 "Segoe UI", -apple-system, Roboto, sans-serif;
+    color: var(--ink); margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .doc-cover {
+    border-bottom: 3px solid var(--accent); padding-bottom: 14px; margin-bottom: 26px;
+    page-break-after: avoid;
+  }
+  .doc-cover .eyebrow {
+    text-transform: uppercase; letter-spacing: 0.14em; font-size: 8.5pt; font-weight: 700;
+    color: var(--accent); margin: 0 0 6px;
+  }
+  .doc-cover h1 { font-size: 26pt; line-height: 1.12; margin: 0; color: var(--ink); }
+  .doc-cover .doc-date { font-size: 9.5pt; color: var(--muted); margin-top: 10px; }
+  h1, h2, h3, h4 { line-height: 1.22; color: var(--ink); page-break-after: avoid; }
+  h1 { font-size: 20pt; margin: 1.4em 0 0.5em; }
+  h2 { font-size: 15pt; margin: 1.5em 0 0.4em; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 12.5pt; margin: 1.2em 0 0.3em; color: var(--accent); }
+  p { margin: 0 0 0.8em; }
+  a { color: var(--accent); text-decoration: none; }
+  ul, ol { margin: 0 0 0.9em; padding-left: 1.4em; }
+  li { margin: 0.2em 0; }
+  li::marker { color: var(--accent); }
+  blockquote {
+    margin: 1em 0; padding: 0.4em 1em; border-left: 3px solid var(--accent);
+    background: var(--soft); color: var(--muted); page-break-inside: avoid;
+  }
+  pre {
+    background: var(--soft); border: 1px solid var(--line); padding: 12px 14px; border-radius: 8px;
+    white-space: pre-wrap; word-wrap: break-word; font-size: 9.5pt; page-break-inside: avoid;
+  }
+  code { font-family: "Cascadia Code", ui-monospace, Menlo, monospace; font-size: 9.5pt; }
+  p code, li code { background: var(--soft); padding: 1px 5px; border-radius: 4px; }
+  img, svg { max-width: 100%; height: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 10pt; page-break-inside: avoid; }
+  thead { background: var(--accent); color: #fff; }
+  th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+  tbody tr:nth-child(even) { background: var(--soft); }
+  hr { border: none; border-top: 1px solid var(--line); margin: 1.6em 0; }
+`;
+
 /** Imprime HTML num iframe oculto (o webview oferece "Guardar como PDF"). */
-function printHtml(bodyHtml: string, isFullDoc: boolean) {
+function printHtml(bodyHtml: string, isFullDoc: boolean, title?: string) {
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
   iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
@@ -2000,16 +2055,17 @@ function printHtml(bodyHtml: string, isFullDoc: boolean) {
     iframe.remove();
     return;
   }
-  const wrapped = `<!doctype html><html><head><meta charset="utf-8"><style>
-      @page { margin: 18mm; }
-      body { font: 13px/1.6 -apple-system, "Segoe UI", Roboto, sans-serif; color: #111; }
-      h1, h2, h3 { line-height: 1.25; }
-      pre { background: #f4f4f5; padding: 10px 12px; border-radius: 6px; white-space: pre-wrap; word-wrap: break-word; }
-      code { font-family: ui-monospace, "Cascadia Code", Menlo, monospace; }
-      img, svg { max-width: 100%; height: auto; }
-      table { border-collapse: collapse; } th, td { border: 1px solid #ccc; padding: 4px 8px; }
-      a { color: #2563eb; }
-    </style></head><body>${bodyHtml}</body></html>`;
+  const today = new Date().toLocaleDateString(getLang() === "pt" ? "pt-PT" : "en-GB", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const cover = title
+    ? `<header class="doc-cover"><p class="eyebrow">Saga</p><h1>${escapeHtml(title)}</h1><div class="doc-date">${today}</div></header>`
+    : "";
+  const wrapped = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
+    title || "Saga"
+  )}</title><style>${PRINT_CSS}</style></head><body>${cover}${bodyHtml}</body></html>`;
   doc.open();
   doc.write(isFullDoc ? bodyHtml : wrapped);
   doc.close();
