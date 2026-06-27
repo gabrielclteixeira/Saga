@@ -178,6 +178,10 @@ skill) · **English / Portuguese UI** · per-provider keychain keys · **signed 
 
 **Next:**
 
+- **Monochromatic icon set** — replace the colourful emoji glyphs (🔎 🧩 🧠 📄 ↻ ⤴, the Sources/Search/Think
+  chips, etc.) with a consistent **monochrome inline-SVG icon set** using `currentColor`, matching the side-rail
+  icons. The multicolor emoji clash with the dark palette; a single-hue set makes the chrome read as one
+  cohesive design.
 - **Clarify Skills vs Playbooks vs Workflows** — review and sharpen what each workspace doc type is *for*
   (auto-surfaced skills vs on-demand playbooks vs runnable agentic workflows), so the distinction is obvious in
   the UI and prompts; today the boundaries blur. Tighten naming, help text, and how each is exposed to the model.
