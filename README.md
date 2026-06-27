@@ -199,6 +199,12 @@ automations are scheduled).
   32B model on 16 GB RAM), show a non-blocking warning that it may freeze and suggest a smaller size — but let the
   user proceed anyway. Inform and advise; don't gate. Reuses `system_info` (RAM/cores) + the model's size; surfaces
   at the install pill / "Pull" action in the model browser.
+- **Plan mode (tackle complex problems)** — a dedicated planning step where, for a hard/multi-step request, the
+  model first drafts an explicit step-by-step **plan** (goal, steps, files/tools it'll touch), shows it for the
+  user to review/approve or tweak, and only then executes — tracking progress step by step. Works on the **local**
+  model (a planning system prompt + a structured plan the UI renders), not just Claude; today's only decomposition
+  is the Claude-only subagents planner (`orchestrator.rs`), hidden and non-interactive. Goal: turn "do this big
+  thing" into review-then-execute instead of one opaque shot. Reuses the agentic tool loop for execution.
 
 ### Browser tool setup
 
