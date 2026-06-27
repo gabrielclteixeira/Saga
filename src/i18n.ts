@@ -584,6 +584,9 @@ const EN: Record<string, string> = {
   "A coordenar subagentes…": "Coordinating subagents…",
   "A pensar a fundo…": "Thinking deeply…",
   "A pensar…": "Thinking…",
+  "A ler o documento…": "Reading the document…",
+  "A processar o conteúdo…": "Processing the content…",
+  "Quase a responder…": "Almost there…",
   // Contabilidade
   "Pedidos locais": "Local requests",
   "grátis": "free",

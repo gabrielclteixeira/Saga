@@ -986,8 +986,11 @@ function renderMessagesInner() {
         state.busy;
       if (liveEmpty) {
         // Bolha de espera persistente (cobre o arranque do modelo e o raciocínio inicial).
-        bubble.innerHTML = `<span class="waiting-row">${caravelLoader(30)}<span class="status-text"></span></span>`;
-        bubble.querySelector(".status-text")!.textContent = streamWaiting || t("A pensar…");
+        // Mensagem por fases + reticências animadas + contador de tempo decorrido = feedback vivo.
+        bubble.innerHTML = `<span class="waiting-row">${caravelLoader(30)}<span class="status-text"></span><span class="wait-dots"><i></i><i></i><i></i></span><span class="wait-elapsed"></span></span>`;
+        const ms = waitStart ? Date.now() - waitStart : 0;
+        bubble.querySelector(".status-text")!.textContent = waitMessage(waitKind, ms);
+        if (ms >= 2500) bubble.querySelector(".wait-elapsed")!.textContent = fmtElapsed(ms);
       } else if (item.role === "assistant" && !item.error) {
         bubble.classList.add("markdown");
         // Renderiza o corpo sem a secção "## Fontes" (essa vai para o disclosure de fontes).
@@ -1839,8 +1842,60 @@ function cloudEnabled(): boolean {
 }
 
 /** Empurra uma bolha de assistente e preenche-a com o streaming. */
-/** Texto mostrado no spinner da bolha enquanto o assistente trabalha (antes do 1.º token). */
-let streamWaiting = "";
+/** Estado de espera (antes do 1.º token): o quê + desde quando, para dar feedback vivo. */
+type WaitKind = "research" | "subagents" | "doc" | "think" | "normal";
+let waitKind: WaitKind = "normal";
+let waitStart = 0;
+let waitTicker: number | undefined;
+
+/** Mensagem de espera; para documentos avança por fases conforme o tempo passa. */
+function waitMessage(kind: WaitKind, ms: number): string {
+  switch (kind) {
+    case "research":
+      return t("A pesquisar na net…");
+    case "subagents":
+      return t("A coordenar subagentes…");
+    case "doc":
+      if (ms >= 12000) return t("Quase a responder…");
+      if (ms >= 5000) return t("A processar o conteúdo…");
+      return t("A ler o documento…");
+    case "think":
+      return t("A pensar a fundo…");
+    default:
+      return t("A pensar…");
+  }
+}
+
+/** Tempo decorrido formatado (ex.: "8s", "1m04"). */
+function fmtElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}`;
+}
+
+/** Atualiza a mensagem + contador da bolha de espera; pára-se sozinho quando esta desaparece. */
+function paintWait() {
+  const row = els.messages.lastElementChild?.querySelector(".waiting-row");
+  const status = row?.querySelector(".status-text") as HTMLElement | null;
+  const elapsed = row?.querySelector(".wait-elapsed") as HTMLElement | null;
+  if (!status) {
+    stopWaitTicker();
+    return;
+  }
+  const ms = waitStart ? Date.now() - waitStart : 0;
+  status.textContent = waitMessage(waitKind, ms);
+  if (elapsed) elapsed.textContent = ms >= 2500 ? fmtElapsed(ms) : "";
+}
+
+function startWaitTicker() {
+  stopWaitTicker();
+  waitTicker = window.setInterval(paintWait, 1000);
+}
+function stopWaitTicker() {
+  if (waitTicker) {
+    clearInterval(waitTicker);
+    waitTicker = undefined;
+  }
+}
 
 async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   const conversationId = state.currentConversationId!;
@@ -1863,18 +1918,25 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     state.routeMode !== "claude" &&
     !!state.settings?.ollama_model &&
     modelCapabilities(state.settings.ollama_model).reasoning;
-  streamWaiting = sendOpts.research
-    ? t("A pesquisar na net…")
+  // O documento (prefill de um prompt grande) é a maior causa de espera antes do 1.º token.
+  const lastUser = [...payload].reverse().find((m) => m.role === "user");
+  const hasDoc = !!lastUser?.attachments?.some((a) => a.kind === "document");
+  waitKind = sendOpts.research
+    ? "research"
     : sendOpts.subagents
-      ? t("A coordenar subagentes…")
-      : sendOpts.thinking || localReasons
-        ? t("A pensar a fundo…")
-        : t("A pensar…");
+      ? "subagents"
+      : hasDoc
+        ? "doc"
+        : sendOpts.thinking || localReasons
+          ? "think"
+          : "normal";
+  waitStart = Date.now();
   const assistant: Item = { role: "assistant", content: "", report: sendOpts.research };
   state.items.push(assistant);
   setBusy(true);
   renderMessages();
   scrollChatToBottom(); // novo turno (envio/regenerar) = salta para o fim
+  startWaitTicker();
 
   const paintBubble = () => {
     const stick = isChatNearBottom();
@@ -1907,6 +1969,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
         if (evt.kind === "Start") {
           start = { route: evt.route, model: evt.model, reason: evt.reason };
         } else if (evt.kind === "Delta") {
+          if (!assistant.content) stopWaitTicker(); // 1.º token real → fim da espera
           assistant.content += evt.text;
           paintBubble();
         } else if (evt.kind === "Thinking") {
@@ -1944,6 +2007,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     void api.logFrontend("warn", `stream erro: ${String(e)}`).catch(() => {});
   } finally {
     setBusy(false);
+    stopWaitTicker();
     // Breadcrumb: última ação antes de um eventual crash do renderer (render pesado com imagem).
     const hasImg = state.items.some((i) => i.attachments && i.attachments.length);
     void api
