@@ -65,6 +65,7 @@ export interface WorkspaceIndex {
   skills: DocMeta[];
   playbooks: string[];
   workflows: DocMeta[];
+  agents: DocMeta[];
 }
 
 export interface Schedule {

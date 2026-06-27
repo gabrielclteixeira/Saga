@@ -369,6 +369,7 @@ pub async fn generate_doc(
     let sys = match kind.as_str() {
         "skill" => "Escreve uma SKILL.md para a Saga. Formato EXATO:\n---\nname: <slug-sem-espacos>\ndescription: \"<uma frase sobre quando usar>. Triggers: <palavras/expressões que ativam>\"\n---\n\n# <título>\n<instruções claras, passo a passo, em markdown>\n\nResponde APENAS com o markdown final — sem cercas de código nem comentários.",
         "workflow" => "Escreve um workflow em markdown para a Saga. Formato EXATO:\n---\nname: <slug-sem-espacos>\ndescription: \"<o que faz>\"\nargument-hint: <que argumentos espera>\n---\n\n<procedimento passo-a-passo; usa $ARGUMENTS onde os argumentos do utilizador entram>\n\nResponde APENAS com o markdown final — sem cercas nem comentários.",
+        "agent" => "Escreve um agente (persona) em markdown para a Saga. Formato EXATO:\n---\nname: <Nome legível>\ndescription: \"<uma frase sobre o que faz>\"\ntools: <true|false>\nresearch: <true|false>\nsubagents: <true|false>\nroute: <local|claude>\n---\n\n<system prompt na 2.ª pessoa (\"És um…\"): define o papel, o estilo e as regras de comportamento do agente>\n\nResponde APENAS com o markdown final — sem cercas de código nem comentários.",
         _ => "Escreve um playbook em markdown simples (sem frontmatter): um título e um procedimento reutilizável e claro. Responde APENAS com o markdown — sem cercas nem comentários.",
     };
     let messages = vec![

@@ -244,6 +244,22 @@ const EN: Record<string, string> = {
   "Skills": "Skills",
   "Playbooks": "Playbooks",
   "Workflows": "Workflows",
+  "Agents": "Agents",
+  "Agent — uma persona com system prompt e predefinições; escolhe-a no composer para focar o modelo numa tarefa.":
+    "Agent — a persona with a system prompt and defaults; pick it in the composer to focus the model on a task.",
+  "Predefinições do agente": "Agent defaults",
+  "Escalar para": "Escalate to",
+  "Ferramentas (web, ficheiros)": "Tools (web, files)",
+  "Pesquisa aprofundada": "Deep research",
+  "System prompt (markdown)": "System prompt (markdown)",
+  "És um… (define o papel, o estilo e as regras do agente)":
+    "You are a… (define the agent's role, style and rules)",
+  "Escolher um agente (persona)": "Pick an agent (persona)",
+  "Agente": "Agent",
+  "Agente ativo: {n}": "Agent active: {n}",
+  "Falha a carregar o agente: ": "Failed to load agent: ",
+  "Nenhum (modelo base)": "None (base model)",
+  "Cria agentes no Workspace → Agents.": "Create agents in Workspace → Agents.",
   "Skill — instruções que o modelo carrega sozinho quando a tarefa encaixa (auto-expostas via load_skill).":
     "Skill — instructions the model loads on its own when the task fits (auto-surfaced via load_skill).",
   "Playbook — um procedimento reutilizável que o modelo lê a pedido (read_playbook).":

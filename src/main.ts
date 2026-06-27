@@ -20,6 +20,7 @@ import {
   type ChatResponse,
   type ConversationMeta,
   type Diagnostics,
+  type DocMeta,
   type McpServerConfig,
   type OllamaModel,
   type RegistryModel,
@@ -79,6 +80,7 @@ const state: {
   subagents: boolean;
   compactedSummary: string;
   compactedUpto: number; // id da última mensagem compactada (0 = sem compactação)
+  activeAgent: { name: string; system: string } | null;
 } = {
   items: [],
   settings: null,
@@ -92,6 +94,7 @@ const state: {
   subagents: false,
   compactedSummary: "",
   compactedUpto: 0,
+  activeAgent: null,
 };
 
 /** Ícones monocromáticos inline (estilo do rail: currentColor, 1em). Definido ANTES do
@@ -152,6 +155,7 @@ app.innerHTML = `
           <button type="button" data-mode="claude">${t("Claude")}</button>
         </span>
         <span class="composer-toggles">
+          <button type="button" id="btn-agent" class="chip-toggle" title="${t("Escolher um agente (persona)")}">${icon("sparkles")}<span id="btn-agent-label">${t("Agente")}</span></button>
           <button type="button" id="btn-subagents" class="chip-toggle" title="${t("Subagentes (API: orquestra em paralelo · CLI: ferramenta Task)")}">${icon("nodes")}<span>${t("Subagentes")}</span></button>
           <button type="button" id="btn-research" class="chip-toggle" title="${t("Pesquisa web (API: web_search · CLI: WebSearch)")}">${icon("search")}<span>${t("Pesquisar")}</span></button>
           <button type="button" id="btn-think" class="chip-toggle" title="${t("Extended thinking (raciocínio) — só Claude API")}">${icon("brain")}<span>${t("Think")}</span></button>
@@ -261,6 +265,7 @@ app.innerHTML = `
         <button type="button" class="ws-tab active" data-kind="skill">${t("Skills")}</button>
         <button type="button" class="ws-tab" data-kind="playbook">${t("Playbooks")}</button>
         <button type="button" class="ws-tab" data-kind="workflow">${t("Workflows")}</button>
+        <button type="button" class="ws-tab" data-kind="agent">${t("Agents")}</button>
       </div>
       <p class="ws-help" id="ws-help"></p>
       <div class="ws-body">
@@ -277,6 +282,18 @@ app.innerHTML = `
           <label>${t("Descrição")} <input id="ws-desc" type="text" placeholder="${t("o que é / quando usar")}" /></label>
           <label id="ws-triggers-wrap">${t("Triggers (palavras que ativam)")} <input id="ws-triggers" type="text" placeholder="${t("resumir, o que diz este link, …")}" /></label>
           <label id="ws-arghint-wrap" hidden>${t("Argumentos esperados")} <input id="ws-arghint" type="text" placeholder="${t("ex.: o URL a abrir")}" /></label>
+          <fieldset id="ws-agent-wrap" class="ws-agent-fields" hidden>
+            <legend>${t("Predefinições do agente")}</legend>
+            <label class="ws-inline">${t("Escalar para")}
+              <select id="ws-agent-route">
+                <option value="local">${t("Modelo local")}</option>
+                <option value="claude">Claude</option>
+              </select>
+            </label>
+            <label class="ws-check"><input type="checkbox" id="ws-agent-tools" /> ${t("Ferramentas (web, ficheiros)")}</label>
+            <label class="ws-check"><input type="checkbox" id="ws-agent-research" /> ${t("Pesquisa aprofundada")}</label>
+            <label class="ws-check"><input type="checkbox" id="ws-agent-subagents" /> ${t("Subagentes")}</label>
+          </fieldset>
           <label id="ws-body-label">${t("Corpo (markdown)")}
             <textarea id="ws-content" rows="12" spellcheck="false" placeholder="${t("# Instruções…")}"></textarea>
           </label>
@@ -1304,18 +1321,23 @@ function buildPayload(): ChatMessage[] {
   const kept = state.items
     .filter((i) => !isCompacted(i))
     .map((i) => ({ role: i.role, content: i.content, attachments: i.attachments }));
+  const msgs: ChatMessage[] = [];
+  // Agente ativo → injeta o seu system prompt à frente de tudo.
+  if (state.activeAgent?.system.trim()) {
+    msgs.push({ role: "system", content: state.activeAgent.system.trim() });
+  }
   if (state.compactedSummary.trim()) {
     // Injeta o resumo como contexto (par user→assistant para manter alternância de papéis).
-    return [
+    msgs.push(
       {
         role: "user",
         content: `${t("Resumo do início desta conversa (contexto):")}\n\n${state.compactedSummary}`,
       },
-      { role: "assistant", content: t("Entendido — tenho o contexto anterior.") },
-      ...kept,
-    ];
+      { role: "assistant", content: t("Entendido — tenho o contexto anterior.") }
+    );
   }
-  return kept;
+  msgs.push(...kept);
+  return msgs;
 }
 
 function routeOptsFromMode(): SendOpts {
@@ -1705,12 +1727,90 @@ function applyComposerToggles() {
   document.querySelector("#btn-research")?.toggleAttribute("hidden", !(localWeb || cloud));
   document.querySelector("#btn-subagents")?.toggleAttribute("hidden", !cloud);
   document.querySelector("#btn-think")?.toggleAttribute("hidden", !cloud);
-  // O contentor dos toggles fica visível se algum toggle estiver visível.
-  els.routeModeBar
-    .querySelector(".composer-toggles")!
-    .toggleAttribute("hidden", !(localWeb || cloud));
-  // Esconde a barra inteira quando não há nada a mostrar (local puro, sem pesquisa web).
-  els.routeModeBar.toggleAttribute("hidden", !(cloud || localWeb));
+  // O picker de agente está sempre disponível (funciona em local puro), por isso a barra e o
+  // contentor de toggles ficam sempre visíveis.
+  els.routeModeBar.querySelector(".composer-toggles")!.removeAttribute("hidden");
+  els.routeModeBar.removeAttribute("hidden");
+}
+
+// ---- Picker de agente (persona) no composer ----
+function setToggle(which: "research" | "subagents" | "thinking", on: boolean) {
+  state[which] = on;
+  const id = which === "thinking" ? "#btn-think" : which === "research" ? "#btn-research" : "#btn-subagents";
+  document.querySelector(id)?.classList.toggle("active", on);
+}
+
+function updateAgentChip() {
+  const label = document.querySelector("#btn-agent-label");
+  if (label) label.textContent = state.activeAgent ? state.activeAgent.name : t("Agente");
+  document.querySelector("#btn-agent")?.classList.toggle("active", !!state.activeAgent);
+}
+
+async function setActiveAgent(name: string | null) {
+  if (!name) {
+    state.activeAgent = null;
+    updateAgentChip();
+    return;
+  }
+  try {
+    const raw = await api.readWorkspaceDoc("agent", name);
+    const f = parseDocFields("agent", raw);
+    state.activeAgent = { name: f.name || name, system: f.body };
+    // Aplica as predefinições sugeridas pelo agente.
+    setRouteMode(f.agentRoute === "claude" && cloudEnabled() ? "claude" : "local");
+    setToggle("research", !!f.agentResearch);
+    setToggle("subagents", !!f.agentSubagents && cloudEnabled());
+    updateAgentChip();
+    showHint(t("Agente ativo: {n}", { n: state.activeAgent.name }));
+  } catch (e) {
+    showHint(t("Falha a carregar o agente: ") + e);
+  }
+}
+
+/** Menu flutuante para escolher um agente (ou desligar). */
+async function openAgentMenu() {
+  document.querySelector("#agent-menu")?.remove();
+  let agents: DocMeta[] = [];
+  try {
+    agents = (await api.getWorkspaceIndex()).agents;
+  } catch {
+    /* sem workspace */
+  }
+  const btn = document.querySelector<HTMLElement>("#btn-agent")!;
+  const r = btn.getBoundingClientRect();
+  const menu = document.createElement("div");
+  menu.id = "agent-menu";
+  menu.className = "agent-menu";
+  const rows = [
+    `<button type="button" class="agent-row${state.activeAgent ? "" : " active"}" data-agent="">${t("Nenhum (modelo base)")}</button>`,
+    ...agents.map(
+      (a) =>
+        `<button type="button" class="agent-row${
+          state.activeAgent?.name === a.name ? " active" : ""
+        }" data-agent="${escapeHtml(a.name)}"><strong>${escapeHtml(a.name)}</strong><span>${escapeHtml(a.description)}</span></button>`
+    ),
+  ];
+  if (agents.length === 0) {
+    rows.push(`<div class="agent-empty">${t("Cria agentes no Workspace → Agents.")}</div>`);
+  }
+  menu.innerHTML = rows.join("");
+  document.body.appendChild(menu);
+  menu.style.left = `${Math.max(8, r.left)}px`;
+  menu.style.bottom = `${window.innerHeight - r.top + 8}px`;
+  const close = () => {
+    menu.remove();
+    document.removeEventListener("click", onDoc, true);
+  };
+  const onDoc = (e: MouseEvent) => {
+    if (!menu.contains(e.target as Node) && e.target !== btn) close();
+  };
+  setTimeout(() => document.addEventListener("click", onDoc, true), 0);
+  menu.querySelectorAll<HTMLButtonElement>("[data-agent]").forEach((b) =>
+    b.addEventListener("click", () => {
+      void setActiveAgent(b.dataset.agent || null);
+      close();
+    })
+  );
 }
 
 function autoGrow() {
@@ -2220,7 +2320,8 @@ function showApproval(id: number, tool: string, preview: string) {
 
 // ---- Workspace (skills / playbooks / workflows) ----
 const wsDialog = document.querySelector<HTMLDialogElement>("#workspace-dialog")!;
-let wsKind: "skill" | "playbook" | "workflow" = "skill";
+type WsKind = "skill" | "playbook" | "workflow" | "agent";
+let wsKind: WsKind = "skill";
 
 async function openWorkspace() {
   setWsKind("skill");
@@ -2231,9 +2332,10 @@ const WS_HELP: Record<string, string> = {
   skill: t("Skill — instruções que o modelo carrega sozinho quando a tarefa encaixa (auto-expostas via load_skill)."),
   playbook: t("Playbook — um procedimento reutilizável que o modelo lê a pedido (read_playbook)."),
   workflow: t("Workflow — um procedimento executável: corre-o com /<nome> e o agente segue os passos."),
+  agent: t("Agent — uma persona com system prompt e predefinições; escolhe-a no composer para focar o modelo numa tarefa."),
 };
 
-function setWsKind(kind: "skill" | "playbook" | "workflow") {
+function setWsKind(kind: WsKind) {
   wsKind = kind;
   wsDialog
     .querySelectorAll<HTMLButtonElement>(".ws-tab")
@@ -2250,14 +2352,16 @@ async function renderWorkspaceList() {
   try {
     idx = await api.getWorkspaceIndex();
   } catch {
-    idx = { skills: [], playbooks: [], workflows: [] };
+    idx = { skills: [], playbooks: [], workflows: [], agents: [] };
   }
   const items =
     wsKind === "skill"
       ? idx.skills
       : wsKind === "workflow"
         ? idx.workflows
-        : idx.playbooks.map((n) => ({ name: n, description: "" }));
+        : wsKind === "agent"
+          ? idx.agents
+          : idx.playbooks.map((n) => ({ name: n, description: "" }));
   if (items.length === 0) {
     list.innerHTML = `<div class="empty-sm">${t("Nada ainda. Cria o primeiro com “+ Novo”.")}</div>`;
     return;
@@ -2292,6 +2396,11 @@ interface DocFields {
   triggers: string;
   arghint: string;
   body: string;
+  // Predefinições de agente (só para kind "agent").
+  agentRoute?: "local" | "claude";
+  agentTools?: boolean;
+  agentResearch?: boolean;
+  agentSubagents?: boolean;
 }
 
 const wsq = <T extends HTMLElement>(id: string) => document.querySelector<T>(id)!;
@@ -2301,8 +2410,10 @@ function applyDocKindFields() {
   const isSkill = wsKind === "skill";
   const isWorkflow = wsKind === "workflow";
   const isPlaybook = wsKind === "playbook";
+  const isAgent = wsKind === "agent";
   wsq("#ws-triggers-wrap").toggleAttribute("hidden", !isSkill);
   wsq("#ws-arghint-wrap").toggleAttribute("hidden", !isWorkflow);
+  wsq("#ws-agent-wrap").toggleAttribute("hidden", !isAgent);
   (wsq<HTMLInputElement>("#ws-desc").closest("label") as HTMLElement).toggleAttribute(
     "hidden",
     isPlaybook
@@ -2313,7 +2424,9 @@ function applyDocKindFields() {
       ? t("Procedimento (markdown)")
       : isWorkflow
         ? t("Passos (markdown — usa $ARGUMENTS)")
-        : t("Instruções (markdown)");
+        : isAgent
+          ? t("System prompt (markdown)")
+          : t("Instruções (markdown)");
 }
 
 /** Parser simples de frontmatter (espelha workspace.rs). */
@@ -2329,7 +2442,7 @@ function tsFrontmatter(raw: string): { fm: Record<string, string>; body: string 
   return { fm, body: t.slice(m[0].length).trim() };
 }
 
-function parseDocFields(kind: "skill" | "playbook" | "workflow", raw: string): DocFields {
+function parseDocFields(kind: WsKind, raw: string): DocFields {
   const { fm, body } = tsFrontmatter(raw);
   let desc = fm["description"] || "";
   let triggers = "";
@@ -2340,16 +2453,35 @@ function parseDocFields(kind: "skill" | "playbook" | "workflow", raw: string): D
       desc = desc.slice(0, idx).replace(/[.\s]+$/, "").trim();
     }
   }
-  return { name: fm["name"] || "", desc, triggers, arghint: fm["argument-hint"] || "", body };
+  const truthy = (v: string | undefined) => /^(true|1|sim|yes)$/i.test((v || "").trim());
+  return {
+    name: fm["name"] || "",
+    desc,
+    triggers,
+    arghint: fm["argument-hint"] || "",
+    body,
+    agentRoute: fm["route"] === "claude" ? "claude" : "local",
+    agentTools: truthy(fm["tools"]),
+    agentResearch: truthy(fm["research"]),
+    agentSubagents: truthy(fm["subagents"]),
+  };
 }
 
-function assembleDoc(kind: "skill" | "playbook" | "workflow", f: DocFields): string {
+function assembleDoc(kind: WsKind, f: DocFields): string {
   if (kind === "playbook") return f.body.trim() + "\n";
   const esc = (s: string) => s.replace(/"/g, '\\"');
   const lines = ["---", `name: ${f.name}`];
   if (kind === "skill") {
     const d = f.triggers ? `${f.desc} Triggers: ${f.triggers}` : f.desc;
     lines.push(`description: "${esc(d)}"`);
+  } else if (kind === "agent") {
+    lines.push(
+      `description: "${esc(f.desc)}"`,
+      `tools: ${f.agentTools ? "true" : "false"}`,
+      `research: ${f.agentResearch ? "true" : "false"}`,
+      `subagents: ${f.agentSubagents ? "true" : "false"}`,
+      `route: ${f.agentRoute === "claude" ? "claude" : "local"}`
+    );
   } else {
     lines.push(`description: "${esc(f.desc)}"`, `argument-hint: ${f.arghint}`);
   }
@@ -2362,6 +2494,10 @@ function fillEditorFields(f: Partial<DocFields>) {
   wsq<HTMLInputElement>("#ws-triggers").value = f.triggers || "";
   wsq<HTMLInputElement>("#ws-arghint").value = f.arghint || "";
   wsq<HTMLTextAreaElement>("#ws-content").value = f.body || "";
+  wsq<HTMLSelectElement>("#ws-agent-route").value = f.agentRoute || "local";
+  wsq<HTMLInputElement>("#ws-agent-tools").checked = !!f.agentTools;
+  wsq<HTMLInputElement>("#ws-agent-research").checked = !!f.agentResearch;
+  wsq<HTMLInputElement>("#ws-agent-subagents").checked = !!f.agentSubagents;
 }
 
 function readEditorFields(): DocFields {
@@ -2371,6 +2507,10 @@ function readEditorFields(): DocFields {
     triggers: wsq<HTMLInputElement>("#ws-triggers").value.trim(),
     arghint: wsq<HTMLInputElement>("#ws-arghint").value.trim(),
     body: wsq<HTMLTextAreaElement>("#ws-content").value,
+    agentRoute: wsq<HTMLSelectElement>("#ws-agent-route").value === "claude" ? "claude" : "local",
+    agentTools: wsq<HTMLInputElement>("#ws-agent-tools").checked,
+    agentResearch: wsq<HTMLInputElement>("#ws-agent-research").checked,
+    agentSubagents: wsq<HTMLInputElement>("#ws-agent-subagents").checked,
   };
 }
 
@@ -2384,7 +2524,10 @@ function newWsDoc() {
         ? t("Passos a executar (usa $ARGUMENTS para os argumentos)…")
         : wsKind === "skill"
           ? t("Instruções passo a passo…")
-          : t("Procedimento reutilizável…"),
+          : wsKind === "agent"
+            ? t("És um… (define o papel, o estilo e as regras do agente)")
+            : t("Procedimento reutilizável…"),
+    agentRoute: "local",
   });
   wsq<HTMLTextAreaElement>("#ws-gen-prompt").value = "";
   wsq("#ws-gen-status").textContent = "";
@@ -3638,6 +3781,7 @@ async function init() {
     state.subagents = !state.subagents;
     (e.currentTarget as HTMLElement).classList.toggle("active", state.subagents);
   });
+  document.querySelector("#btn-agent")!.addEventListener("click", () => void openAgentMenu());
   els.artifactClose.addEventListener("click", closeArtifact);
   els.artifactToggle.addEventListener("click", () => {
     artifactMode = artifactMode === "preview" ? "code" : "preview";

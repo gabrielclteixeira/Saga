@@ -18,6 +18,7 @@ pub struct WorkspaceIndex {
     pub skills: Vec<DocMeta>,
     pub playbooks: Vec<String>,
     pub workflows: Vec<DocMeta>,
+    pub agents: Vec<DocMeta>,
 }
 
 fn skills_dir(root: &str) -> PathBuf {
@@ -28,6 +29,9 @@ fn playbooks_dir(root: &str) -> PathBuf {
 }
 fn workflows_dir(root: &str) -> PathBuf {
     Path::new(root).join("workflows")
+}
+fn agents_dir(root: &str) -> PathBuf {
+    Path::new(root).join("agents")
 }
 
 /// Lê (name, description) de um frontmatter YAML simples no topo de um markdown.
@@ -117,9 +121,31 @@ pub fn index(root: &str) -> WorkspaceIndex {
         }
     }
 
+    if let Ok(entries) = fs::read_dir(agents_dir(root)) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) != Some("md") {
+                continue;
+            }
+            if let Ok(content) = fs::read_to_string(&p) {
+                let stem = p
+                    .file_stem()
+                    .and_then(|x| x.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                let (n, d) = parse_frontmatter(&content);
+                idx.agents.push(DocMeta {
+                    name: n.unwrap_or(stem),
+                    description: d.unwrap_or_default(),
+                });
+            }
+        }
+    }
+
     idx.skills.sort_by(|a, b| a.name.cmp(&b.name));
     idx.playbooks.sort();
     idx.workflows.sort_by(|a, b| a.name.cmp(&b.name));
+    idx.agents.sort_by(|a, b| a.name.cmp(&b.name));
     idx
 }
 
@@ -160,6 +186,7 @@ fn doc_path(root: &str, kind: &str, name: &str) -> Option<PathBuf> {
         "skill" => skills_dir(root).join(&safe).join("SKILL.md"),
         "playbook" => playbooks_dir(root).join(format!("{safe}.md")),
         "workflow" => workflows_dir(root).join(format!("{safe}.md")),
+        "agent" => agents_dir(root).join(format!("{safe}.md")),
         _ => return None,
     })
 }
@@ -202,7 +229,58 @@ Quando o utilizador pedir um PDF, relatório ou documento:
 Não inventes dados; se faltar informação, pede ao utilizador ou indica claramente as lacunas.
 "#;
 
-/// Escreve as skills embutidas por defeito que ainda não existam (não sobrescreve edições do utilizador).
+/// Agentes (personas) embutidos por defeito. Frontmatter: name, description e dicas
+/// (tools/research/subagents/route) que a UI aplica como toggles ao escolher o agente.
+/// O corpo é o system prompt injetado.
+const AGENT_ENGINEER: &str = r#"---
+name: Engenheiro de Software
+description: "Programador experiente: escreve, revê e explica código com rigor."
+tools: true
+subagents: false
+research: false
+route: local
+---
+
+És um engenheiro de software sénior. Escreves código correto, legível e idiomático,
+seguindo as convenções da linguagem e do projeto em causa. Antes de propor uma solução,
+pensas nos casos extremos e nos modos de falha. Quando mostras código, mantém-no mínimo e
+focado; explica as decisões importantes em poucas linhas. Quando não tiveres a certeza de
+uma API ou versão, di-lo em vez de inventar. Preferes clareza a esperteza.
+"#;
+
+const AGENT_RESEARCHER: &str = r#"---
+name: Investigador Web
+description: "Pesquisa online, cruza fontes e responde com referências."
+tools: true
+research: true
+subagents: false
+route: local
+---
+
+És um investigador web especialista. Para qualquer pergunta factual ou atual, **pesquisas
+online** antes de responder, cruzas várias fontes e desconfias de afirmações sem suporte.
+A tua resposta distingue claramente o que está confirmado do que é incerto. Terminas sempre
+com uma lista de fontes (títulos + URLs) que usaste. Se as fontes se contradisserem, dizes-o.
+Nunca inventes uma referência.
+"#;
+
+const AGENT_WRITER: &str = r#"---
+name: Redator
+description: "Escreve e melhora textos: claros, diretos e no tom certo."
+tools: false
+research: false
+subagents: false
+route: local
+---
+
+És um redator profissional. Escreves de forma clara, direta e adequada ao público e ao
+objetivo. Usas voz ativa, frases com ritmo e cortas o que não acrescenta. Adaptas o tom ao
+pedido (formal, próximo, técnico). Quando reescreves, preservas o sentido e melhoras a
+legibilidade. Se o pedido for ambíguo, fazes uma pergunta curta antes de escrever.
+"#;
+
+/// Escreve as skills/agentes embutidos por defeito que ainda não existam
+/// (não sobrescreve edições do utilizador).
 pub fn seed_defaults(root: &str) {
     if root.trim().is_empty() {
         return;
@@ -210,6 +288,15 @@ pub fn seed_defaults(root: &str) {
     let pdf = skills_dir(root).join("pdf").join("SKILL.md");
     if !pdf.exists() {
         let _ = write_doc(root, "skill", "pdf", PDF_SKILL);
+    }
+    for (name, body) in [
+        ("engenheiro-de-software", AGENT_ENGINEER),
+        ("investigador-web", AGENT_RESEARCHER),
+        ("redator", AGENT_WRITER),
+    ] {
+        if !agents_dir(root).join(format!("{name}.md")).exists() {
+            let _ = write_doc(root, "agent", name, body);
+        }
     }
 }
 
