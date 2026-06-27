@@ -152,6 +152,13 @@ app.innerHTML = `
     </aside>
     <div class="center" id="center">
     <section class="chat">
+      <div class="find-bar" id="find-bar" hidden>
+        <input id="find-input" type="text" placeholder="${t("Procurar na conversa…")}" autocomplete="off" />
+        <span class="find-count" id="find-count">0/0</span>
+        <button type="button" class="icon-x" id="find-prev" title="${t("Anterior")}" aria-label="${t("Anterior")}">${icon("chevron")}</button>
+        <button type="button" class="icon-x" id="find-next" title="${t("Seguinte")}" aria-label="${t("Seguinte")}">${icon("chevron")}</button>
+        <button type="button" class="icon-x" id="find-close" title="${t("Fechar")}" aria-label="${t("Fechar")}">${icon("x")}</button>
+      </div>
       <div class="messages" id="messages">
         <div class="empty">${t("Faz uma pergunta. Corre no teu modelo local; escala para o Claude quando quiseres.")}</div>
       </div>
@@ -659,6 +666,128 @@ function updateScrollBtn() {
 function scrollChatToBottom() {
   els.messages.scrollTop = els.messages.scrollHeight;
   updateScrollBtn();
+}
+
+// ---- Procurar na conversa atual (Ctrl/⌘+F) ----
+let findHits: HTMLElement[] = [];
+let findIdx = -1;
+
+function setFindCount() {
+  const el = document.querySelector("#find-count");
+  if (el) el.textContent = `${findHits.length ? findIdx + 1 : 0}/${findHits.length}`;
+}
+
+/** Desfaz os realces (substitui cada <mark> pelo seu texto) e repõe os nós. */
+function clearFindHighlights() {
+  els.messages.querySelectorAll<HTMLElement>("mark.find-hit").forEach((m) => {
+    m.replaceWith(document.createTextNode(m.textContent ?? ""));
+  });
+  els.messages.normalize();
+  findHits = [];
+  findIdx = -1;
+}
+
+/** Realça as ocorrências da query nos nós de texto das mensagens. */
+function runFind(q: string) {
+  clearFindHighlights();
+  const needle = q.trim().toLowerCase();
+  if (!needle) {
+    setFindCount();
+    return;
+  }
+  const walker = document.createTreeWalker(els.messages, NodeFilter.SHOW_TEXT, {
+    acceptNode(n) {
+      const p = (n as Text).parentElement;
+      if (!p || p.closest("pre")) return NodeFilter.FILTER_REJECT; // evita blocos de código
+      return (n.textContent ?? "").toLowerCase().includes(needle)
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+  const targets: Text[] = [];
+  let node: Node | null;
+  while ((node = walker.nextNode())) targets.push(node as Text);
+  for (const textNode of targets) {
+    const text = textNode.textContent ?? "";
+    const lower = text.toLowerCase();
+    const frag = document.createDocumentFragment();
+    let i = 0;
+    let m: number;
+    while ((m = lower.indexOf(needle, i)) !== -1) {
+      if (m > i) frag.appendChild(document.createTextNode(text.slice(i, m)));
+      const mark = document.createElement("mark");
+      mark.className = "find-hit";
+      mark.textContent = text.slice(m, m + needle.length);
+      frag.appendChild(mark);
+      findHits.push(mark);
+      i = m + needle.length;
+    }
+    if (i < text.length) frag.appendChild(document.createTextNode(text.slice(i)));
+    textNode.parentNode?.replaceChild(frag, textNode);
+  }
+  if (findHits.length) focusFindHit(0);
+  else setFindCount();
+}
+
+function focusFindHit(i: number) {
+  if (!findHits.length) return;
+  findIdx = (i + findHits.length) % findHits.length;
+  findHits.forEach((h, j) => h.classList.toggle("find-current", j === findIdx));
+  findHits[findIdx].scrollIntoView({ block: "center", behavior: "smooth" });
+  setFindCount();
+}
+
+function openFind() {
+  const bar = document.querySelector<HTMLElement>("#find-bar");
+  const input = document.querySelector<HTMLInputElement>("#find-input");
+  if (!bar || !input) return;
+  bar.hidden = false;
+  input.focus();
+  input.select();
+  if (input.value.trim()) runFind(input.value);
+}
+
+function closeFind() {
+  clearFindHighlights();
+  const bar = document.querySelector<HTMLElement>("#find-bar");
+  if (bar) bar.hidden = true;
+}
+
+function findOpen(): boolean {
+  return !document.querySelector<HTMLElement>("#find-bar")?.hidden;
+}
+
+function wireFind() {
+  const input = document.querySelector<HTMLInputElement>("#find-input");
+  if (!input) return;
+  let deb: number | undefined;
+  input.addEventListener("input", () => {
+    if (deb) clearTimeout(deb);
+    deb = window.setTimeout(() => runFind(input.value), 120);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.shiftKey ? focusFindHit(findIdx - 1) : focusFindHit(findIdx + 1);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeFind();
+    }
+  });
+  document.querySelector("#find-next")?.addEventListener("click", () => focusFindHit(findIdx + 1));
+  document.querySelector("#find-prev")?.addEventListener("click", () => focusFindHit(findIdx - 1));
+  document.querySelector("#find-close")?.addEventListener("click", closeFind);
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      const chat = document.querySelector<HTMLElement>(".chat");
+      if (chat && chat.offsetParent !== null) {
+        e.preventDefault();
+        openFind();
+      }
+    } else if (e.key === "Escape" && findOpen()) {
+      closeFind();
+    }
+  });
 }
 
 function fmtUsd(n: number): string {
@@ -4088,6 +4217,7 @@ async function init() {
   els.composer.addEventListener("submit", onSubmit);
   els.messages.addEventListener("scroll", updateScrollBtn, { passive: true });
   document.querySelector("#scroll-bottom")!.addEventListener("click", scrollChatToBottom);
+  wireFind();
   els.input.addEventListener("input", autoGrow);
   els.input.addEventListener("input", updateSlashMenu);
   els.input.addEventListener("blur", () => setTimeout(hideSlash, 150));

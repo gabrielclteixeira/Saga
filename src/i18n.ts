@@ -528,6 +528,7 @@ const EN: Record<string, string> = {
   "Desligado (só local)": "Off (local only)",
   "Desligado — só modelo local.": "Off — local model only.",
   "Anterior": "Back",
+  "Procurar na conversa…": "Find in conversation…",
   "Saltar configuração": "Skip setup",
   "Seguinte": "Next",
   "Percebi": "Got it",
