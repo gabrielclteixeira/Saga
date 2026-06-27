@@ -94,6 +94,27 @@ const state: {
   compactedUpto: 0,
 };
 
+/** Ícones monocromáticos inline (estilo do rail: currentColor, 1em). Definido ANTES do
+ *  template (app.innerHTML chama icon()), senão dá ReferenceError de TDZ no arranque. */
+const ICON_PATHS: Record<string, string> = {
+  search: `<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>`,
+  nodes: `<circle cx="6" cy="12" r="2.3"/><circle cx="18" cy="6" r="2.3"/><circle cx="18" cy="18" r="2.3"/><line x1="8.1" y1="10.9" x2="15.9" y2="7.1"/><line x1="8.1" y1="13.1" x2="15.9" y2="16.9"/>`,
+  brain: `<path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.8.7 1 1.2 1 2.5h6c0-1.3.2-1.8 1-2.5A6 6 0 0 0 12 3z"/>`,
+  eye: `<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>`,
+  tool: `<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.1-3.1a6 6 0 0 1-7.9 7.9l-6.3 6.3a2.1 2.1 0 0 1-3-3l6.3-6.3a6 6 0 0 1 7.9-7.9l-3.1 3.1z"/>`,
+  hash: `<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>`,
+  refresh: `<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>`,
+  escalate: `<line x1="7" y1="17" x2="17" y2="7"/><polyline points="8 7 17 7 17 16"/>`,
+  pencil: `<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>`,
+  doc: `<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/>`,
+};
+function icon(name: string): string {
+  const p = ICON_PATHS[name];
+  return p
+    ? `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`
+    : "";
+}
+
 initLang();
 const app = document.querySelector<HTMLDivElement>("#app")!;
 app.innerHTML = `
@@ -129,9 +150,9 @@ app.innerHTML = `
           <button type="button" data-mode="claude">${t("Claude")}</button>
         </span>
         <span class="composer-toggles">
-          <button type="button" id="btn-subagents" class="chip-toggle" title="${t("Subagentes (API: orquestra em paralelo · CLI: ferramenta Task)")}">${t("🧩 Subagentes")}</button>
-          <button type="button" id="btn-research" class="chip-toggle" title="${t("Pesquisa web (API: web_search · CLI: WebSearch)")}">${t("🔎 Pesquisar")}</button>
-          <button type="button" id="btn-think" class="chip-toggle" title="${t("Extended thinking (raciocínio) — só Claude API")}">${t("🧠 Think")}</button>
+          <button type="button" id="btn-subagents" class="chip-toggle" title="${t("Subagentes (API: orquestra em paralelo · CLI: ferramenta Task)")}">${icon("nodes")}<span>${t("Subagentes")}</span></button>
+          <button type="button" id="btn-research" class="chip-toggle" title="${t("Pesquisa web (API: web_search · CLI: WebSearch)")}">${icon("search")}<span>${t("Pesquisar")}</span></button>
+          <button type="button" id="btn-think" class="chip-toggle" title="${t("Extended thinking (raciocínio) — só Claude API")}">${icon("brain")}<span>${t("Think")}</span></button>
         </span>
       </div>
       <div class="slash-menu" id="slash-menu" hidden></div>
@@ -692,7 +713,7 @@ function renderMessages() {
         arow.className = "artifact-actions";
         if (isReport) {
           const btn = document.createElement("button");
-          btn.textContent = t("📄 Relatório");
+          btn.innerHTML = `${icon("doc")}<span>${escapeHtml(t("Relatório"))}</span>`;
           btn.addEventListener("click", () =>
             openArtifact({ lang: "markdown", code: item.content, kind: "markdown" })
           );
@@ -721,7 +742,7 @@ function renderMessages() {
       const actions = document.createElement("div");
       actions.className = "msg-actions user-actions";
       const ed = document.createElement("button");
-      ed.textContent = t("✎ Editar");
+      ed.innerHTML = `${icon("pencil")}<span>${escapeHtml(t("Editar"))}</span>`;
       ed.title = t("Editar e reenviar");
       ed.addEventListener("click", () => editUserMessage(index));
       actions.appendChild(ed);
@@ -786,7 +807,7 @@ function buildSources(sources: Source[]): HTMLDetailsElement {
   const det = document.createElement("details");
   det.className = "sources";
   const sum = document.createElement("summary");
-  sum.textContent = t("🔎 Fontes ({n})", { n: sources.length });
+  sum.innerHTML = `${icon("search")}<span>${escapeHtml(t("Fontes ({n})", { n: sources.length }))}</span>`;
   det.appendChild(sum);
   const list = document.createElement("div");
   list.className = "sources-list";
@@ -829,20 +850,20 @@ function buildActions(): HTMLDivElement {
   const actions = document.createElement("div");
   actions.className = "msg-actions";
 
-  const mk = (label: string, title: string, fn: () => void) => {
+  const mk = (ic: string, label: string, title: string, fn: () => void) => {
     const b = document.createElement("button");
-    b.textContent = label;
+    b.innerHTML = `${icon(ic)}<span>${escapeHtml(label)}</span>`;
     b.title = title;
     b.addEventListener("click", fn);
     return b;
   };
 
-  actions.appendChild(mk(t("↻ Regenerar"), t("Regenerar a resposta"), () => regenerate()));
+  actions.appendChild(mk("refresh", t("Regenerar"), t("Regenerar a resposta"), () => regenerate()));
 
   // Escalonamento para o Claude só quando está configurado (local-first).
   if (cloudEnabled()) {
     actions.appendChild(
-      mk(t("⤴ Perguntar ao Claude"), t("Escalar esta resposta para o Claude"), () =>
+      mk("escalate", t("Perguntar ao Claude"), t("Escalar esta resposta para o Claude"), () =>
         regenerate({ routeOverride: "claude" })
       )
     );
@@ -3063,13 +3084,13 @@ async function deleteModelUi(name: string) {
 /** Badges a partir de capacidades já conhecidas (do registo ollama.com). */
 function regCapBadges(caps: string[]): string {
   const map: Record<string, [string, string]> = {
-    vision: ["👁", t("Visão (imagens)")],
-    tools: ["🛠", t("Ferramentas / pesquisa web")],
-    thinking: ["🧠", t("Raciocínio")],
-    embedding: ["🔢", t("Embeddings")],
+    vision: ["eye", t("Visão (imagens)")],
+    tools: ["tool", t("Ferramentas / pesquisa web")],
+    thinking: ["brain", t("Raciocínio")],
+    embedding: ["hash", t("Embeddings")],
   };
   return caps
-    .map((c) => (map[c] ? `<span class="cap" title="${map[c][1]}">${map[c][0]}</span>` : ""))
+    .map((c) => (map[c] ? `<span class="cap" title="${map[c][1]}">${icon(map[c][0])}</span>` : ""))
     .join("");
 }
 
@@ -3257,9 +3278,9 @@ async function lmInstallUi() {
 function capBadges(name: string): string {
   const c = modelCapabilities(name);
   const parts: string[] = [];
-  if (c.tools) parts.push(`<span class="cap" title="${t("Ferramentas / pesquisa web")}">🛠</span>`);
-  if (c.vision) parts.push(`<span class="cap" title="${t("Visão (imagens)")}">👁</span>`);
-  if (c.reasoning) parts.push(`<span class="cap" title="${t("Raciocínio")}">🧠</span>`);
+  if (c.tools) parts.push(`<span class="cap" title="${t("Ferramentas / pesquisa web")}">${icon("tool")}</span>`);
+  if (c.vision) parts.push(`<span class="cap" title="${t("Visão (imagens)")}">${icon("eye")}</span>`);
+  if (c.reasoning) parts.push(`<span class="cap" title="${t("Raciocínio")}">${icon("brain")}</span>`);
   return parts.join("");
 }
 

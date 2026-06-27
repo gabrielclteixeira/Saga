@@ -1935,6 +1935,28 @@ dialog::backdrop {
 .quant-in {
   flex: 0 0 92px;
 }
+/* Ícones monocromáticos inline (currentColor, alinham com o texto). */
+.ic {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+}
+.chip-toggle,
+.msg-actions button,
+.sources > summary,
+.artifact-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.cap {
+  display: inline-flex;
+  align-items: center;
+}
+.cap .ic {
+  width: 14px;
+  height: 14px;
+}
 .catalog-legend {
   margin-top: 2px;
   color: var(--muted);

@@ -61,6 +61,13 @@ const EN: Record<string, string> = {
   "🧩 Subagentes": "🧩 Subagents",
   "🔎 Pesquisar": "🔎 Search",
   "🧠 Think": "🧠 Think",
+  "Subagentes": "Subagents",
+  "Pesquisar": "Search",
+  "Think": "Think",
+  "Regenerar": "Regenerate",
+  "Perguntar ao Claude": "Ask Claude",
+  "Relatório": "Report",
+  "Fontes ({n})": "Sources ({n})",
   "Subagentes (API: orquestra em paralelo · CLI: ferramenta Task)":
     "Subagents (API: orchestrate in parallel · CLI: Task tool)",
   "Pesquisa web (API: web_search · CLI: WebSearch)": "Web search (API: web_search · CLI: WebSearch)",
