@@ -10,6 +10,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   api,
@@ -173,6 +174,7 @@ app.innerHTML = `
         <div class="empty">${t("Faz uma pergunta. Corre no teu modelo local; escala para o Claude quando quiseres.")}</div>
       </div>
       <button type="button" class="scroll-bottom" id="scroll-bottom" title="${t("Ir para a mensagem mais recente")}" aria-label="${t("Ir para a mensagem mais recente")}" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg></button>
+      <div class="drop-overlay" id="drop-overlay"><div class="drop-overlay-inner">${icon("download")}<span>${t("Larga para anexar")}</span></div></div>
       <div class="attachments" id="attachments"></div>
       <div class="route-mode" id="route-mode">
         <span class="route-pick" id="route-pick" hidden>
@@ -803,6 +805,50 @@ function wireFind() {
       closeFind();
     }
   });
+}
+
+// ---- Drag & drop de ficheiros (o webview entrega caminhos, não objetos File) ----
+function chatVisible(): boolean {
+  const chat = document.querySelector<HTMLElement>(".chat");
+  return !!chat && chat.offsetParent !== null;
+}
+
+function setDropActive(on: boolean) {
+  document.body.classList.toggle("drop-active", on && chatVisible());
+}
+
+/** Anexa ficheiros largados (por caminho) à composição atual. */
+async function addDroppedFiles(paths: string[]) {
+  let added = 0;
+  for (const path of paths) {
+    try {
+      state.pendingAttachments.push(await api.attachmentFromPath(path));
+      added++;
+    } catch (e) {
+      console.error("falha a anexar ficheiro largado", e);
+      const nm = path.split(/[\\/]/).pop() || path;
+      showHint(t("Não foi possível ler {name}.", { name: nm }));
+    }
+  }
+  if (added) renderPendingAttachments();
+}
+
+async function wireDragDrop() {
+  try {
+    await getCurrentWebview().onDragDropEvent((event) => {
+      const p = event.payload;
+      if (p.type === "enter" || p.type === "over") {
+        setDropActive(true);
+      } else if (p.type === "leave") {
+        setDropActive(false);
+      } else if (p.type === "drop") {
+        setDropActive(false);
+        if (chatVisible() && p.paths?.length) void addDroppedFiles(p.paths);
+      }
+    });
+  } catch (e) {
+    console.error("drag & drop indisponível", e);
+  }
 }
 
 function fmtUsd(n: number): string {
@@ -4401,6 +4447,7 @@ async function init() {
   els.messages.addEventListener("scroll", updateScrollBtn, { passive: true });
   document.querySelector("#scroll-bottom")!.addEventListener("click", scrollChatToBottom);
   wireFind();
+  void wireDragDrop();
   els.input.addEventListener("input", autoGrow);
   els.input.addEventListener("input", updateSlashMenu);
   els.input.addEventListener("blur", () => setTimeout(hideSlash, 150));

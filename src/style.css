@@ -649,6 +649,35 @@ body {
 .scroll-bottom[hidden] {
   display: none;
 }
+/* Sobreposição de arrastar-e-largar ficheiros */
+.drop-overlay {
+  display: none;
+  position: absolute;
+  inset: 8px;
+  z-index: 40;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  border: 2px dashed var(--accent);
+  border-radius: 14px;
+  pointer-events: none;
+}
+body.drop-active .drop-overlay {
+  display: flex;
+}
+.drop-overlay-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+}
+.drop-overlay-inner .ic {
+  width: 36px;
+  height: 36px;
+}
 /* Barra de procura na conversa (Ctrl/⌘+F) */
 .find-bar {
   position: absolute;

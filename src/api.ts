@@ -235,6 +235,8 @@ export const api = {
   logDir: () => invoke<string>("log_dir"),
   extractFileText: (name: string, dataBase64: string) =>
     invoke<string>("extract_file_text", { name, dataBase64 }),
+  attachmentFromPath: (path: string) =>
+    invoke<Attachment>("attachment_from_path", { path }),
   openLogs: () => invoke<void>("open_logs"),
   resetAccounting: () => invoke<Accounting>("reset_accounting"),
   getMemoryPreview: () => invoke<string>("get_memory_preview"),

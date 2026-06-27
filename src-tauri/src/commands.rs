@@ -608,6 +608,59 @@ pub async fn extract_file_text(name: String, data_base64: String) -> Result<Stri
         .map_err(|e| e.to_string())
 }
 
+/// Constrói um anexo a partir de um caminho do sistema (drag & drop entrega caminhos,
+/// não objetos File). Imagens → base64 para a visão; documentos → texto extraído.
+#[tauri::command]
+pub async fn attachment_from_path(path: String) -> Result<crate::providers::Attachment, String> {
+    use base64::Engine;
+    let p = std::path::PathBuf::from(&path);
+    let name = p
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "ficheiro".into());
+    let ext = p
+        .extension()
+        .map(|s| s.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    let bytes = tokio::fs::read(&p)
+        .await
+        .map_err(|e| format!("não foi possível ler {name}: {e}"))?;
+
+    let image_media = match ext.as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "bmp" => Some("image/bmp"),
+        _ => None,
+    };
+    if let Some(media) = image_media {
+        let data_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        return Ok(crate::providers::Attachment {
+            kind: "image".into(),
+            media_type: media.into(),
+            data_base64,
+            name: name.clone(),
+            text: String::new(),
+        });
+    }
+    let text = tokio::task::spawn_blocking(move || crate::extract::extract(&name, &bytes))
+        .await
+        .map_err(|e| e.to_string())?;
+    // `name` foi movido para a closure; recalcula a partir do caminho.
+    let name = p
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "documento".into());
+    Ok(crate::providers::Attachment {
+        kind: "document".into(),
+        media_type: "application/octet-stream".into(),
+        data_base64: String::new(),
+        name,
+        text,
+    })
+}
+
 #[tauri::command]
 pub async fn list_ollama_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();

@@ -530,6 +530,7 @@ const EN: Record<string, string> = {
   "Anterior": "Back",
   "Procurar na conversa…": "Find in conversation…",
   "Anexar ficheiro": "Attach file",
+  "Larga para anexar": "Drop to attach",
   "+ Ficheiro": "+ File",
   "documento": "document",
   "Tipo de ficheiro não suportado: {name}": "Unsupported file type: {name}",
