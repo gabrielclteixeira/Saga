@@ -237,6 +237,8 @@ export const api = {
     invoke<string>("extract_file_text", { name, dataBase64 }),
   attachmentFromPath: (path: string) =>
     invoke<Attachment>("attachment_from_path", { path }),
+  warmModel: (model?: string) =>
+    invoke<void>("warm_model", { model: model ?? null }),
   openLogs: () => invoke<void>("open_logs"),
   resetAccounting: () => invoke<Accounting>("reset_accounting"),
   getMemoryPreview: () => invoke<string>("get_memory_preview"),

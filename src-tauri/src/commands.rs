@@ -629,6 +629,30 @@ pub async fn extract_file_text(name: String, data_base64: String) -> Result<Stri
         .map_err(|e| e.to_string())
 }
 
+/// Pré-carrega o modelo local em memória para a 1.ª resposta ser imediata (sem cold-start).
+/// Fire-and-forget: só aplica ao Ollama e ignora erros (Ollama pode estar desligado).
+#[tauri::command]
+pub async fn warm_model(state: State<'_, AppState>, model: Option<String>) -> Result<(), String> {
+    let (endpoint, default_model, num_ctx, is_ollama) = {
+        let s = state.settings.lock().unwrap();
+        (
+            s.ollama_endpoint.clone(),
+            s.ollama_model.clone(),
+            s.ollama_num_ctx,
+            s.local_provider == "ollama",
+        )
+    };
+    if !is_ollama {
+        return Ok(());
+    }
+    let model = model.unwrap_or(default_model);
+    if model.trim().is_empty() {
+        return Ok(());
+    }
+    let _ = providers::ollama::warm(&endpoint, &model, num_ctx).await;
+    Ok(())
+}
+
 /// Constrói um anexo a partir de um caminho do sistema (drag & drop entrega caminhos,
 /// não objetos File). Imagens → base64 para a visão; documentos → texto extraído.
 #[tauri::command]

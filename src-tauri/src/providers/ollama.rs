@@ -412,6 +412,30 @@ pub async fn pull_model<F: FnMut(&str, f64)>(
     Ok(())
 }
 
+/// Pré-carrega o modelo em memória (VRAM) sem gerar nada: um pedido a `/api/generate`
+/// com prompt vazio faz o Ollama carregar os pesos e mantê-lo residente (`keep_alive`).
+/// Assim a 1.ª resposta evita o cold-start (segundos a ler do disco para a VRAM).
+/// Aquece com o `num_ctx` base — o caminho comum (chat curto) reaproveita-o; um documento
+/// grande pode obrigar a redimensionar o contexto, mas os pesos já ficam em cache.
+pub async fn warm(endpoint: &str, model: &str, num_ctx: u32) -> Result<()> {
+    let url = format!("{}/api/generate", endpoint.trim_end_matches('/'));
+    let body = serde_json::json!({
+        "model": model,
+        "prompt": "",
+        "stream": false,
+        "keep_alive": KEEP_ALIVE,
+        "options": { "num_ctx": num_ctx },
+    });
+    reqwest::Client::new()
+        .post(&url)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(180))
+        .send()
+        .await
+        .map_err(|e| anyhow!("falha a aquecer o modelo {model}: {e}"))?;
+    Ok(())
+}
+
 /// Lista os modelos disponíveis localmente (/api/tags).
 pub async fn list_models(endpoint: &str) -> Result<Vec<String>> {
     let url = format!("{}/api/tags", endpoint.trim_end_matches('/'));

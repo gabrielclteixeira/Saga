@@ -830,7 +830,10 @@ async function addDroppedFiles(paths: string[]) {
       showHint(t("Não foi possível ler {name}.", { name: nm }));
     }
   }
-  if (added) renderPendingAttachments();
+  if (added) {
+    renderPendingAttachments();
+    warmLocalModel();
+  }
 }
 
 async function wireDragDrop() {
@@ -1520,6 +1523,7 @@ async function onFilesSelected() {
   }
   els.fileInput.value = "";
   renderPendingAttachments();
+  warmLocalModel(); // documento grande → adianta o carregamento enquanto compõe
 }
 
 /** Colar imagens do clipboard (Ctrl+V / prints). */
@@ -1895,6 +1899,22 @@ function stopWaitTicker() {
     clearInterval(waitTicker);
     waitTicker = undefined;
   }
+}
+
+// Pré-aquecimento do modelo local: carrega-o em VRAM antes do 1.º envio para a resposta
+// não ter de esperar pelo cold-start. Throttle por modelo (o keep_alive mantém-no residente).
+let lastWarm = { model: "", at: 0 };
+function warmLocalModel(model?: string) {
+  if (state.busy) return; // já está a gerar (modelo carregado)
+  if (state.routeMode === "claude") return; // só faz sentido para o modelo local
+  const s = state.settings;
+  if (!s || s.local_provider !== "ollama") return;
+  const m = model || s.ollama_model;
+  if (!m) return;
+  const now = Date.now();
+  if (m === lastWarm.model && now - lastWarm.at < 60_000) return; // no máx. 1×/min por modelo
+  lastWarm = { model: m, at: now };
+  void api.warmModel(m).catch(() => {});
 }
 
 async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
@@ -4023,6 +4043,7 @@ async function saveModelsSettings(patch: Partial<Settings>) {
   await api.saveSettings(updated);
   state.settings = updated;
   applyComposerToggles();
+  warmLocalModel(); // modelo/endpoint pode ter mudado → aquece o novo
 }
 
 async function hubSave() {
@@ -4610,6 +4631,8 @@ async function init() {
   void wireDragDrop();
   els.input.addEventListener("input", autoGrow);
   els.input.addEventListener("input", updateSlashMenu);
+  // Foco no compositor = intenção de escrever → aquece o modelo enquanto o utilizador digita.
+  els.input.addEventListener("focus", () => warmLocalModel());
   els.input.addEventListener("blur", () => setTimeout(hideSlash, 150));
   els.input.addEventListener("keydown", (e) => {
     if (slashOpen()) {
@@ -4784,6 +4807,8 @@ async function init() {
     if (state.settings && !state.settings.onboarding_done) {
       openWizard();
     }
+    // Aquece o modelo local logo no arranque → 1.ª resposta sem cold-start.
+    warmLocalModel();
   } catch (e) {
     console.error(e);
   } finally {

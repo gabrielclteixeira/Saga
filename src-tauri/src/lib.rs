@@ -177,6 +177,7 @@ pub fn run() {
             commands::open_logs,
             commands::extract_file_text,
             commands::attachment_from_path,
+            commands::warm_model,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
