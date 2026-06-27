@@ -190,18 +190,76 @@ async fn tavily_search(api_key: &str, query: &str, max: usize) -> Result<Vec<Web
     Ok(out)
 }
 
-async fn duckduckgo_search(query: &str, max: usize) -> Result<Vec<WebResult>> {
-    // POST ao endpoint HTML; se vier vazio (DDG bloqueia scraping com frequência),
-    // tenta o endpoint "lite". Ambos best-effort — sem chave a fiabilidade é baixa.
-    let mut out = ddg_post("https://html.duckduckgo.com/html/", query, max)
-        .await
-        .unwrap_or_default();
-    if out.is_empty() {
-        out = ddg_post("https://lite.duckduckgo.com/lite/", query, max)
-            .await
-            .unwrap_or_default();
+// ── Rate limiter GLOBAL do DuckDuckGo ─────────────────────────────────────────────────────
+// O DDG sem chave faz deteção anti-bot: ao detetar acessos automáticos/rápidos devolve 202 e
+// BLOQUEIA o IP por um tempo (não é um simples contador por minuto). Para não disparar o
+// bloqueio, espaçamos TODOS os pedidos DDG (entre runs, web_agent e deep_research) e, quando
+// apanhamos um bloqueio, entramos em cooldown em vez de continuar a martelar.
+const DDG_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(2500);
+const DDG_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(90);
+
+struct DdgGate {
+    last: Option<std::time::Instant>,
+    blocked_until: Option<std::time::Instant>,
+}
+static DDG_GATE: std::sync::OnceLock<tokio::sync::Mutex<DdgGate>> = std::sync::OnceLock::new();
+fn ddg_gate() -> &'static tokio::sync::Mutex<DdgGate> {
+    DDG_GATE.get_or_init(|| {
+        tokio::sync::Mutex::new(DdgGate {
+            last: None,
+            blocked_until: None,
+        })
+    })
+}
+
+/// Espaça os pedidos ao DDG (segura o lock durante a espera → serializa + ritma todos os
+/// chamadores). Devolve `false` se estiver em cooldown pós-bloqueio (não vale a pena pedir).
+async fn ddg_throttle() -> bool {
+    let mut g = ddg_gate().lock().await;
+    let now = std::time::Instant::now();
+    if let Some(until) = g.blocked_until {
+        if now < until {
+            return false;
+        }
+        g.blocked_until = None;
     }
-    Ok(out)
+    if let Some(last) = g.last {
+        let elapsed = now.saturating_duration_since(last);
+        if elapsed < DDG_MIN_INTERVAL {
+            tokio::time::sleep(DDG_MIN_INTERVAL - elapsed).await;
+        }
+    }
+    g.last = Some(std::time::Instant::now());
+    true
+}
+
+/// Marca um bloqueio (202/429): pausa os pedidos DDG durante o cooldown.
+async fn ddg_mark_blocked() {
+    ddg_gate().lock().await.blocked_until = Some(std::time::Instant::now() + DDG_COOLDOWN);
+}
+
+async fn duckduckgo_search(query: &str, max: usize) -> Result<Vec<WebResult>> {
+    // Ritma globalmente; se estivermos em cooldown, falha já (não martela um IP bloqueado).
+    if !ddg_throttle().await {
+        return Err(anyhow!(
+            "DuckDuckGo em pausa (cooldown após bloqueio). Aguarda ~1 min ou usa uma chave de pesquisa."
+        ));
+    }
+    // POST ao endpoint HTML; se vier vazio (200), tenta o "lite". Um 202/429 = bloqueio → cooldown.
+    match ddg_post("https://html.duckduckgo.com/html/", query, max).await {
+        Ok(out) if !out.is_empty() => Ok(out),
+        Ok(_) => match ddg_post("https://lite.duckduckgo.com/lite/", query, max).await {
+            Ok(out) => Ok(out),
+            Err(e) => {
+                ddg_mark_blocked().await;
+                Err(e)
+            }
+        },
+        Err(e) => {
+            ddg_mark_blocked().await;
+            Err(e)
+        }
+    }
 }
 
 /// POST de pesquisa a um endpoint DuckDuckGo (html ou lite), com headers de browser.

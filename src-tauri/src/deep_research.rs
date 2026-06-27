@@ -68,23 +68,6 @@ async fn ask(endpoint: &str, model: &str, system: &str, user: &str, opts: GenOpt
     ollama::chat_stream(endpoint, model, &msgs, capped, false, |_| {}, |_| {}).await
 }
 
-/// Pesquisa com tolerância ao limite de ritmo: o DuckDuckGo sem chave bloqueia rajadas, por
-/// isso, em caso de vazio/erro, espera e tenta uma vez mais.
-async fn search_resilient(provider: &str, api_key: &str, query: &str, n: usize) -> Vec<web::WebResult> {
-    if let Ok(r) = web::web_search(provider, api_key, query, n).await {
-        if !r.is_empty() {
-            return r;
-        }
-    }
-    if provider == "duckduckgo" || provider.is_empty() {
-        tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
-        if let Ok(r) = web::web_search(provider, api_key, query, n).await {
-            return r;
-        }
-    }
-    Vec::new()
-}
-
 /// Acrescenta as fontes novas (sem duplicar por URL).
 fn collect_sources(sources: &mut Vec<(String, String)>, results: &[web::WebResult]) {
     for r in results {
@@ -143,12 +126,10 @@ pesquisável e mencionar {year} quando fizer sentido. Responde APENAS com um arr
     let mut evidence = String::new();
     let mut fetches = 0usize;
     let mut got_any = false; // alguma pesquisa devolveu resultados?
-    for (i, sq) in subqs.iter().enumerate() {
-        if i > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(1200)).await; // ritma (anti-bloqueio)
-        }
+    for sq in &subqs {
         on_tool("web_search", sq);
-        let results = search_resilient(provider, api_key, sq, 5).await;
+        // O ritmo/anti-bloqueio do DDG é tratado globalmente em tools::web (rate limiter).
+        let results = web::web_search(provider, api_key, sq, 5).await.unwrap_or_default();
         collect_sources(&mut sources, &results);
         evidence.push_str(&format!("### {sq}\n"));
         if results.is_empty() {
@@ -186,12 +167,9 @@ recente em {year}?', 'confirma o preço/data atual de Y'). Responde APENAS com u
         let vz = ask(endpoint, model, &verify_sys, &vuser, opts).await?;
         total_in += vz.input_tokens;
         total_out += vz.output_tokens;
-        for (i, vq) in parse_json_array(&vz.text).into_iter().take(n_verify).enumerate() {
-            if i > 0 {
-                tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
-            }
+        for vq in parse_json_array(&vz.text).into_iter().take(n_verify) {
             on_tool("web_search", &vq);
-            let results = search_resilient(provider, api_key, &vq, 4).await;
+            let results = web::web_search(provider, api_key, &vq, 4).await.unwrap_or_default();
             collect_sources(&mut sources, &results);
             if !results.is_empty() {
                 got_any = true;
