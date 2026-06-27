@@ -173,15 +173,23 @@ azulejo identity + animated caravel loader · OS-keychain secrets · CI release 
 **iterative cited deep-research** · **scheduled automations** (cron, background runner + notifications) ·
 **local web search** (Jina · Tavily · Brave · Serper · Exa, + keyless DuckDuckGo; **Jina Reader** for page fetch) ·
 **compact / clear a Saga** (local-model summarization) · **PDF export** (print-to-PDF + `create_pdf` tool + bundled
-skill) · **English / Portuguese UI** · per-provider keychain keys.
+skill) · **English / Portuguese UI** · per-provider keychain keys · **signed auto-update** (minisign artifacts +
+`latest.json`, background download on launch) · external links open in the system browser.
 
 **Next:**
 
+- **Clarify Skills vs Playbooks vs Workflows** — review and sharpen what each workspace doc type is *for*
+  (auto-surfaced skills vs on-demand playbooks vs runnable agentic workflows), so the distinction is obvious in
+  the UI and prompts; today the boundaries blur. Tighten naming, help text, and how each is exposed to the model.
+- **Rich first-time experience** — a polished onboarding beyond the current wizard: a welcoming intro, a guided
+  hardware-aware model pick **and one-click download** with progress, a quick tour of the core surfaces (Sagas,
+  Workspace, web search, optional Claude), sensible defaults applied automatically, and a friendly empty state.
+  Goal: from first launch to a working local chat in under a minute, no docs needed.
 - **Zero-setup distribution** — bundle/auto-install Ollama as a managed sidecar (auto-pull a small default
   model on first run), package the Playwright sidecar (`externalBin`) so the browser tool needs no manual
   install, and round off the first-run wizard. Goal: double-click the installer and it just works.
-- **Signed & auto-updating** — code-sign + notarize installers (drops the "unknown publisher" warnings) and
-  turn the Tauri updater back on.
+- **Code-sign & notarize installers** — the updater is signed and auto-update is live; still pending is OS-level
+  **code-signing + notarization** (Apple Developer ID / Windows Authenticode) to drop the "unknown publisher" warnings.
 - **Agents** — reusable personas that specialize the model for a task (e.g. *Software Engineer* with
   workspace/tools on, *Expert Web Researcher* with web search + deep-research on, *Writer*, …). Each agent is a
   system prompt plus suggested toggles/route, selectable per-Saga or per-message; builds on the existing
