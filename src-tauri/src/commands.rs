@@ -962,12 +962,20 @@ pub async fn send_message_stream(
                 )
                 .await
             } else {
+                // Modelos com raciocínio (gemma4, qwen3, deepseek-r1…) emitem "thinking"
+                // separado — pede-o e reenvia-o como feedback ao utilizador.
+                let think = providers::ollama::model_reasons(&prepared.model);
+                let tx_think = channel.clone();
                 providers::ollama::chat_stream(
                     &settings.ollama_endpoint,
                     &prepared.model,
                     &prepared.full_messages,
                     gopts,
+                    think,
                     on_delta,
+                    move |t| {
+                        let _ = tx_think.send(StreamEvent::Thinking { text: t.to_string() });
+                    },
                 )
                 .await
             }

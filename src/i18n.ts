@@ -69,6 +69,7 @@ const EN: Record<string, string> = {
   "Relatório": "Report",
   "Fontes ({n})": "Sources ({n})",
   "raciocínio": "reasoning",
+  "a raciocinar…": "reasoning…",
   "Correr": "Run",
   "Gerar com IA — descreve o que queres": "Generate with AI — describe what you want",
   "visão": "vision",

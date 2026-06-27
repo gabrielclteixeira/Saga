@@ -712,11 +712,12 @@ function renderMessages() {
     }
 
     if (item.thinking) {
+      const live = index === state.items.length - 1 && state.busy;
       const det = document.createElement("details");
       det.className = "thinking-block";
-      det.open = index === state.items.length - 1 && state.busy;
+      det.open = live;
       const sum = document.createElement("summary");
-      sum.innerHTML = `${icon("brain")}<span>${escapeHtml(t("raciocínio"))}</span>`;
+      sum.innerHTML = `${icon("brain")}<span>${escapeHtml(live ? t("a raciocinar…") : t("raciocínio"))}</span>`;
       const body = document.createElement("div");
       body.className = "thinking-body";
       body.textContent = item.thinking;
@@ -730,7 +731,17 @@ function renderMessages() {
     if (item.content !== "" || item.role === "assistant") {
       const bubble = document.createElement("div");
       bubble.className = "bubble";
-      if (item.role === "assistant" && !item.error) {
+      const liveEmpty =
+        item.role === "assistant" &&
+        !item.error &&
+        item.content === "" &&
+        index === state.items.length - 1 &&
+        state.busy;
+      if (liveEmpty) {
+        // Bolha de espera persistente (cobre o arranque do modelo e o raciocínio inicial).
+        bubble.innerHTML = `<span class="waiting-row">${caravelLoader(30)}<span class="status-text"></span></span>`;
+        bubble.querySelector(".status-text")!.textContent = streamWaiting || t("A pensar…");
+      } else if (item.role === "assistant" && !item.error) {
         bubble.classList.add("markdown");
         // Renderiza o corpo sem a secção "## Fontes" (essa vai para o disclosure de fontes).
         bubble.innerHTML = renderMarkdown(
@@ -1387,6 +1398,9 @@ function cloudEnabled(): boolean {
 }
 
 /** Empurra uma bolha de assistente e preenche-a com o streaming. */
+/** Texto mostrado no spinner da bolha enquanto o assistente trabalha (antes do 1.º token). */
+let streamWaiting = "";
+
 async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   const conversationId = state.currentConversationId!;
   const sendOpts: SendOpts = {
@@ -1404,10 +1418,22 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     if (sendOpts.subagents) sendOpts.routeOverride = "claude";
     else if (sendOpts.research && !localWeb) sendOpts.routeOverride = "claude";
   }
+  // Estado de espera mostrado na bolha vazia (persistente entre re-renders) até chegar conteúdo.
+  const localReasons =
+    state.routeMode !== "claude" &&
+    !!state.settings?.ollama_model &&
+    modelCapabilities(state.settings.ollama_model).reasoning;
+  streamWaiting = sendOpts.research
+    ? t("A pesquisar na net…")
+    : sendOpts.subagents
+      ? t("A coordenar subagentes…")
+      : sendOpts.thinking || localReasons
+        ? t("A pensar a fundo…")
+        : t("A pensar…");
   const assistant: Item = { role: "assistant", content: "", report: sendOpts.research };
   state.items.push(assistant);
-  renderMessages();
   setBusy(true);
+  renderMessages();
 
   const paintBubble = () => {
     const b = els.messages.lastElementChild?.querySelector(".bubble") as HTMLDivElement | null;
@@ -1417,19 +1443,6 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     }
     els.messages.scrollTop = els.messages.scrollHeight;
   };
-  const waiting = sendOpts.research
-    ? t("A pesquisar na net…")
-    : sendOpts.subagents
-      ? t("A coordenar subagentes…")
-      : sendOpts.thinking
-        ? t("A pensar a fundo…")
-        : t("A pensar…");
-  const tb = els.messages.lastElementChild?.querySelector(".bubble") as HTMLDivElement | null;
-  if (tb) {
-    tb.innerHTML =
-      `<span class="waiting-row">${caravelLoader(30)}<span class="status-text"></span></span>`;
-    tb.querySelector(".status-text")!.textContent = waiting;
-  }
 
   let start: { route: "local" | "claude"; model: string; reason: string } | null = null;
 

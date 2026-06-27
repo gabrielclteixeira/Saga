@@ -35,6 +35,9 @@ struct ChatRequest<'a> {
     stream: bool,
     options: serde_json::Value,
     keep_alive: &'a str,
+    /// Pede o canal de raciocínio separado (`message.thinking`) — só para modelos que pensam.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    think: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -43,6 +46,19 @@ struct WireMessage {
     content: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     images: Vec<String>,
+    /// Tokens de raciocínio (modelos com "thinking"); separados do `content`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    thinking: String,
+}
+
+/// Deteta, pelo nome, se um modelo Ollama faz raciocínio ("thinking") — espelha o frontend.
+pub fn model_reasons(name: &str) -> bool {
+    let n = name.to_lowercase();
+    n.contains("deepseek-r1")
+        || n.contains("qwq")
+        || n.contains("qwen3")
+        || n.contains("gemma4")
+        || n.contains("thinking")
 }
 
 #[derive(Deserialize)]
@@ -101,6 +117,7 @@ fn to_wire(messages: &[ChatMessage]) -> Vec<WireMessage> {
                 .filter(|a| a.kind == "image")
                 .map(|a| a.data_base64.clone())
                 .collect(),
+            thinking: String::new(),
         })
         .collect()
 }
@@ -158,6 +175,7 @@ pub async fn chat(
         stream: false,
         options: opts_json(opts),
         keep_alive: KEEP_ALIVE,
+        think: None,
     };
 
     let client = reqwest::Client::new();
@@ -188,13 +206,16 @@ pub async fn chat(
     })
 }
 
-/// Conversa em streaming: chama `on_delta` para cada fragmento de texto recebido.
-pub async fn chat_stream<F: FnMut(&str)>(
+/// Conversa em streaming: `on_delta` recebe cada fragmento de texto; `on_thinking` recebe os
+/// fragmentos de raciocínio (se `think` e o modelo os emitir).
+pub async fn chat_stream<F: FnMut(&str), G: FnMut(&str)>(
     endpoint: &str,
     model: &str,
     messages: &[ChatMessage],
     opts: GenOpts,
+    think: bool,
     mut on_delta: F,
+    mut on_thinking: G,
 ) -> Result<LlmResponse> {
     let url = format!("{}/api/chat", endpoint.trim_end_matches('/'));
     let wire = to_wire(messages);
@@ -204,6 +225,7 @@ pub async fn chat_stream<F: FnMut(&str)>(
         stream: true,
         options: opts_json(opts),
         keep_alive: KEEP_ALIVE,
+        think: think.then_some(true),
     };
 
     let client = reqwest::Client::new();
@@ -238,6 +260,7 @@ pub async fn chat_stream<F: FnMut(&str)>(
                 &mut input_tokens,
                 &mut output_tokens,
                 &mut on_delta,
+                &mut on_thinking,
             );
         }
     }
@@ -250,6 +273,7 @@ pub async fn chat_stream<F: FnMut(&str)>(
             &mut input_tokens,
             &mut output_tokens,
             &mut on_delta,
+            &mut on_thinking,
         );
     }
 
@@ -262,18 +286,22 @@ pub async fn chat_stream<F: FnMut(&str)>(
     })
 }
 
-fn parse_ollama_line<F: FnMut(&str)>(
+fn parse_ollama_line<F: FnMut(&str), G: FnMut(&str)>(
     line: &str,
     full: &mut String,
     input_tokens: &mut u64,
     output_tokens: &mut u64,
     on_delta: &mut F,
+    on_thinking: &mut G,
 ) {
     let line = line.trim();
     if line.is_empty() {
         return;
     }
     if let Ok(parsed) = serde_json::from_str::<ChatResponse>(line) {
+        if !parsed.message.thinking.is_empty() {
+            on_thinking(&parsed.message.thinking);
+        }
         if !parsed.message.content.is_empty() {
             on_delta(&parsed.message.content);
             full.push_str(&parsed.message.content);
