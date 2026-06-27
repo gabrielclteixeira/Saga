@@ -533,6 +533,8 @@ const EN: Record<string, string> = {
   "Larga para anexar": "Drop to attach",
   "Abrir documento": "Open document",
   "(sem texto extraído)": "(no extracted text)",
+  "Texto extraído": "Extracted text",
+  "Ver PDF": "View PDF",
   "+ Ficheiro": "+ File",
   "documento": "document",
   "Tipo de ficheiro não suportado: {name}": "Unsupported file type: {name}",

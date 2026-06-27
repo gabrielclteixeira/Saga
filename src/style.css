@@ -955,12 +955,13 @@ mark.find-current {
 .doc-viewer-panel {
   display: flex;
   flex-direction: column;
-  width: min(820px, 90vw);
-  max-height: 82vh;
+  width: min(900px, 92vw);
+  height: 86vh;
   background: var(--bg-2);
   border: 1px solid var(--border);
   border-radius: 14px;
   overflow: hidden;
+  cursor: default;
 }
 .doc-viewer-head {
   display: flex;
@@ -976,7 +977,22 @@ mark.find-current {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.doc-viewer-toggle[hidden] {
+  display: none;
+}
+.doc-viewer-body-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.doc-viewer-pdf {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: #fff;
+}
 .doc-viewer-body {
+  flex: 1;
   margin: 0;
   padding: 16px 18px;
   overflow: auto;

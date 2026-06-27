@@ -665,18 +665,22 @@ pub async fn attachment_from_path(path: String) -> Result<crate::providers::Atta
             text: String::new(),
         });
     }
-    let text = tokio::task::spawn_blocking(move || crate::extract::extract(&name, &bytes))
+    // Media type para o visor (PDF abre na vista nativa do webview).
+    let media_type = match ext.as_str() {
+        "pdf" => "application/pdf",
+        _ => "application/octet-stream",
+    }
+    .to_string();
+    // Guardamos os bytes crus (base64) para o visor; o texto extraído vai para o modelo.
+    let data_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    let name2 = name.clone();
+    let text = tokio::task::spawn_blocking(move || crate::extract::extract(&name2, &bytes))
         .await
         .map_err(|e| e.to_string())?;
-    // `name` foi movido para a closure; recalcula a partir do caminho.
-    let name = p
-        .file_name()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "documento".into());
     Ok(crate::providers::Attachment {
         kind: "document".into(),
-        media_type: "application/octet-stream".into(),
-        data_base64: String::new(),
+        media_type,
+        data_base64,
         name,
         text,
     })

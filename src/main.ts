@@ -934,7 +934,7 @@ function renderMessagesInner() {
           nm.className = "doc-chip-name";
           nm.textContent = a.name || t("documento");
           chip.appendChild(nm);
-          chip.addEventListener("click", () => openDocViewer(a.name || t("documento"), a.text || ""));
+          chip.addEventListener("click", () => openDocViewer(a));
           thumbs.appendChild(chip);
           continue;
         }
@@ -1326,12 +1326,15 @@ async function fileToAttachment(file: File): Promise<Attachment> {
   if (isImageFile(file)) {
     return { kind: "image", media_type: file.type || "image/png", data_base64: base64 };
   }
-  // Documento: o backend extrai o texto; guardamos só o texto (não os bytes crus).
+  // Documento: o backend extrai o texto (vai para o modelo). Guardamos também os bytes
+  // crus (base64) para um visor rico — ex.: ver o PDF original em vez do texto extraído.
   const text = await api.extractFileText(file.name, base64);
+  const ext = fileExt(file.name);
+  const media = file.type || (ext === "pdf" ? "application/pdf" : "application/octet-stream");
   return {
     kind: "document",
-    media_type: file.type || "application/octet-stream",
-    data_base64: "",
+    media_type: media,
+    data_base64: base64,
     name: file.name,
     text,
   };
@@ -1342,7 +1345,7 @@ function docChipEl(a: Attachment, onRemove: () => void): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = "doc-chip clickable";
   wrap.title = t("Abrir documento");
-  wrap.addEventListener("click", () => openDocViewer(a.name || t("documento"), a.text || ""));
+  wrap.addEventListener("click", () => openDocViewer(a));
   const ic = document.createElement("span");
   ic.className = "doc-chip-ic";
   ic.innerHTML = icon("doc");
@@ -1361,31 +1364,82 @@ function docChipEl(a: Attachment, onRemove: () => void): HTMLElement {
   return wrap;
 }
 
-/** Abre o texto extraído de um documento num overlay (o que o modelo leu). */
-function openDocViewer(name: string, text: string) {
+/** Converte base64 num Blob (para object URL — ex.: render do PDF original). */
+function base64ToBlob(b64: string, type: string): Blob {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type });
+}
+
+/** Abre um documento num overlay. PDFs renderizam o ficheiro original (vista nativa do
+ *  webview); outros tipos mostram o texto extraído. Quando há ambos, há um botão para
+ *  alternar entre o PDF e o texto que o modelo leu. */
+function openDocViewer(a: Attachment) {
   document.querySelector("#doc-viewer")?.remove();
+  const name = a.name || t("documento");
+  const text = (a.text || "").trim();
+  const isPdf = a.media_type === "application/pdf" || /\.pdf$/i.test(name);
+  const hasPdf = isPdf && !!a.data_base64;
+
   const overlay = document.createElement("div");
   overlay.id = "doc-viewer";
   overlay.className = "lightbox doc-viewer";
   const panel = document.createElement("div");
   panel.className = "doc-viewer-panel";
   panel.addEventListener("click", (e) => e.stopPropagation());
+
   const head = document.createElement("div");
   head.className = "doc-viewer-head";
   const title = document.createElement("span");
   title.className = "doc-viewer-title";
   title.textContent = name;
+  const toggle = document.createElement("button");
+  toggle.className = "ghost doc-viewer-toggle";
   const close = document.createElement("button");
   close.className = "icon-x";
   close.innerHTML = icon("x");
   close.title = t("Fechar");
-  const body = document.createElement("pre");
-  body.className = "doc-viewer-body";
-  body.textContent = text.trim() || t("(sem texto extraído)");
-  head.append(title, close);
-  panel.append(head, body);
+  head.append(title, toggle, close);
+
+  const bodyWrap = document.createElement("div");
+  bodyWrap.className = "doc-viewer-body-wrap";
+  panel.append(head, bodyWrap);
   overlay.appendChild(panel);
+
+  let blobUrl = "";
+  // mode: "pdf" mostra o ficheiro; "text" mostra o texto extraído.
+  let mode: "pdf" | "text" = hasPdf ? "pdf" : "text";
+  const render = () => {
+    bodyWrap.innerHTML = "";
+    if (mode === "pdf") {
+      if (!blobUrl) blobUrl = URL.createObjectURL(base64ToBlob(a.data_base64, "application/pdf"));
+      const frame = document.createElement("iframe");
+      frame.className = "doc-viewer-pdf";
+      frame.src = blobUrl;
+      bodyWrap.appendChild(frame);
+    } else {
+      const pre = document.createElement("pre");
+      pre.className = "doc-viewer-body";
+      pre.textContent = text || t("(sem texto extraído)");
+      bodyWrap.appendChild(pre);
+    }
+    // O botão de alternância só faz sentido quando temos PDF E texto.
+    if (hasPdf && text) {
+      toggle.hidden = false;
+      toggle.textContent = mode === "pdf" ? t("Texto extraído") : t("Ver PDF");
+    } else {
+      toggle.hidden = true;
+    }
+  };
+  toggle.addEventListener("click", () => {
+    mode = mode === "pdf" ? "text" : "pdf";
+    render();
+  });
+  render();
+
   const dismiss = () => {
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
     overlay.remove();
     document.removeEventListener("keydown", onKey);
   };
