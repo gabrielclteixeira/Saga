@@ -205,6 +205,17 @@ automations are scheduled).
   model (a planning system prompt + a structured plan the UI renders), not just Claude; today's only decomposition
   is the Claude-only subagents planner (`orchestrator.rs`), hidden and non-interactive. Goal: turn "do this big
   thing" into review-then-execute instead of one opaque shot. Reuses the agentic tool loop for execution.
+- **More attachment file types** — today attachments are **images only** (`kind: "image"` → vision models).
+  Add the common document types — **PDF, Word (.docx), Excel (.xlsx), .txt/.md/.csv** — by extracting their text
+  in the Rust backend (e.g. `pdf-extract`/`lopdf`, `docx-rs`, `calamine` for spreadsheets) and feeding it to the
+  model as context. Images keep going to vision; documents become extracted text so any local model can use them.
+  Show the file as a chip with type/size; large files get truncated with a note.
+- **Drag & drop** — drop files (images + the document types above) anywhere on the composer/chat to attach them,
+  with a drop-zone highlight. Reuses the attachment pipeline (`fileToAttachment` + the new extractors); complements
+  the existing paste (`onPaste`) and file-picker paths.
+- **In-chat find (Ctrl/⌘+F)** — a find bar to search **within the current conversation** (highlight matches,
+  next/prev, match count), distinct from the existing cross-Saga full-text search ("Pesquisar Sagas"). Scrolls to
+  and highlights hits in the messages list; Esc closes.
 
 ### Browser tool setup
 
