@@ -135,6 +135,10 @@ body {
 .icon-btn:hover {
   background: var(--bg-3);
 }
+.icon-btn .ic {
+  width: 18px;
+  height: 18px;
+}
 
 /* Layout */
 .layout {
@@ -315,13 +319,19 @@ body {
 }
 .conv-act {
   visibility: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: none;
   color: var(--muted);
   cursor: pointer;
-  font-size: 13px;
   line-height: 1;
-  padding: 0 2px;
+  padding: 2px;
+}
+.conv-act .ic {
+  width: 15px;
+  height: 15px;
 }
 .conv:hover .conv-act {
   visibility: visible;
@@ -785,9 +795,15 @@ body {
   color: #fff;
   border: none;
   cursor: pointer;
-  font-size: 12px;
   line-height: 1;
   padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.thumb button .ic {
+  width: 11px;
+  height: 11px;
 }
 
 /* Miniaturas dentro das mensagens */
@@ -846,6 +862,11 @@ body {
   padding: 8px 14px 12px;
 }
 .route-mode button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--muted);
@@ -905,13 +926,17 @@ body {
 }
 .msg-actions button,
 .msg-actions .model-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--muted);
   border-radius: 8px;
-  padding: 4px 10px;
+  padding: 5px 12px;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 .msg-actions button:hover {
@@ -919,7 +944,7 @@ body {
   color: var(--text);
 }
 .msg-actions .model-pick {
-  padding: 4px 6px;
+  padding: 5px 8px;
 }
 /* Editar a própria mensagem (aparece ao passar o rato) */
 .msg.user .user-actions {
@@ -1001,13 +1026,14 @@ body {
   margin-top: 6px;
 }
 .artifact-actions button {
+  min-height: 30px;
   background: transparent;
   border: 1px solid var(--accent);
   color: var(--accent);
   border-radius: 8px;
-  padding: 4px 10px;
+  padding: 5px 12px;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 .artifact-actions button:hover {
@@ -1590,17 +1616,55 @@ body {
 
 button.ghost {
   margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 7px 12px;
+  padding: 6px 12px;
   cursor: pointer;
+  font: inherit;
   font-size: 12px;
 }
 button.ghost:hover {
   background: var(--bg-3);
   color: var(--text);
+}
+/* Ícones dentro de botões com label — tamanho consistente. */
+button.ghost .ic,
+.msg-actions .ic,
+.artifact-actions .ic,
+.reg-sizes-btn .ic,
+.chip-toggle .ic,
+.route-mode button .ic {
+  width: 14px;
+  height: 14px;
+}
+/* Botão só-ícone para apagar/fechar (×) — quadrado, discreto, perigo no hover. */
+.icon-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.icon-x:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.icon-x .ic {
+  width: 15px;
+  height: 15px;
 }
 
 /* Settings dialog */
@@ -2536,7 +2600,7 @@ dialog::backdrop {
 .artifact-actions button {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 .cap {
   display: inline-flex;

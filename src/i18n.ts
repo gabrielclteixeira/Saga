@@ -465,8 +465,8 @@ const EN: Record<string, string> = {
   "🛠 ferramentas/web · 👁 visão · 🧠 raciocínio": "🛠 tools/web · 👁 vision · 🧠 reasoning",
   "Ferramentas / pesquisa web": "Tools / web search",
   "Visão (imagens)": "Vision (images)",
-  "⚠ '{m}' não chama ferramentas — a pesquisa web não funciona; usa um modelo 🛠 (ex.: qwen3, llama3.1).":
-    "⚠ '{m}' can't call tools — web search won't work; use a 🛠 model (e.g. qwen3, llama3.1).",
+  "⚠ '{m}' não chama ferramentas — a pesquisa web não funciona; usa um modelo com ferramentas (ex.: qwen3, llama3.1).":
+    "⚠ '{m}' can't call tools — web search won't work; use a tool-capable model (e.g. qwen3, llama3.1).",
   "🔎 não vai pesquisar: ativa a Pesquisa web (Modelos → Avançado) para o modelo local pesquisar.":
     "🔎 won't search: enable Web search (Models → Advanced) so the local model can search.",
   "🔎 vai usar o Claude. Para pesquisar com o modelo local, ativa a Pesquisa web em Modelos → Avançado.":

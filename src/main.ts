@@ -113,6 +113,11 @@ const ICON_PATHS: Record<string, string> = {
   play: `<polygon points="6 4 20 12 6 20 6 4"/>`,
   sparkles: `<path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7z"/><path d="M18 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>`,
   download: `<path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M5 21h14"/>`,
+  gear: `<circle cx="12" cy="12" r="3.2"/><path d="M19.4 13a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>`,
+  export: `<path d="M12 15V3"/><polyline points="7 8 12 3 17 8"/><path d="M5 21h14a2 2 0 0 0 2-2v-4"/><path d="M3 15v4a2 2 0 0 0 2 2"/>`,
+  book: `<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 17H6a2 2 0 0 0-2 2"/>`,
+  chevron: `<polyline points="9 6 15 12 9 18"/>`,
+  x: `<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>`,
 };
 function icon(name: string): string {
   const p = ICON_PATHS[name];
@@ -127,14 +132,14 @@ app.innerHTML = `
   <header class="topbar">
     <div class="brand"><img src="/favicon.svg" class="brand-mark" alt="" /> <strong>Saga</strong></div>
     <div class="mini" id="mini-stats"></div>
-    <button class="icon-btn" id="btn-export-saga" title="${t("Exportar Saga (Markdown)")}">⤓</button>
+    <button class="icon-btn" id="btn-export-saga" title="${t("Exportar Saga (Markdown)")}" aria-label="${t("Exportar Saga (Markdown)")}">${icon("export")}</button>
     <button class="icon-btn" id="btn-panel" title="${t("Painel de tokens")}" aria-label="${t("Painel de tokens")}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="15" y1="4" x2="15" y2="20"/></svg></button>
-    <button class="icon-btn" id="btn-settings" title="${t("Definições")}">⚙</button>
+    <button class="icon-btn" id="btn-settings" title="${t("Definições")}" aria-label="${t("Definições")}">${icon("gear")}</button>
   </header>
   <main class="layout">
     <nav class="rail" id="rail">
       <button type="button" class="rail-btn active" data-view="sagas" title="Sagas"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 9 9 0 0 1-3.9-.9L3 21l1.9-5.1A8.4 8.4 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z"/></svg></span><span class="rail-lbl">${t("Sagas")}</span></button>
-      <button type="button" class="rail-btn" data-view="workspace" title="${t("Workspace (skills, playbooks, workflows)")}"><span class="rail-ico">✦</span><span class="rail-lbl">${t("Workspace")}</span></button>
+      <button type="button" class="rail-btn" data-view="workspace" title="${t("Workspace (skills, playbooks, workflows)")}"><span class="rail-ico">${icon("book")}</span><span class="rail-lbl">${t("Workspace")}</span></button>
       <button type="button" class="rail-btn" data-view="servers" title="${t("Servidores MCP")}"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><line x1="6.5" y1="7.5" x2="6.5" y2="7.5"/><line x1="6.5" y1="16.5" x2="6.5" y2="16.5"/></svg></span><span class="rail-lbl">${t("Servidores")}</span></button>
       <button type="button" class="rail-btn" data-view="activity" title="${t("Atividade (ações)")}"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><line x1="4.5" y1="6" x2="4.5" y2="6"/><line x1="4.5" y1="12" x2="4.5" y2="12"/><line x1="4.5" y1="18" x2="4.5" y2="18"/></svg></span><span class="rail-lbl">${t("Atividade")}</span></button>
       <button type="button" class="rail-btn" data-view="automations" title="${t("Automações agendadas")}"><span class="rail-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v4.7l3 1.8"/></svg></span><span class="rail-lbl">${t("Automações")}</span></button>
@@ -174,7 +179,7 @@ app.innerHTML = `
     </section>
     </div>
     <aside class="panel">
-      <button class="panel-collapse" id="panel-collapse" title="${t("Ocultar painel")}" aria-label="${t("Ocultar painel")}">❯</button>
+      <button class="panel-collapse" id="panel-collapse" title="${t("Ocultar painel")}" aria-label="${t("Ocultar painel")}">${icon("chevron")}</button>
       <h2>${t("Painel de tokens")}</h2>
       <div class="cards" id="acct-cards"></div>
       <div class="saga-actions">
@@ -207,7 +212,7 @@ app.innerHTML = `
         <button type="button" class="ghost" id="artifact-pdf">${t("PDF")}</button>
         <button type="button" class="ghost" id="artifact-export">${t("Guardar")}</button>
         <button type="button" class="ghost" id="artifact-copy">${t("Copiar")}</button>
-        <button type="button" class="ghost" id="artifact-close">✕</button>
+        <button type="button" class="icon-x" id="artifact-close" title="${t("Fechar")}" aria-label="${t("Fechar")}">${icon("x")}</button>
       </span>
     </header>
     <div class="artifact-body" id="artifact-body"></div>
@@ -886,11 +891,11 @@ function updateCtxEst() {
 function formatToolStep(tool: string, detail: string): string {
   switch (tool) {
     case "web_search":
-      return `🔎 ${t("a pesquisar")}: ${detail}`;
+      return `${t("a pesquisar")}: ${detail}`;
     case "web_fetch":
-      return `↗ ${t("a abrir")}: ${detail}`;
+      return `${t("a abrir")}: ${detail}`;
     case "create_pdf":
-      return `📄 ${t("a criar PDF")}`;
+      return t("a criar PDF");
     default:
       return detail ? `${tool}: ${detail}` : tool;
   }
@@ -985,7 +990,7 @@ function buildActions(): HTMLDivElement {
     const sel = document.createElement("select");
     sel.className = "model-pick";
     sel.innerHTML = `
-      <option value="">${t("Modelo ▾")}</option>
+      <option value="">${t("Modelo")}</option>
       <option value="local">${t("Tentar local")}</option>
       <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
       <option value="claude-sonnet-4-6">Sonnet 4.6</option>
@@ -1109,7 +1114,8 @@ function renderPendingAttachments() {
     img.src = `data:${a.media_type};base64,${a.data_base64}`;
     img.addEventListener("click", () => openLightbox(img.src));
     const rm = document.createElement("button");
-    rm.textContent = "×";
+    rm.className = "thumb-x";
+    rm.innerHTML = icon("x");
     rm.title = t("Remover");
     rm.addEventListener("click", () => {
       state.pendingAttachments.splice(idx, 1);
@@ -1199,7 +1205,7 @@ function renderSidebar() {
 
     const ren = document.createElement("button");
     ren.className = "conv-act";
-    ren.textContent = "✎";
+    ren.innerHTML = icon("pencil");
     ren.title = t("Renomear");
     ren.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1208,7 +1214,7 @@ function renderSidebar() {
 
     const del = document.createElement("button");
     del.className = "conv-act conv-del";
-    del.textContent = "×";
+    del.innerHTML = icon("x");
     del.title = t("Apagar");
     del.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1881,7 +1887,7 @@ async function editUserMessage(index: number) {
       img.src = `data:${a.media_type};base64,${a.data_base64}`;
       img.addEventListener("click", () => openLightbox(img.src));
       const rm = document.createElement("button");
-      rm.textContent = "×";
+      rm.innerHTML = icon("x");
       rm.title = t("Remover");
       rm.addEventListener("click", () => {
         editAtts.splice(i, 1);
@@ -2704,7 +2710,7 @@ async function renderWorkspaceList() {
       <div class="ws-item-actions">
         ${wsKind === "workflow" ? `<button type="button" class="ghost" data-run="${escapeHtml(it.name)}">${icon("play")}<span>${t("Correr")}</span></button>` : ""}
         <button type="button" class="ghost" data-edit="${escapeHtml(it.name)}">${t("Editar")}</button>
-        <button type="button" class="ghost" data-del="${escapeHtml(it.name)}">✕</button>
+        <button type="button" class="icon-x" data-del="${escapeHtml(it.name)}" title="${t("Apagar")}" aria-label="${t("Apagar")}">${icon("x")}</button>
       </div>
     </div>`
     )
@@ -2967,7 +2973,7 @@ function renderMcpList() {
       <code>${escapeHtml(s.command)} ${escapeHtml(s.args.join(" "))}</code>
       <div class="mcp-item-actions">
         <button type="button" class="ghost" data-edit="${i}">${t("Editar")}</button>
-        <button type="button" class="ghost" data-del="${i}">✕</button>
+        <button type="button" class="icon-x" data-del="${i}" title="${t("Apagar")}" aria-label="${t("Apagar")}">${icon("x")}</button>
       </div>
     </div>`
     )
@@ -3187,9 +3193,9 @@ async function renderSchedules() {
       <label class="check"><input type="checkbox" data-toggle="${s.id}" ${s.enabled ? "checked" : ""} /> <strong>${escapeHtml(s.name)}</strong></label>
       <code>${escapeHtml(s.workflow_name)} · ${escapeHtml(s.cron)} · ${t("próx:")} ${escapeHtml(fmtEpoch(s.next_run_epoch))}</code>
       <div class="mcp-item-actions">
-        <button type="button" class="ghost" data-run="${s.id}">▶</button>
+        <button type="button" class="ghost" data-run="${s.id}" title="${t("Correr agora")}" aria-label="${t("Correr agora")}">${icon("play")}</button>
         <button type="button" class="ghost" data-edit="${s.id}">${t("Editar")}</button>
-        <button type="button" class="ghost" data-del="${s.id}">✕</button>
+        <button type="button" class="icon-x" data-del="${s.id}" title="${t("Apagar")}" aria-label="${t("Apagar")}">${icon("x")}</button>
       </div>
     </div>`
     )
@@ -3611,7 +3617,7 @@ async function renderHubStatus() {
     // Pesquisa web ligada mas o modelo não chama ferramentas → nunca vai pesquisar.
     warn =
       " " +
-      t("⚠ '{m}' não chama ferramentas — a pesquisa web não funciona; usa um modelo 🛠 (ex.: qwen3, llama3.1).", {
+      t("⚠ '{m}' não chama ferramentas — a pesquisa web não funciona; usa um modelo com ferramentas (ex.: qwen3, llama3.1).", {
         m: active,
       });
   } else if (isOllama && isWeakModel(active)) {
@@ -3657,7 +3663,7 @@ async function renderInstalled() {
       </div>
       <div class="model-actions">
         ${m.name === active ? `<span class="model-badge">${t("ativo")}</span>` : `<button type="button" class="ghost" data-activate="${escapeHtml(m.name)}">${t("Ativar")}</button>`}
-        <button type="button" class="ghost" data-del="${escapeHtml(m.name)}">✕</button>
+        <button type="button" class="icon-x" data-del="${escapeHtml(m.name)}" title="${t("Apagar")}" aria-label="${t("Apagar")}">${icon("x")}</button>
       </div>
     </div>`
     )
