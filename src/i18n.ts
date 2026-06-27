@@ -391,6 +391,8 @@ const EN: Record<string, string> = {
   "Copiar comandos": "Copy commands",
   "Comandos copiados.": "Commands copied.",
   "Ir para a mensagem mais recente": "Jump to latest message",
+  "🔎 falta a chave {p}: adiciona-a em Modelos → Avançado para pesquisa fiável (sem chave usa o DuckDuckGo, pouco fiável).":
+    "🔎 missing {p} key: add it in Models → Advanced for reliable search (without a key it uses DuckDuckGo, unreliable).",
   "A carregar…": "Loading…",
   "Sem variantes.": "No variants.",
   "Não foi possível obter as variantes.": "Couldn't load variants.",

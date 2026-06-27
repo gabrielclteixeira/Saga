@@ -128,6 +128,7 @@ app.innerHTML = `
     <div class="brand"><img src="/favicon.svg" class="brand-mark" alt="" /> <strong>Saga</strong></div>
     <div class="mini" id="mini-stats"></div>
     <button class="icon-btn" id="btn-export-saga" title="${t("Exportar Saga (Markdown)")}">⤓</button>
+    <button class="icon-btn" id="btn-panel" title="${t("Painel de tokens")}" aria-label="${t("Painel de tokens")}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="15" y1="4" x2="15" y2="20"/></svg></button>
     <button class="icon-btn" id="btn-settings" title="${t("Definições")}">⚙</button>
   </header>
   <main class="layout">
@@ -189,7 +190,6 @@ app.innerHTML = `
     </aside>
   </main>
 
-  <button class="panel-reopen" id="panel-reopen" hidden title="${t("Mostrar painel")}" aria-label="${t("Mostrar painel")}">❮</button>
 
   <div class="dl-toast" id="dl-toast" hidden>
     <div class="dl-toast-label" id="dl-toast-label"></div>
@@ -2009,12 +2009,13 @@ function maybeWarnSearch() {
     showHint(t("🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1/gemma4.", { m: s.ollama_model }));
     return;
   }
-  // Sem chave de motor de pesquisa, cai para o DuckDuckGo (pouco fiável). Jina sem chave só lê
-  // páginas (web_fetch), não pesquisa.
+  // O motor selecionado precisa de chave e não tem → cai para o DuckDuckGo (pouco fiável).
+  // (Inclui o Jina: sem chave só lê páginas/web_fetch, não pesquisa.)
   const p = s.web_search_provider;
   const hasKey = !!s.web_search_keys?.[p];
   if (p !== "duckduckgo" && !hasKey) {
-    showHint(t("🔎 sem chave: configura um motor de pesquisa (Tavily/Brave/…) em Modelos → Avançado para resultados fiáveis."));
+    const label = WEB_PROVIDER_META[p]?.label ?? p;
+    showHint(t("🔎 falta a chave {p}: adiciona-a em Modelos → Avançado para pesquisa fiável (sem chave usa o DuckDuckGo, pouco fiável).", { p: label }));
   }
 }
 
@@ -3881,10 +3882,8 @@ function showView(view: string | null) {
   chat.hidden = inView;
   // A lista de conversas e o painel de tokens (por Saga) só fazem sentido nas Sagas.
   els.layout.classList.toggle("viewing", inView);
-  const reopen = document.querySelector<HTMLElement>("#panel-reopen");
-  if (reopen) {
-    reopen.hidden = inView || localStorage.getItem("saga.panelCollapsed") !== "1";
-  }
+  // O botão do painel (topbar) só faz sentido nas Sagas (nas vistas do rail o painel não aparece).
+  document.querySelector("#btn-panel")?.toggleAttribute("hidden", inView);
   const active = view ?? "sagas";
   document
     .querySelectorAll<HTMLButtonElement>(".rail-btn")
@@ -4011,14 +4010,14 @@ async function init() {
   document.querySelector("#btn-attach")!.addEventListener("click", () => els.fileInput.click());
   els.fileInput.addEventListener("change", onFilesSelected);
   els.input.addEventListener("paste", onPaste);
-  const panelReopen = document.querySelector<HTMLElement>("#panel-reopen")!;
   const setPanel = (collapsed: boolean) => {
     els.layout.classList.toggle("panel-collapsed", collapsed);
-    panelReopen.hidden = !collapsed;
     localStorage.setItem("saga.panelCollapsed", collapsed ? "1" : "0");
   };
   document.querySelector("#panel-collapse")!.addEventListener("click", () => setPanel(true));
-  panelReopen.addEventListener("click", () => setPanel(false));
+  document.querySelector("#btn-panel")!.addEventListener("click", () =>
+    setPanel(!els.layout.classList.contains("panel-collapsed"))
+  );
   setPanel(localStorage.getItem("saga.panelCollapsed") === "1");
   document.querySelector("#wiz-next")!.addEventListener("click", () => void wizNext());
   document.querySelector("#wiz-back")!.addEventListener("click", () => void wizGoTo(wizStep - 1));

@@ -125,6 +125,12 @@ body {
   height: 34px;
   cursor: pointer;
   font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-btn[hidden] {
+  display: none;
 }
 .icon-btn:hover {
   background: var(--bg-3);
@@ -606,28 +612,29 @@ body {
 .chat {
   position: relative;
 }
-/* Botão flutuante "ir à mensagem mais recente" (estilo Discord) */
+/* Botão flutuante "ir à mensagem mais recente" (estilo Discord) — bem visível (accent) */
 .scroll-bottom {
   position: absolute;
   right: 18px;
-  bottom: 84px;
+  bottom: 88px;
   z-index: 25;
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--bg-2);
-  color: var(--accent);
+  border: none;
+  background: var(--accent);
+  color: var(--on-accent);
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
-  transition: transform 0.12s, border-color 0.12s;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s, filter 0.12s;
+  animation: tour-in 0.15s ease-out;
 }
 .scroll-bottom:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
+  filter: brightness(1.08);
+  transform: translateY(-2px);
 }
 .scroll-bottom[hidden] {
   display: none;
