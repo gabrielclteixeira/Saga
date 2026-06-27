@@ -693,6 +693,7 @@ function renderMessages() {
       for (const a of item.attachments) {
         const img = document.createElement("img");
         img.src = `data:${a.media_type};base64,${a.data_base64}`;
+        img.addEventListener("click", () => openLightbox(img.src));
         thumbs.appendChild(img);
       }
       row.appendChild(thumbs);
@@ -1018,6 +1019,7 @@ function renderPendingAttachments() {
     wrap.className = "thumb";
     const img = document.createElement("img");
     img.src = `data:${a.media_type};base64,${a.data_base64}`;
+    img.addEventListener("click", () => openLightbox(img.src));
     const rm = document.createElement("button");
     rm.textContent = "×";
     rm.title = t("Remover");
@@ -1029,6 +1031,27 @@ function renderPendingAttachments() {
     wrap.appendChild(rm);
     els.attachmentsBar.appendChild(wrap);
   });
+}
+
+/** Abre uma imagem em grande num overlay (clica fora / Esc para fechar). */
+function openLightbox(src: string) {
+  document.querySelector("#lightbox")?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "lightbox";
+  overlay.className = "lightbox";
+  const img = document.createElement("img");
+  img.src = src;
+  overlay.appendChild(img);
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") close();
+  };
+  overlay.addEventListener("click", close);
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(overlay);
 }
 
 async function onFilesSelected() {
@@ -1608,6 +1631,27 @@ async function createDocFromChat(kind: "skill" | "playbook" | "workflow", desc: 
   renderMessages();
 }
 
+/** Avisa quando uma imagem não terá modelo que a leia (ativo sem visão + visão não instalado). */
+async function warnIfNoVisionModel(activeModel: string, visionModel: string) {
+  if (modelCapabilities(activeModel).vision) return; // o ativo já vê
+  const vis = (visionModel || "").trim();
+  let installed: string[] = [];
+  try {
+    installed = await api.listOllamaModels();
+  } catch {
+    return; // sem lista, não arrisca falso alarme
+  }
+  const visInstalled = !!vis && installed.some((m) => m === vis || m.startsWith(vis + ":"));
+  if (!visInstalled) {
+    showHint(
+      t(
+        "O modelo ativo '{m}' não lê imagens e o modelo de visão '{v}' não está instalado. Troca para um modelo com visão (ex.: gemma4) ou instala-o em Modelos.",
+        { m: activeModel, v: vis || "—" }
+      )
+    );
+  }
+}
+
 async function onSubmit(ev: Event) {
   ev.preventDefault();
   hideSlash();
@@ -1652,6 +1696,15 @@ async function onSubmit(ev: Event) {
   els.input.value = "";
   els.input.style.height = "auto";
 
+  // Aviso (não bloqueia): imagem + modelo local sem visão + modelo de visão não instalado → 404 certo.
+  if (
+    attachments.length &&
+    state.routeMode !== "claude" &&
+    state.settings?.local_provider === "ollama"
+  ) {
+    void warnIfNoVisionModel(state.settings.ollama_model, state.settings.ollama_vision_model);
+  }
+
   await streamAssistant(buildPayload(), routeOptsFromMode());
 }
 
@@ -1668,6 +1721,54 @@ async function editUserMessage(index: number) {
   const ta = document.createElement("textarea");
   ta.className = "edit-area";
   ta.value = item.content;
+
+  // Anexos editáveis (remover existentes / adicionar novos).
+  const editAtts: Attachment[] = [...(item.attachments ?? [])];
+  const thumbs = document.createElement("div");
+  thumbs.className = "edit-thumbs attachments";
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "image/*";
+  fileInput.multiple = true;
+  fileInput.hidden = true;
+  const renderEditThumbs = () => {
+    thumbs.innerHTML = "";
+    editAtts.forEach((a, i) => {
+      const wrap = document.createElement("div");
+      wrap.className = "thumb";
+      const img = document.createElement("img");
+      img.src = `data:${a.media_type};base64,${a.data_base64}`;
+      img.addEventListener("click", () => openLightbox(img.src));
+      const rm = document.createElement("button");
+      rm.textContent = "×";
+      rm.title = t("Remover");
+      rm.addEventListener("click", () => {
+        editAtts.splice(i, 1);
+        renderEditThumbs();
+      });
+      wrap.append(img, rm);
+      thumbs.appendChild(wrap);
+    });
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "edit-add-img";
+    add.textContent = t("+ Imagem");
+    add.title = t("Adicionar imagem");
+    add.addEventListener("click", () => fileInput.click());
+    thumbs.appendChild(add);
+  };
+  fileInput.addEventListener("change", async () => {
+    const files = fileInput.files;
+    if (files) {
+      for (const f of Array.from(files)) {
+        if (f.type.startsWith("image/")) editAtts.push(await fileToAttachment(f));
+      }
+    }
+    fileInput.value = "";
+    renderEditThumbs();
+  });
+  renderEditThumbs();
+
   const bar = document.createElement("div");
   bar.className = "edit-bar";
   const cancel = document.createElement("button");
@@ -1677,14 +1778,14 @@ async function editUserMessage(index: number) {
   save.className = "primary";
   save.textContent = t("Guardar e reenviar");
   bar.append(cancel, save);
-  row.append(ta, bar);
+  row.append(ta, thumbs, fileInput, bar);
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
 
   const commit = async () => {
     const text = ta.value.trim();
-    if (!text) return;
-    const attachments = item.attachments;
+    if (!text && editAtts.length === 0) return;
+    const attachments = editAtts.length ? editAtts.slice() : undefined;
     try {
       await api.truncateConversation(state.currentConversationId!, index);
     } catch (e) {

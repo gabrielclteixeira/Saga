@@ -194,6 +194,10 @@ automations are scheduled).
   **code-signing + notarization** (Apple Developer ID / Windows Authenticode) to drop the "unknown publisher" warnings.
 - **Rich PDF templates** — build on the new print theme with selectable templates (Report / Article / Technical)
   via `data-theme` and embedded fonts/diagrams.
+- **Resource-aware install warning** — before pulling a model that likely exceeds the machine's RAM/VRAM (e.g. a
+  32B model on 16 GB RAM), show a non-blocking warning that it may freeze and suggest a smaller size — but let the
+  user proceed anyway. Inform and advise; don't gate. Reuses `system_info` (RAM/cores) + the model's size; surfaces
+  at the install pill / "Pull" action in the model browser.
 
 ### Browser tool setup
 

@@ -22,6 +22,23 @@ impl Route {
     }
 }
 
+/// Deteta, pelo nome, se um modelo Ollama lê imagens (espelha `modelCapabilities` no frontend).
+/// Evita uma chamada extra a `/api/show`; cobre as famílias multimodais comuns.
+fn model_supports_vision(name: &str) -> bool {
+    let n = name.to_lowercase();
+    n.contains("vision") // llama3.2-vision, granite-vision, …
+        || n.contains("llava")
+        || n.contains("moondream")
+        || n.contains("minicpm-v")
+        || n.contains("gemma4")
+        || n.contains("-vl")
+        || n.contains("vl:")
+        || n.ends_with("vl")
+        || n.contains("gemma3:4b")
+        || n.contains("gemma3:12b")
+        || n.contains("gemma3:27b")
+}
+
 /// Comprime o contexto de memória via modelo local, para enviar menos tokens ao Claude.
 async fn compress_context(raw: &str, settings: &Settings) -> String {
     if raw.trim().is_empty() {
@@ -162,7 +179,12 @@ pub async fn prepare(
     match route {
         Route::Local => {
             let model = model_override.map(str::to_string).unwrap_or_else(|| {
-                if has_images && !settings.ollama_vision_model.trim().is_empty() {
+                // Só troca para o modelo de visão se o modelo ativo NÃO vê imagens
+                // (ex.: gemma4 já tem visão → usa-o em vez de exigir o llama3.2-vision).
+                if has_images
+                    && !model_supports_vision(&settings.ollama_model)
+                    && !settings.ollama_vision_model.trim().is_empty()
+                {
                     settings.ollama_vision_model.clone()
                 } else {
                     settings.ollama_model.clone()

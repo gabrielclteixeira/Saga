@@ -81,6 +81,10 @@ const EN: Record<string, string> = {
   "Pesquisa web (API: web_search · CLI: WebSearch)": "Web search (API: web_search · CLI: WebSearch)",
   "Extended thinking (raciocínio) — só Claude API": "Extended thinking — Claude API only",
   "Anexar imagem": "Attach image",
+  "Adicionar imagem": "Add image",
+  "+ Imagem": "+ Image",
+  "O modelo ativo '{m}' não lê imagens e o modelo de visão '{v}' não está instalado. Troca para um modelo com visão (ex.: gemma4) ou instala-o em Modelos.":
+    "The active model '{m}' can't read images and the vision model '{v}' isn't installed. Switch to a vision-capable model (e.g. gemma4) or install it in Models.",
   "Faz uma pergunta. Tarefas leves ficam no modelo local; só o que é pesado escala para o Claude.":
     "Ask a question. Light tasks stay on the local model; only heavy ones escalate to Claude.",
   "Faz uma pergunta. Corre no teu modelo local; escala para o Claude quando quiseres.":
