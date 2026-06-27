@@ -148,6 +148,12 @@ pub async fn chat_raw(
     });
     if let Some(t) = tools {
         body["tools"] = t;
+        // Em modelos com raciocínio (gemma4, qwen3…), o "thinking" interfere com o parser de
+        // tool-calling (o tool call sai como texto e não é executado). Desliga-o no loop de
+        // ferramentas para que o modelo chame as ferramentas de forma limpa.
+        if model_reasons(model) {
+            body["think"] = serde_json::json!(false);
+        }
     }
     let client = reqwest::Client::new();
     let resp = client
