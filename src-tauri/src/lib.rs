@@ -1,6 +1,7 @@
 mod accounting;
 mod agent;
 mod commands;
+mod deep_research;
 mod extract;
 mod lmstudio;
 mod mcp;

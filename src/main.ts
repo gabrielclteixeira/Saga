@@ -1108,6 +1108,15 @@ function formatToolStep(tool: string, detail: string): string {
       return `${t("a abrir")}: ${detail}`;
     case "create_pdf":
       return t("a criar PDF");
+    case "research":
+      // Fases da pesquisa fundamentada (deep_research): chaves estáveis → traduzidas aqui.
+      return detail === "decompose"
+        ? t("a decompor a pergunta…")
+        : detail === "verify"
+          ? t("a verificar os factos…")
+          : detail === "synthesize"
+            ? t("a escrever a resposta…")
+            : detail;
     default:
       return detail ? `${tool}: ${detail}` : tool;
   }

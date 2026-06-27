@@ -1162,34 +1162,49 @@ pub async fn send_message_stream(
                 num_ctx,
                 temperature: settings.ollama_temp_opt(),
             };
-            // Corre o loop de ferramentas (pesquisa web) quando a Pesquisa web local está
-            // sempre-ligada OU quando o 🔎/agente pediu pesquisa. Funciona mesmo com imagens no
-            // histórico — o web_agent passa as imagens (modelos com visão veem-nas E pesquisam).
-            // Sem pesquisa pedida, segue para o caminho de visão direta (chat_stream) abaixo.
+            // 🔎 explícito (research) → pipeline FUNDAMENTADA (decompõe → pesquisa cada sub-pergunta
+            // → verifica → sintetiza). Pesquisa web passiva (sempre-ligada, sem 🔎) → loop leve.
+            // Sem pesquisa nenhuma, segue para o caminho de chat/visão direto (chat_stream) abaixo.
             if settings.local_web_search || research {
                 let tx_t = channel.clone();
                 // Conta as pesquisas web feitas neste pedido (para o medidor de uso mensal).
                 let searches = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
                 let sc = searches.clone();
-                let r = crate::web_agent::run(
-                    &settings.ollama_endpoint,
-                    &prepared.model,
-                    &settings.web_search_provider,
-                    &settings.active_web_key(),
-                    &prepared.full_messages,
-                    gopts,
-                    on_delta,
-                    move |tool, detail| {
-                        if tool == "web_search" {
-                            sc.fetch_add(1, Ordering::Relaxed);
-                        }
-                        let _ = tx_t.send(StreamEvent::ToolStep {
-                            tool: tool.to_string(),
-                            detail: detail.to_string(),
-                        });
-                    },
-                )
-                .await;
+                let on_tool = move |tool: &str, detail: &str| {
+                    if tool == "web_search" {
+                        sc.fetch_add(1, Ordering::Relaxed);
+                    }
+                    let _ = tx_t.send(StreamEvent::ToolStep {
+                        tool: tool.to_string(),
+                        detail: detail.to_string(),
+                    });
+                };
+                let r = if research {
+                    crate::deep_research::run(
+                        &settings.ollama_endpoint,
+                        &prepared.model,
+                        &settings.web_search_provider,
+                        &settings.active_web_key(),
+                        &prepared.full_messages,
+                        gopts,
+                        settings.research_max_rounds,
+                        on_delta,
+                        on_tool,
+                    )
+                    .await
+                } else {
+                    crate::web_agent::run(
+                        &settings.ollama_endpoint,
+                        &prepared.model,
+                        &settings.web_search_provider,
+                        &settings.active_web_key(),
+                        &prepared.full_messages,
+                        gopts,
+                        on_delta,
+                        on_tool,
+                    )
+                    .await
+                };
                 // Atribui ao motor que REALMENTE correu (sem chave, um motor com chave cai p/ DDG).
                 let n = searches.load(Ordering::Relaxed);
                 if n > 0 {
