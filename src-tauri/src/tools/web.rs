@@ -10,7 +10,7 @@ const UA: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 /// Cliente HTTP com User-Agent de browser (DuckDuckGo bloqueia UAs não-browser).
-fn http() -> reqwest::Client {
+pub fn http() -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent(UA)
         .build()

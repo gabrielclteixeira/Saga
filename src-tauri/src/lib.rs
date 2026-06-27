@@ -1,8 +1,10 @@
 mod accounting;
 mod agent;
 mod commands;
+mod lmstudio;
 mod mcp;
 mod memory;
+mod ollama_registry;
 mod orchestrator;
 mod providers;
 mod router;
@@ -45,6 +47,10 @@ pub fn run() {
             commands::diagnostics,
             commands::list_ollama_models,
             commands::system_info,
+            commands::search_ollama_registry,
+            commands::lmstudio_list,
+            commands::lmstudio_search,
+            commands::lmstudio_download,
             commands::list_ollama_models_detailed,
             commands::delete_ollama_model,
             commands::test_mcp_server,

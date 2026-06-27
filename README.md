@@ -174,7 +174,8 @@ azulejo identity + animated caravel loader · OS-keychain secrets · CI release 
 **local web search** (Jina · Tavily · Brave · Serper · Exa, + keyless DuckDuckGo; **Jina Reader** for page fetch) ·
 **compact / clear a Saga** (local-model summarization) · **PDF export** (print-to-PDF + `create_pdf` tool + bundled
 skill) · **English / Portuguese UI** · per-provider keychain keys · **signed auto-update** (minisign artifacts +
-`latest.json`, background download on launch) · external links open in the system browser.
+`latest.json`, background download on launch) · external links open in the system browser ·
+**live model browser** (search ollama.com + lmstudio.ai catalogs with capability badges, one-click install/pull).
 
 **Next:**
 

@@ -579,6 +579,16 @@ pub fn system_info() -> SystemInfo {
     }
 }
 
+/// Pesquisa o registo público do Ollama (ollama.com) — navegador de modelos ao vivo.
+#[tauri::command]
+pub async fn search_ollama_registry(
+    query: String,
+) -> Result<Vec<crate::ollama_registry::RegistryModel>, String> {
+    crate::ollama_registry::search(&query, 25)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Lista modelos locais com metadados (para o hub "Modelos").
 #[tauri::command]
 pub async fn list_ollama_models_detailed(
@@ -626,6 +636,62 @@ pub async fn pull_ollama_model(
     let endpoint = state.settings.lock().unwrap().ollama_endpoint.clone();
     let tx = channel.clone();
     let result = providers::ollama::pull_model(&endpoint, &model, move |status, percent| {
+        let _ = tx.send(PullEvent::Progress {
+            status: status.to_string(),
+            percent,
+        });
+    })
+    .await;
+    match result {
+        Ok(_) => {
+            let _ = channel.send(PullEvent::Done);
+            Ok(())
+        }
+        Err(e) => {
+            let _ = channel.send(PullEvent::Error {
+                message: e.to_string(),
+            });
+            Ok(())
+        }
+    }
+}
+
+// ---- LM Studio (modelos via REST local + catálogo lmstudio.ai) ----
+#[tauri::command]
+pub async fn lmstudio_list(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::lmstudio::LmModel>, String> {
+    let (endpoint, key) = {
+        let s = state.settings.lock().unwrap();
+        (s.openai_local_endpoint.clone(), s.openai_local_key.clone())
+    };
+    crate::lmstudio::list_downloaded(&endpoint, &key)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn lmstudio_search(
+    query: String,
+) -> Result<Vec<crate::lmstudio::LmCatalogModel>, String> {
+    crate::lmstudio::search_catalog(&query, 30)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn lmstudio_download(
+    state: State<'_, AppState>,
+    model: String,
+    quant: String,
+    channel: Channel<PullEvent>,
+) -> Result<(), String> {
+    let (endpoint, key) = {
+        let s = state.settings.lock().unwrap();
+        (s.openai_local_endpoint.clone(), s.openai_local_key.clone())
+    };
+    let tx = channel.clone();
+    let result = crate::lmstudio::download(&endpoint, &key, &model, &quant, move |status, percent| {
         let _ = tx.send(PullEvent::Progress {
             status: status.to_string(),
             percent,

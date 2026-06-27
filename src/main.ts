@@ -22,6 +22,7 @@ import {
   type Diagnostics,
   type McpServerConfig,
   type OllamaModel,
+  type RegistryModel,
   type Schedule,
   type SearchHit,
   type Settings,
@@ -362,17 +363,41 @@ app.innerHTML = `
       </fieldset>
 
       <fieldset id="hub-ollama-mgmt">
-        <legend>${t("Modelos Ollama instalados")}</legend>
+        <legend>${t("Modelos Ollama")}</legend>
+        <label>${t("Procurar modelos (ollama.com)")}
+          <input id="hub-search" type="search" placeholder="${t("ex.: gemma, qwen, llama…")}" autocomplete="off" />
+        </label>
+        <div class="reg-results" id="hub-search-results" hidden></div>
+        <div class="quickpicks" id="hub-quickpicks"></div>
+        <div class="hub-progress" id="hub-progress" hidden><div class="hub-bar" id="hub-bar"></div></div>
+        <div class="pull-status" id="hub-pull-status"></div>
+        <div class="hub-subtitle">${t("Instalados")}</div>
         <div class="models-list" id="hub-installed"></div>
-        <label>${t("Instalar modelo")}
+        <label>${t("Instalar por nome")}
           <span class="row">
             <input id="hub-pull-name" type="text" placeholder="${t("ex.: llama3.2")}" list="ollama-models" />
             <button type="button" class="ghost" id="hub-pull-btn">${t("Puxar")}</button>
           </span>
         </label>
-        <div class="hub-progress" id="hub-progress" hidden><div class="hub-bar" id="hub-bar"></div></div>
-        <div class="pull-status" id="hub-pull-status"></div>
-        <div class="quickpicks" id="hub-quickpicks"></div>
+      </fieldset>
+
+      <fieldset id="hub-lmstudio-mgmt" hidden>
+        <legend>${t("Modelos LM Studio")}</legend>
+        <div class="pull-status" id="hub-lm-status"></div>
+        <label>${t("Procurar catálogo (lmstudio.ai)")}
+          <input id="hub-lm-search" type="search" placeholder="${t("ex.: gemma, qwen, gpt-oss…")}" autocomplete="off" />
+        </label>
+        <div class="reg-results" id="hub-lm-results" hidden></div>
+        <label>${t("Instalar por id / URL HuggingFace")}
+          <span class="row">
+            <input id="hub-lm-install" type="text" placeholder="ibm/granite-4-micro" />
+            <input id="hub-lm-quant" type="text" placeholder="Q4_K_M" class="quant-in" />
+            <button type="button" class="ghost" id="hub-lm-install-btn">${t("Instalar")}</button>
+          </span>
+        </label>
+        <div class="hub-subtitle">${t("Descarregados")}</div>
+        <div class="models-list" id="hub-lm-installed"></div>
+        <button type="button" class="ghost" id="hub-lm-refresh">${t("Atualizar")}</button>
       </fieldset>
 
       <fieldset>
@@ -2651,12 +2676,13 @@ interface Caps {
 function modelCapabilities(name: string): Caps {
   const n = name.toLowerCase();
   const isVision =
-    /(-vl(:|$)|\dvl(:|$)|llama3\.2-vision|llava|moondream|minicpm-v|granite[\d.]*-vision|-vision)/.test(n) ||
+    /(-vl(:|$)|\dvl(:|$)|llama3\.2-vision|llava|moondream|minicpm-v|granite[\d.]*-vision|-vision|gemma4)/.test(n) ||
     /gemma3:(4b|12b|27b)/.test(n);
-  const reasoning = /(deepseek-r1|qwq|qwen3|-thinking|thinking)/.test(n);
+  const reasoning = /(deepseek-r1|qwq|qwen3|gemma4|-thinking|thinking)/.test(n);
   // Famílias com function-calling treinado; exclui visão-pura e raciocínio-puro.
+  // (Gemma 4 tem tools nativos — ao contrário do Gemma 2/3.)
   const tools =
-    /(qwen3|qwen2\.5|qwen[\w.]*coder|llama3\.1|llama3\.3|llama3\.2:3b|mistral|mixtral|ministral|devstral|granite3|command-?r|hermes|firefunction|smollm2)/.test(n) &&
+    /(qwen3|qwen2\.5|qwen[\w.]*coder|llama3\.1|llama3\.3|llama3\.2:3b|mistral|mixtral|ministral|devstral|granite3|gemma4|command-?r|hermes|firefunction|smollm2)/.test(n) &&
     !/(-vision|vl(:|$)|\dvl(:|$)|llava|moondream)/.test(n);
   return { tools, vision: isVision, reasoning };
 }
@@ -2674,6 +2700,7 @@ const MODEL_CATALOG: { group: string; models: CatalogModel[] }[] = [
       { name: "llama3.1:8b", size: "8B" },
       { name: "qwen3:8b", size: "8B" },
       { name: "qwen3:14b", size: "14B" },
+      { name: "gemma4:12b", size: "12B" },
       { name: "qwen2.5:7b", size: "7B" },
       { name: "qwen2.5:14b", size: "14B" },
       { name: "mistral-small", size: "24B" },
@@ -2891,6 +2918,8 @@ function applyHubProviderFields() {
   document.querySelector("#hub-ollama-fields")!.toggleAttribute("hidden", lp !== "ollama");
   document.querySelector("#hub-ollama-mgmt")!.toggleAttribute("hidden", lp !== "ollama");
   document.querySelector("#hub-openai-local-fields")!.toggleAttribute("hidden", lp !== "openai");
+  document.querySelector("#hub-lmstudio-mgmt")!.toggleAttribute("hidden", lp !== "openai");
+  if (lp === "openai") void renderLmInstalled();
   document.querySelector("#hub-claude-fields")!.toggleAttribute("hidden", cp !== "claude");
   document.querySelector("#hub-openai-cloud-fields")!.toggleAttribute("hidden", cp !== "openai");
 }
@@ -3031,6 +3060,199 @@ async function deleteModelUi(name: string) {
   }
 }
 
+/** Badges a partir de capacidades já conhecidas (do registo ollama.com). */
+function regCapBadges(caps: string[]): string {
+  const map: Record<string, [string, string]> = {
+    vision: ["👁", t("Visão (imagens)")],
+    tools: ["🛠", t("Ferramentas / pesquisa web")],
+    thinking: ["🧠", t("Raciocínio")],
+    embedding: ["🔢", t("Embeddings")],
+  };
+  return caps
+    .map((c) => (map[c] ? `<span class="cap" title="${map[c][1]}">${map[c][0]}</span>` : ""))
+    .join("");
+}
+
+let regSearchTimer: number | undefined;
+/** Liga a caixa de pesquisa do ollama.com (debounced) à lista de resultados. */
+function wireOllamaSearch() {
+  const box = document.querySelector<HTMLInputElement>("#hub-search");
+  const results = document.querySelector<HTMLElement>("#hub-search-results");
+  const quick = document.querySelector<HTMLElement>("#hub-quickpicks");
+  if (!box || !results || !quick) return;
+  box.addEventListener("input", () => {
+    const q = box.value.trim();
+    if (regSearchTimer) clearTimeout(regSearchTimer);
+    if (!q) {
+      results.hidden = true;
+      results.innerHTML = "";
+      quick.hidden = false;
+      return;
+    }
+    quick.hidden = true;
+    results.hidden = false;
+    results.innerHTML = `<div class="reg-loading">${t("A procurar…")}</div>`;
+    regSearchTimer = window.setTimeout(async () => {
+      try {
+        renderRegistryResults(await api.searchOllamaRegistry(q));
+      } catch {
+        results.innerHTML = `<div class="empty-sm">${t("Não foi possível contactar o ollama.com.")}</div>`;
+      }
+    }, 300);
+  });
+}
+
+/** Render dos resultados de pesquisa do ollama.com (estilo LM Studio). */
+function renderRegistryResults(models: RegistryModel[]) {
+  const box = document.querySelector<HTMLElement>("#hub-search-results")!;
+  if (!models.length) {
+    box.innerHTML = `<div class="empty-sm">${t("Sem resultados.")}</div>`;
+    return;
+  }
+  box.innerHTML = models
+    .map((m) => {
+      const meta = [m.pulls ? `${escapeHtml(m.pulls)} ↓` : "", escapeHtml(m.updated)]
+        .filter(Boolean)
+        .join(" · ");
+      const sizes = m.sizes.length
+        ? m.sizes
+            .map((s) => `<button type="button" class="quickpick" data-pull="${escapeHtml(m.name)}:${escapeHtml(s)}">${escapeHtml(s)}</button>`)
+            .join("")
+        : `<button type="button" class="quickpick" data-pull="${escapeHtml(m.name)}">${t("Puxar")}</button>`;
+      return `<div class="reg-item">
+        <div class="reg-head">
+          <a class="reg-name" href="https://ollama.com/library/${escapeHtml(m.name)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.name)}</a>
+          <span class="qp-caps">${regCapBadges(m.capabilities)}</span>
+          <span class="reg-meta">${meta}</span>
+        </div>
+        ${m.description ? `<div class="reg-desc">${escapeHtml(m.description)}</div>` : ""}
+        <div class="reg-sizes">${sizes}</div>
+      </div>`;
+    })
+    .join("");
+  box
+    .querySelectorAll<HTMLButtonElement>("[data-pull]")
+    .forEach((b) => b.addEventListener("click", () => pullModelUi(b.dataset.pull!)));
+}
+
+// ---- LM Studio (catálogo + instalados) ----
+/** Define o modelo LM Studio ativo (e muda o provider para openai). */
+async function setActiveLmModel(id: string) {
+  await saveModelsSettings({ local_provider: "openai", openai_local_model: id });
+  hubSel("#hub-local-provider").value = "openai";
+  applyHubProviderFields();
+  void renderLmInstalled();
+}
+
+/** Lista os modelos descarregados no LM Studio (servidor REST local). */
+async function renderLmInstalled() {
+  const list = document.querySelector<HTMLDivElement>("#hub-lm-installed");
+  const status = document.querySelector<HTMLElement>("#hub-lm-status");
+  if (!list) return;
+  let models: import("./api").LmModel[] = [];
+  try {
+    models = await api.lmstudioList();
+    if (status) status.textContent = "";
+  } catch {
+    list.innerHTML = "";
+    if (status)
+      status.textContent = t("LM Studio inacessível — abre a app e liga o servidor (Developer).");
+    return;
+  }
+  const active = state.settings?.openai_local_model;
+  if (!models.length) {
+    list.innerHTML = `<div class="empty-sm">${t("Nenhum modelo no LM Studio. Instala um abaixo.")}</div>`;
+    return;
+  }
+  list.innerHTML = models
+    .map((m) => {
+      const tags = [m.kind, m.quantization].filter(Boolean).join(" · ");
+      return `<div class="model-item${m.id === active ? " active" : ""}">
+        <div class="model-main"><strong>${escapeHtml(m.id)} <span class="qp-caps">${regCapBadges(m.kind === "vlm" ? ["vision"] : m.kind === "embeddings" ? ["embedding"] : [])}</span></strong>
+          <span>${escapeHtml(tags)}</span></div>
+        <div class="model-actions">
+          ${m.id === active ? `<span class="model-badge">${t("ativo")}</span>` : `<button type="button" class="ghost" data-use="${escapeHtml(m.id)}">${t("Usar")}</button>`}
+        </div>
+      </div>`;
+    })
+    .join("");
+  list
+    .querySelectorAll<HTMLButtonElement>("[data-use]")
+    .forEach((b) => b.addEventListener("click", () => setActiveLmModel(b.dataset.use!)));
+}
+
+let lmSearchTimer: number | undefined;
+/** Liga a pesquisa do catálogo LM Studio (lmstudio.ai) — descoberta + abrir página. */
+function wireLmStudioSearch() {
+  const box = document.querySelector<HTMLInputElement>("#hub-lm-search");
+  const results = document.querySelector<HTMLElement>("#hub-lm-results");
+  if (!box || !results) return;
+  box.addEventListener("input", () => {
+    const q = box.value.trim();
+    if (lmSearchTimer) clearTimeout(lmSearchTimer);
+    if (!q) {
+      results.hidden = true;
+      results.innerHTML = "";
+      return;
+    }
+    results.hidden = false;
+    results.innerHTML = `<div class="reg-loading">${t("A procurar…")}</div>`;
+    lmSearchTimer = window.setTimeout(async () => {
+      try {
+        const models = await api.lmstudioSearch(q);
+        results.innerHTML = models.length
+          ? models
+              .map(
+                (m) => `<div class="reg-item">
+                  <div class="reg-head">
+                    <a class="reg-name" href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(m.name)}</a>
+                    <span class="reg-meta">${m.sizes.map(escapeHtml).join(" · ")}</span>
+                  </div>
+                  <div class="reg-desc">${t("Abre a página para copiar o id e instalar abaixo.")}</div>
+                </div>`
+              )
+              .join("")
+          : `<div class="empty-sm">${t("Sem resultados.")}</div>`;
+      } catch {
+        results.innerHTML = `<div class="empty-sm">${t("Não foi possível contactar o lmstudio.ai.")}</div>`;
+      }
+    }, 300);
+  });
+}
+
+/** Instala um modelo no LM Studio por id/URL, com progresso no toast global. */
+async function lmInstallUi() {
+  const model = (document.querySelector("#hub-lm-install") as HTMLInputElement).value.trim();
+  const quant = (document.querySelector("#hub-lm-quant") as HTMLInputElement).value.trim();
+  if (!model) return;
+  const toast = document.querySelector<HTMLElement>("#dl-toast")!;
+  const label = document.querySelector<HTMLElement>("#dl-toast-label")!;
+  const bar = document.querySelector<HTMLElement>("#dl-toast-bar")!;
+  toast.hidden = false;
+  bar.style.width = "0%";
+  label.textContent = `${t("A descarregar")} ${model}…`;
+  const hideSoon = (ms: number) => setTimeout(() => (toast.hidden = true), ms);
+  try {
+    await api.lmstudioDownload(model, quant, (ev) => {
+      if (ev.kind === "Progress") {
+        if (ev.percent >= 0) bar.style.width = ev.percent.toFixed(0) + "%";
+        label.textContent = `${model}: ${ev.status}${ev.percent >= 0 ? ` — ${ev.percent.toFixed(0)}%` : ""}`;
+      } else if (ev.kind === "Done") {
+        bar.style.width = "100%";
+        label.textContent = `✓ ${model} ${t("descarregado")}`;
+        void renderLmInstalled();
+        hideSoon(2500);
+      } else {
+        label.textContent = "✗ " + ev.message;
+        hideSoon(6000);
+      }
+    });
+  } catch (e) {
+    label.textContent = "✗ " + e;
+    hideSoon(6000);
+  }
+}
+
 /** Badges de capacidade (🛠 tools · 👁 visão · 🧠 raciocínio) com tooltip. */
 function capBadges(name: string): string {
   const c = modelCapabilities(name);
@@ -3168,6 +3390,10 @@ function wireWorkspaceUi() {
   document.querySelector("#hub-pull-btn")!.addEventListener("click", () =>
     pullModelUi(hubIn("#hub-pull-name").value)
   );
+  wireOllamaSearch();
+  wireLmStudioSearch();
+  document.querySelector("#hub-lm-install-btn")!.addEventListener("click", lmInstallUi);
+  document.querySelector("#hub-lm-refresh")!.addEventListener("click", () => void renderLmInstalled());
 
   document.querySelectorAll<HTMLButtonElement>(".rail-btn").forEach((b) =>
     b.addEventListener("click", () => {

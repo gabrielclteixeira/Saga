@@ -97,6 +97,30 @@ export interface OllamaModel {
   quantization: string;
 }
 
+export interface RegistryModel {
+  name: string;
+  description: string;
+  capabilities: string[];
+  sizes: string[];
+  pulls: string;
+  updated: string;
+}
+
+export interface LmModel {
+  id: string;
+  kind: string;
+  arch: string;
+  quantization: string;
+  state: string;
+}
+
+export interface LmCatalogModel {
+  slug: string;
+  name: string;
+  sizes: string[];
+  url: string;
+}
+
 export interface SystemInfo {
   total_ram_gb: number;
   cpu_cores: number;
@@ -203,6 +227,20 @@ export const api = {
   systemInfo: () => invoke<SystemInfo>("system_info"),
   listOllamaModelsDetailed: () =>
     invoke<OllamaModel[]>("list_ollama_models_detailed"),
+  searchOllamaRegistry: (query: string) =>
+    invoke<RegistryModel[]>("search_ollama_registry", { query }),
+  lmstudioList: () => invoke<LmModel[]>("lmstudio_list"),
+  lmstudioSearch: (query: string) =>
+    invoke<LmCatalogModel[]>("lmstudio_search", { query }),
+  lmstudioDownload: (
+    model: string,
+    quant: string,
+    onEvent: (ev: PullEvent) => void
+  ): Promise<void> => {
+    const channel = new Channel<PullEvent>();
+    channel.onmessage = onEvent;
+    return invoke<void>("lmstudio_download", { model, quant, channel });
+  },
   deleteOllamaModel: (model: string) =>
     invoke<void>("delete_ollama_model", { model }),
   pullOllamaModel: (

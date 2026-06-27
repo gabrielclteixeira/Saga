@@ -1871,6 +1871,70 @@ dialog::backdrop {
   color: var(--muted);
   font-size: 12px;
 }
+/* Navegador de modelos (resultados de pesquisa ollama.com). */
+.reg-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.reg-results[hidden] {
+  display: none;
+}
+.reg-loading {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 8px 2px;
+}
+.reg-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--bg-2);
+}
+.reg-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.reg-name {
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+.reg-name:hover {
+  text-decoration: underline;
+}
+.reg-meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.reg-desc {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 6px;
+  line-height: 1.45;
+}
+.reg-sizes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hub-subtitle {
+  margin-top: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+.quant-in {
+  flex: 0 0 92px;
+}
 .catalog-legend {
   margin-top: 2px;
   color: var(--muted);
