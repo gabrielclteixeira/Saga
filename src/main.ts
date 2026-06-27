@@ -262,6 +262,7 @@ app.innerHTML = `
         <button type="button" class="ws-tab" data-kind="playbook">${t("Playbooks")}</button>
         <button type="button" class="ws-tab" data-kind="workflow">${t("Workflows")}</button>
       </div>
+      <p class="ws-help" id="ws-help"></p>
       <div class="ws-body">
         <div class="ws-list" id="ws-list"></div>
         <div class="ws-editor" id="ws-editor" hidden>
@@ -2113,11 +2114,19 @@ async function openWorkspace() {
   showView("workspace");
 }
 
+const WS_HELP: Record<string, string> = {
+  skill: t("Skill — instruções que o modelo carrega sozinho quando a tarefa encaixa (auto-expostas via load_skill)."),
+  playbook: t("Playbook — um procedimento reutilizável que o modelo lê a pedido (read_playbook)."),
+  workflow: t("Workflow — um procedimento executável: corre-o com /<nome> e o agente segue os passos."),
+};
+
 function setWsKind(kind: "skill" | "playbook" | "workflow") {
   wsKind = kind;
   wsDialog
     .querySelectorAll<HTMLButtonElement>(".ws-tab")
     .forEach((b) => b.classList.toggle("active", b.dataset.kind === kind));
+  const help = document.querySelector("#ws-help");
+  if (help) help.textContent = WS_HELP[kind] ?? "";
   document.querySelector("#ws-editor")!.setAttribute("hidden", "");
   void renderWorkspaceList();
 }

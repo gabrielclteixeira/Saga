@@ -244,6 +244,12 @@ const EN: Record<string, string> = {
   "Skills": "Skills",
   "Playbooks": "Playbooks",
   "Workflows": "Workflows",
+  "Skill — instruções que o modelo carrega sozinho quando a tarefa encaixa (auto-expostas via load_skill).":
+    "Skill — instructions the model loads on its own when the task fits (auto-surfaced via load_skill).",
+  "Playbook — um procedimento reutilizável que o modelo lê a pedido (read_playbook).":
+    "Playbook — a reusable procedure the model reads on demand (read_playbook).",
+  "Workflow — um procedimento executável: corre-o com /<nome> e o agente segue os passos.":
+    "Workflow — a runnable procedure: run it with /<name> and the agent follows the steps.",
   "Nome": "Name",
   "Descrição": "Description",
   "Fechar editor": "Close editor",
