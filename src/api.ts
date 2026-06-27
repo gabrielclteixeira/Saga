@@ -242,6 +242,7 @@ export const api = {
     invoke<Attachment>("attachment_from_path", { path }),
   warmModel: (model?: string) =>
     invoke<void>("warm_model", { model: model ?? null }),
+  optimizeOllama: () => invoke<boolean>("optimize_ollama"),
   openLogs: () => invoke<void>("open_logs"),
   resetAccounting: () => invoke<Accounting>("reset_accounting"),
   getMemoryPreview: () => invoke<string>("get_memory_preview"),

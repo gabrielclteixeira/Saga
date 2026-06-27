@@ -657,6 +657,56 @@ pub async fn warm_model(state: State<'_, AppState>, model: Option<String>) -> Re
     Ok(())
 }
 
+/// Aplica as otimizações do servidor Ollama (flash attention + KV cache q8_0 + keep-alive)
+/// e reinicia o Ollama. Só Windows e SEM admin: `setx` escreve variáveis de utilizador.
+/// Devolve `true` se conseguiu relançar o Ollama, `false` se o utilizador tem de o reiniciar.
+#[tauri::command]
+pub fn optimize_ollama() -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        use std::process::Command;
+        const VARS: [(&str, &str); 3] = [
+            ("OLLAMA_FLASH_ATTENTION", "1"),
+            ("OLLAMA_KV_CACHE_TYPE", "q8_0"),
+            ("OLLAMA_KEEP_ALIVE", "30m"),
+        ];
+        // 1. Persiste as variáveis no ambiente do utilizador (sem elevação).
+        for (k, v) in VARS {
+            Command::new("setx")
+                .args([k, v])
+                .output()
+                .map_err(|e| format!("setx {k} falhou: {e}"))?;
+        }
+        // 2. Mata o Ollama em execução (best-effort; ignora se não estiver a correr).
+        let _ = Command::new("taskkill").args(["/IM", "ollama app.exe", "/F"]).output();
+        let _ = Command::new("taskkill").args(["/IM", "ollama.exe", "/F"]).output();
+        // 3. Relança o tray do Ollama com as variáveis JÁ no ambiente do processo filho
+        //    (o `setx` só afeta processos futuros lançados a partir de um env recarregado;
+        //    aqui forçamos via `.env` para o efeito ser imediato). O tray respawna o servidor.
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            let exe = std::path::PathBuf::from(local)
+                .join("Programs")
+                .join("Ollama")
+                .join("ollama app.exe");
+            if exe.exists() {
+                let ok = Command::new(&exe)
+                    .env("OLLAMA_FLASH_ATTENTION", "1")
+                    .env("OLLAMA_KV_CACHE_TYPE", "q8_0")
+                    .env("OLLAMA_KEEP_ALIVE", "30m")
+                    .spawn()
+                    .is_ok();
+                return Ok(ok);
+            }
+        }
+        // Variáveis aplicadas, mas não soubemos relançar → o utilizador reinicia o Ollama.
+        Ok(false)
+    }
+    #[cfg(not(windows))]
+    {
+        Err("O botão Otimizar só está disponível no Windows. Usa os comandos copiados.".into())
+    }
+}
+
 /// Constrói um anexo a partir de um caminho do sistema (drag & drop entrega caminhos,
 /// não objetos File). Imagens → base64 para a visão; documentos → texto extraído.
 #[tauri::command]

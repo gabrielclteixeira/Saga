@@ -2833,6 +2833,11 @@ dialog::backdrop {
   margin: 6px 0;
   overflow-x: auto;
 }
+.opt-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 /* "Todas as variantes" — toggle + lista completa de tags (com tamanhos) */
 .reg-all-btn {
   margin-top: 10px;

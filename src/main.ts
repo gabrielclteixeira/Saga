@@ -546,7 +546,10 @@ app.innerHTML = `
           <legend>${t("Otimizar o Ollama (servidor)")}</legend>
           <p class="wiz-hint">${t("Acelera o Ollama e poupa VRAM (flash attention + cache KV menor — permite contexto maior na tua GPU). Define no servidor do Ollama e reinicia-o.")}</p>
           <pre class="opt-cmds" id="opt-cmds"></pre>
-          <button type="button" class="ghost" id="opt-copy">${t("Copiar comandos")}</button>
+          <div class="opt-actions">
+            <button type="button" class="primary" id="opt-apply" hidden>${t("Otimizar")}</button>
+            <button type="button" class="ghost" id="opt-copy">${t("Copiar comandos")}</button>
+          </div>
         </fieldset>
 
         <fieldset>
@@ -4731,6 +4734,29 @@ function wireWorkspaceUi() {
     navigator.clipboard?.writeText(ollamaOptCommands());
     showHint(t("Comandos copiados."));
   });
+  // Botão "Otimizar" (aplica + reinicia o Ollama) só no Windows; nos outros, fica o Copiar.
+  const optApply = document.querySelector<HTMLButtonElement>("#opt-apply");
+  if (optApply && /Windows/i.test(navigator.userAgent)) {
+    optApply.hidden = false;
+    optApply.addEventListener("click", async () => {
+      optApply.disabled = true;
+      const label = optApply.textContent;
+      optApply.textContent = t("A otimizar…");
+      try {
+        const restarted = await api.optimizeOllama();
+        showHint(
+          restarted
+            ? t("Otimizações aplicadas e Ollama reiniciado. ✓")
+            : t("Otimizações aplicadas. Fecha e reabre o Ollama (tray) para terem efeito.")
+        );
+      } catch (e) {
+        showHint(t("Não foi possível otimizar: ") + String(e));
+      } finally {
+        optApply.disabled = false;
+        optApply.textContent = label;
+      }
+    });
+  }
 
   document.querySelectorAll<HTMLButtonElement>(".rail-btn").forEach((b) =>
     b.addEventListener("click", () => {
