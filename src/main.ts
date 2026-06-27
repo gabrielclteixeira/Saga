@@ -118,6 +118,7 @@ const ICON_PATHS: Record<string, string> = {
   export: `<path d="M12 15V3"/><polyline points="7 8 12 3 17 8"/><path d="M5 21h14a2 2 0 0 0 2-2v-4"/><path d="M3 15v4a2 2 0 0 0 2 2"/>`,
   book: `<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 17H6a2 2 0 0 0-2 2"/>`,
   chevron: `<polyline points="9 6 15 12 9 18"/>`,
+  info: `<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>`,
   x: `<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>`,
 };
 function icon(name: string): string {
@@ -519,7 +520,7 @@ app.innerHTML = `
           <legend>${t("Pesquisa web (modelo local)")}</legend>
           <label class="check"><input id="hub-local-web" type="checkbox" /> ${t("Dar pesquisa web ao modelo local (🔎 corre no Ollama)")}</label>
           <p class="wiz-hint">${t("Precisa de um modelo Ollama com suporte a ferramentas (ex.: llama3.1, qwen2.5). Com isto desligado, o 🔎 força o Claude.")}</p>
-          <label>${t("Motor")}
+          <label><span class="label-with-help">${t("Motor")} <span class="help-ic" title="${t("O DuckDuckGo é gratuito e sem chave, mas limita pesquisas em rajada — pode ficar lento ou bloquear temporariamente (a app espaça os pedidos para minimizar). Para pesquisa rápida e fiável, escolhe um motor com chave: Tavily e Brave têm tier gratuito.")}">${icon("info")}</span></span>
             <select id="hub-web-provider">
               <option value="duckduckgo">${t("DuckDuckGo (sem chave — recomendado)")}</option>
               <option value="jina">Jina</option>
@@ -2081,6 +2082,12 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   renderMessages();
   scrollChatToBottom(); // novo turno (envio/regenerar) = salta para o fim
   startWaitTicker();
+  // Pesquisa fundamentada local (decompõe → pesquisa → verifica → sintetiza) demora — avisa.
+  if (sendOpts.research && sendOpts.routeOverride !== "claude" && canLocalSearch) {
+    showHint(
+      t("Pesquisa fundamentada — pode demorar um pouco (decompõe, pesquisa cada parte e verifica). Vês o progresso à medida que avança.")
+    );
+  }
 
   const paintBubble = () => {
     const stick = isChatNearBottom();

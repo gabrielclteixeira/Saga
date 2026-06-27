@@ -539,6 +539,10 @@ const EN: Record<string, string> = {
   "— Nenhum —": "— None —",
   "Sem modelos. Instala um acima.": "No models. Install one above.",
   "Usar como modelo de visão": "Use as vision model",
+  "Pesquisa fundamentada — pode demorar um pouco (decompõe, pesquisa cada parte e verifica). Vês o progresso à medida que avança.":
+    "Grounded research — this can take a while (it breaks the question down, searches each part and verifies). You'll see progress as it goes.",
+  "O DuckDuckGo é gratuito e sem chave, mas limita pesquisas em rajada — pode ficar lento ou bloquear temporariamente (a app espaça os pedidos para minimizar). Para pesquisa rápida e fiável, escolhe um motor com chave: Tavily e Brave têm tier gratuito.":
+    "DuckDuckGo is free and keyless, but it throttles bursts of searches — it can get slow or temporarily block (the app spaces requests to minimize this). For fast, reliable search, pick a keyed engine: Tavily and Brave have free tiers.",
   "a decompor a pergunta…": "breaking down the question…",
   "a verificar os factos…": "fact-checking…",
   "a escrever a resposta…": "writing the answer…",
