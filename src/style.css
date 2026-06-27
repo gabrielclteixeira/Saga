@@ -3087,6 +3087,15 @@ dialog::backdrop {
     transform: translateY(-3px);
   }
 }
+/* Variante sem movimento (só opacidade) para reduced-motion — ainda dá feedback. */
+@keyframes wait-fade {
+  0%, 80%, 100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
 /* Contador de tempo decorrido — prova de que está a trabalhar, não preso */
 .wait-elapsed {
   color: var(--muted);
@@ -3098,9 +3107,9 @@ dialog::backdrop {
   display: none;
 }
 @media (prefers-reduced-motion: reduce) {
+  /* Mantém o pulsar (só opacidade, sem movimento) para continuar a dar feedback de espera. */
   .wait-dots i {
-    animation: none;
-    opacity: 0.6;
+    animation-name: wait-fade;
   }
 }
 
