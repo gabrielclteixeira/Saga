@@ -1991,7 +1991,7 @@ async function checkForUpdates() {
   } catch (e) {
     const msg = String(e);
     status.textContent = /release json|404|fetch|endpoint|not found/i.test(msg)
-      ? t("Auto-update ainda não está ativo (instaladores sem assinatura). Descarrega a versão mais recente em github.com/gabrielclteixeira/Saga/releases.")
+      ? t("Não foi possível contactar o servidor de atualizações. Verifica a ligação e tenta de novo.")
       : t("Não foi possível verificar atualizações: ") + msg;
   }
 }

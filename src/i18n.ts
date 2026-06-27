@@ -450,6 +450,8 @@ const EN: Record<string, string> = {
   "Auto-update ainda não está ativo (instaladores sem assinatura). Descarrega a versão mais recente em github.com/gabrielclteixeira/Saga/releases.":
     "Auto-update isn't active yet (unsigned installers). Download the latest version at github.com/gabrielclteixeira/Saga/releases.",
   "Não foi possível verificar atualizações: ": "Couldn't check for updates: ",
+  "Não foi possível contactar o servidor de atualizações. Verifica a ligação e tenta de novo.":
+    "Couldn't reach the update server. Check your connection and try again.",
   // Aprovação de ações
   "Aprovar ação?": "Approve action?",
   "Recusar": "Decline",
