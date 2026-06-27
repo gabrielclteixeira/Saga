@@ -2354,6 +2354,49 @@ dialog::backdrop {
   flex-wrap: wrap;
   gap: 6px;
 }
+/* Medidor de pesquisas web (painel de tokens) */
+.search-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.su-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 12px;
+}
+.su-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.su-bar {
+  grid-column: 1 / -1;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  overflow: hidden;
+}
+.su-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.su-note {
+  color: var(--muted);
+  font-size: 11px;
+}
+.su-empty,
+.su-foot {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.su-foot {
+  margin-top: 4px;
+  opacity: 0.8;
+}
 /* Painel "Otimizar o Ollama" — comandos de ambiente */
 .opt-cmds {
   background: var(--bg);

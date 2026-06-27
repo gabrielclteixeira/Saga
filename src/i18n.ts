@@ -396,6 +396,12 @@ const EN: Record<string, string> = {
   "Copiar comandos": "Copy commands",
   "Comandos copiados.": "Commands copied.",
   "Ir para a mensagem mais recente": "Jump to latest message",
+  "Pesquisas web (este mês)": "Web searches (this month)",
+  "Ainda sem pesquisas este mês.": "No searches yet this month.",
+  "sem limite fixo": "no fixed limit",
+  "ver quota no motor": "check engine quota",
+  "Contagem local (o que a Saga gastou); a quota real está no painel do motor.":
+    "Local count (what Saga used); the real quota is in the engine's dashboard.",
   "🔎 falta a chave {p}: adiciona-a em Modelos → Avançado para pesquisa fiável (sem chave usa o DuckDuckGo, pouco fiável).":
     "🔎 missing {p} key: add it in Models → Advanced for reliable search (without a key it uses DuckDuckGo, unreliable).",
   "A carregar…": "Loading…",

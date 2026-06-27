@@ -91,6 +91,12 @@ fn init(conn: &Connection) -> Result<()> {
             next_run_epoch INTEGER NOT NULL DEFAULT 0,
             created_at     TEXT NOT NULL DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS search_usage (
+            ym       TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            n        INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (ym, provider)
+        );
         "#,
     )?;
     // Migração: colunas de compactação na conversa (ignora erro se já existirem).
@@ -570,4 +576,35 @@ pub fn maybe_autotitle(conn: &Connection, id: i64, from_prompt: &str) -> Result<
         }
     }
     Ok(())
+}
+
+// ---- Uso de pesquisa web (contador mensal por motor) ----
+
+/// Incrementa o contador de pesquisas do mês (`ym` = "YYYY-MM") para um motor.
+pub fn add_search_usage(conn: &Connection, ym: &str, provider: &str, n: u32) -> Result<()> {
+    conn.execute(
+        "INSERT INTO search_usage (ym, provider, n) VALUES (?1, ?2, ?3)
+         ON CONFLICT(ym, provider) DO UPDATE SET n = n + ?3",
+        params![ym, provider, n],
+    )?;
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub struct SearchUsage {
+    pub provider: String,
+    pub count: u32,
+}
+
+/// Contagens de pesquisa de um mês (`ym` = "YYYY-MM"), por motor.
+pub fn search_usage(conn: &Connection, ym: &str) -> Result<Vec<SearchUsage>> {
+    let mut stmt =
+        conn.prepare("SELECT provider, n FROM search_usage WHERE ym = ?1 ORDER BY n DESC")?;
+    let rows = stmt.query_map(params![ym], |r| {
+        Ok(SearchUsage {
+            provider: r.get(0)?,
+            count: r.get::<_, i64>(1)? as u32,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
 }

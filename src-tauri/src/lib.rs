@@ -110,6 +110,7 @@ pub fn run() {
             commands::diagnostics,
             commands::list_ollama_models,
             commands::system_info,
+            commands::get_search_usage,
             commands::search_ollama_registry,
             commands::ollama_registry_tags,
             commands::lmstudio_list,

@@ -129,10 +129,10 @@ where
                         }
                         // Sem resultados: dá uma instrução acionável em vez de um beco sem saída.
                         Ok(_) if provider == "duckduckgo" || provider.is_empty() => {
-                            "A pesquisa sem-chave (DuckDuckGo) não devolveu resultados — está \
-frequentemente bloqueada para pesquisas automáticas. INFORMA o utilizador: para pesquisa web fiável, \
-escolha um motor com chave (Tavily, Brave, Serper, Exa ou Jina) em Modelos → Avançado → Pesquisa web. \
-Não inventes resultados nem finjas que pesquisaste."
+                            "A pesquisa (DuckDuckGo, sem chave) não devolveu resultados desta vez — \
+pode ter sido limite de ritmo (o DuckDuckGo trava rajadas) ou termos sem correspondência. Tenta de \
+novo com termos diferentes; se falhar repetidamente, sugere ao utilizador adicionar uma chave (Tavily/\
+Brave/…) em Modelos → Avançado para maior fiabilidade. Não inventes resultados nem finjas que pesquisaste."
                                 .to_string()
                         }
                         Ok(_) => format!(

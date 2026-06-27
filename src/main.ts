@@ -184,6 +184,8 @@ app.innerHTML = `
           <button class="ghost" id="btn-clear-saga" title="${t("Apagar as mensagens desta Saga")}">${t("Limpar")}</button>
         </span>
       </div>
+      <h3>${t("Pesquisas web (este mês)")}</h3>
+      <div class="search-usage" id="search-usage"></div>
       <h3>${t("Memória carregada")}</h3>
       <pre class="mem" id="mem-preview">—</pre>
       <button class="ghost" id="btn-mem-refresh">${t("Atualizar pré-visualização")}</button>
@@ -1012,6 +1014,43 @@ function renderAccounting(a: Accounting) {
       a.tokens_served_local + a.tokens_saved_compression
     )} ${t("tok poupados")}</span>
     <span title="${t("Custo acumulado no Claude")}">▲ ${fmtUsd(a.claude_cost_usd)}</span>`;
+  void renderSearchUsage();
+}
+
+/** Quotas gratuitas MENSAIS conhecidas (nº de pesquisas) para mostrar "usadas / limite". */
+const SEARCH_MONTHLY_LIMIT: Record<string, number> = { tavily: 1000, brave: 2000, exa: 1000 };
+
+/** Medidor de pesquisas web do mês (contagem local; a quota real está no painel do motor). */
+async function renderSearchUsage() {
+  const box = document.querySelector<HTMLElement>("#search-usage");
+  if (!box) return;
+  let usage: import("./api").SearchUsage[] = [];
+  try {
+    usage = await api.getSearchUsage();
+  } catch {
+    return;
+  }
+  if (!usage.length) {
+    box.innerHTML = `<div class="su-empty">${t("Ainda sem pesquisas este mês.")}</div>`;
+    return;
+  }
+  const rows = usage
+    .map((u) => {
+      const label = u.provider === "duckduckgo" ? "DuckDuckGo" : (WEB_PROVIDER_META[u.provider]?.label ?? u.provider);
+      const limit = SEARCH_MONTHLY_LIMIT[u.provider];
+      if (limit) {
+        const pct = Math.min(100, Math.round((u.count / limit) * 100));
+        return `<div class="su-row"><span class="su-name">${escapeHtml(label)}</span>
+          <span class="su-count">${fmtInt(u.count)} / ${fmtInt(limit)}</span>
+          <span class="su-bar"><span style="width:${pct}%"></span></span></div>`;
+      }
+      const note = u.provider === "duckduckgo" ? t("sem limite fixo") : t("ver quota no motor");
+      return `<div class="su-row"><span class="su-name">${escapeHtml(label)}</span>
+        <span class="su-count">${fmtInt(u.count)}</span>
+        <span class="su-note">${note}</span></div>`;
+    })
+    .join("");
+  box.innerHTML = rows + `<div class="su-foot">${t("Contagem local (o que a Saga gastou); a quota real está no painel do motor.")}</div>`;
 }
 
 async function refreshMemory() {

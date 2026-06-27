@@ -642,6 +642,14 @@ pub fn system_info() -> SystemInfo {
     }
 }
 
+/// Uso de pesquisa web do mês corrente, por motor (contador local — o que a Saga gastou).
+#[tauri::command]
+pub fn get_search_usage(state: State<AppState>) -> Result<Vec<crate::store::SearchUsage>, String> {
+    let ym = chrono::Local::now().format("%Y-%m").to_string();
+    let conn = state.db.lock().unwrap();
+    store::search_usage(&conn, &ym).map_err(|e| e.to_string())
+}
+
 /// Pesquisa o registo público do Ollama (ollama.com) — navegador de modelos ao vivo.
 #[tauri::command]
 pub async fn search_ollama_registry(
@@ -936,7 +944,10 @@ pub async fn send_message_stream(
             // imagens (aí vai direto à visão, sem tools).
             if (settings.local_web_search || research) && !prepared.has_images {
                 let tx_t = channel.clone();
-                crate::web_agent::run(
+                // Conta as pesquisas web feitas neste pedido (para o medidor de uso mensal).
+                let searches = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+                let sc = searches.clone();
+                let r = crate::web_agent::run(
                     &settings.ollama_endpoint,
                     &prepared.model,
                     &settings.web_search_provider,
@@ -945,13 +956,31 @@ pub async fn send_message_stream(
                     gopts,
                     on_delta,
                     move |tool, detail| {
+                        if tool == "web_search" {
+                            sc.fetch_add(1, Ordering::Relaxed);
+                        }
                         let _ = tx_t.send(StreamEvent::ToolStep {
                             tool: tool.to_string(),
                             detail: detail.to_string(),
                         });
                     },
                 )
-                .await
+                .await;
+                // Atribui ao motor que REALMENTE correu (sem chave, um motor com chave cai p/ DDG).
+                let n = searches.load(Ordering::Relaxed);
+                if n > 0 {
+                    let eff = if settings.web_search_provider != "duckduckgo"
+                        && settings.active_web_key().trim().is_empty()
+                    {
+                        "duckduckgo"
+                    } else {
+                        settings.web_search_provider.as_str()
+                    };
+                    let ym = chrono::Local::now().format("%Y-%m").to_string();
+                    let conn = state.db.lock().unwrap();
+                    let _ = store::add_search_usage(&conn, &ym, eff, n);
+                }
+                r
             } else {
                 // Modelos com raciocínio (gemma4, qwen3, deepseek-r1…) emitem "thinking"
                 // separado — pede-o e reenvia-o como feedback ao utilizador.

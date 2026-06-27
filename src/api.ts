@@ -122,6 +122,11 @@ export interface LmModel {
   state: string;
 }
 
+export interface SearchUsage {
+  provider: string;
+  count: number;
+}
+
 export interface SystemInfo {
   total_ram_gb: number;
   total_vram_gb: number;
@@ -227,6 +232,7 @@ export const api = {
   diagnostics: () => invoke<Diagnostics>("diagnostics"),
   listOllamaModels: () => invoke<string[]>("list_ollama_models"),
   systemInfo: () => invoke<SystemInfo>("system_info"),
+  getSearchUsage: () => invoke<SearchUsage[]>("get_search_usage"),
   listOllamaModelsDetailed: () =>
     invoke<OllamaModel[]>("list_ollama_models_detailed"),
   searchOllamaRegistry: (query: string) =>
