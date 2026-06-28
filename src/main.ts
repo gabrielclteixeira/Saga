@@ -4121,7 +4121,7 @@ async function renderActivity() {
     rows = [];
   }
   if (rows.length === 0) {
-    list.innerHTML = `<div class="empty-sm">${t("Sem ações registadas nesta Saga.")}</div>`;
+    list.innerHTML = `<div class="empty-sm">${t("Sem ações registadas nesta Saga.")}<br><span class="muted-sm">${t("As automações registam-se na Saga “Automações”.")}</span></div>`;
     return;
   }
   list.innerHTML = rows

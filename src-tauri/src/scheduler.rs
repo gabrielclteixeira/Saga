@@ -98,8 +98,8 @@ async fn run_schedule_inner(app: &AppHandle, sched: &Schedule) -> (String, Strin
         return ("ERRO".into(), "requer Claude API configurado".into());
     }
 
-    // Saga "Automações" + regista o disparo.
-    let conv_id = {
+    // Saga "Automações" + regista o disparo (mensagem + entrada no action_log para a Activity).
+    let (conv_id, action_id) = {
         let conn = state.db.lock().unwrap();
         let id = store::find_or_create_conversation(&conn, "Automações").unwrap_or(0);
         let _ = store::append_message(
@@ -115,7 +115,17 @@ async fn run_schedule_inner(app: &AppHandle, sched: &Schedule) -> (String, Strin
             0.0,
             0,
         );
-        id
+        let aid = store::insert_action(
+            &conn,
+            id,
+            "workflow",
+            &sched.arguments,
+            "EM_EXECUCAO",
+            &format!("{} ({route})", sched.workflow_name),
+            "",
+        )
+        .unwrap_or(0);
+        (id, aid)
     };
 
     let messages = vec![
@@ -241,6 +251,12 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
         ),
         Err(e) => ("ERRO".to_string(), format!("erro: {e}")),
     };
+    let summary: String = text.chars().take(140).collect();
+    let model_label = if route == "claude" {
+        settings.claude_model.clone()
+    } else {
+        settings.ollama_model.clone()
+    };
     {
         let conn = state.db.lock().unwrap();
         let _ = store::append_message(
@@ -249,15 +265,22 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
             "assistant",
             &text,
             "[]",
-            "claude",
-            &settings.claude_model,
+            &route,
+            &model_label,
             0,
             0,
             0.0,
             0,
         );
+        // Fecha a entrada do action_log (EM_EXECUCAO → OK/ERRO) para aparecer na Activity.
+        let _ = store::update_action(
+            &conn,
+            action_id,
+            &status,
+            &summary,
+            if status == "ERRO" { &text } else { "" },
+        );
     }
-    let summary: String = text.chars().take(140).collect();
     (status, summary)
 }
 
