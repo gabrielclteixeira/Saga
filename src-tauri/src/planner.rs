@@ -106,54 +106,6 @@ fn parse_list_lines(text: &str) -> Vec<String> {
     out
 }
 
-/// Classificação leve: este plano precisa de informação atual/online para ser bem executado?
-/// Uma chamada minúscula (SIM/NAO) sobre os passos já rascunhados — mais fiável do que pedir o flag
-/// dentro do JSON dos passos (que faz os modelos pequenos devolverem passos vazios).
-async fn needs_web_check(
-    settings: &Settings,
-    use_api: bool,
-    model: &str,
-    today: &str,
-    steps: &[String],
-    total_in: &mut u64,
-    total_out: &mut u64,
-) -> bool {
-    let list = steps
-        .iter()
-        .enumerate()
-        .map(|(i, s)| format!("{}. {s}", i + 1))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let prompt = format!(
-        "Plano:\n{list}\n\nPara executar bem este plano hoje ({today}), é preciso INFORMAÇÃO \
-ATUAL/ONLINE — preços, produtos/modelos recentes, notícias, ou dados posteriores ao teu treino? \
-Responde APENAS com uma palavra: SIM ou NAO."
-    );
-    let msgs = vec![msg("user", prompt)];
-    let opts = GenOpts { num_ctx: 4096, temperature: Some(0.0), num_predict: Some(8) };
-    let text = if use_api {
-        claude_api::messages(&settings.claude_api_key, model, 16, &msgs, false)
-            .await
-            .map(|r| {
-                *total_in += r.input_tokens;
-                *total_out += r.output_tokens;
-                r.text
-            })
-            .unwrap_or_default()
-    } else {
-        ollama::chat_stream(&settings.ollama_endpoint, model, &msgs, opts, false, |_| {}, |_| {})
-            .await
-            .map(|r| {
-                *total_in += r.input_tokens;
-                *total_out += r.output_tokens;
-                r.text
-            })
-            .unwrap_or_default()
-    };
-    let t = clean_step(&text).to_uppercase();
-    t.contains("SIM") || t.contains("YES")
-}
-
 /// Limpa a saída de um passo: remove blocos/tags `<think>…</think>` (vazamento de raciocínio) e
 /// desembrulha cercas de código que envolvam toda a resposta (`​```markdown … ​````), que de outro modo
 /// seriam extraídas como artefactos separados.
@@ -252,12 +204,14 @@ um array JSON de strings (os passos), nada mais."
     // Classificação leve (SIM/NAO) à parte: o plano precisa de dados atuais/online? Pôr este flag
     // DENTRO do JSON dos passos faz os modelos pequenos colapsarem para um array vazio — por isso é
     // uma chamada minúscula separada (num_predict curto), sobre os passos já rascunhados.
-    on_tool("plan", "classify");
-    let needs_web = needs_web_check(settings, use_api, model, &today, &draft, &mut total_in, &mut total_out).await;
-    log::info!("[plan] {} passos rascunhados, needs_web={needs_web}", draft.len());
+    log::info!("[plan] {} passos rascunhados", draft.len());
 
-    // ── Fase 2: aprovar / editar / rejeitar (e, se needs_web, escalar o 🔎) ──────────────────
-    let (steps, research) = match approve(draft, needs_web).await {
+    // ── Fase 2: aprovar / editar / rejeitar ──────────────────────────────────────────────────
+    // Oferecemos SEMPRE a escalada para a web no cartão (pré-marcada quando o 🔎 está desligado).
+    // A classificação automática "precisa de web?" era pouco fiável — dizia NÃO a planos que
+    // claramente beneficiavam de dados atuais (dois rascunhos da mesma pergunta davam veredictos
+    // opostos). Quem decide é o utilizador, na aprovação.
+    let (steps, research) = match approve(draft, true).await {
         Some((s, r)) if !s.is_empty() => (s, r),
         _ => {
             let txt = "Plano rejeitado.".to_string();

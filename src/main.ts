@@ -3340,7 +3340,7 @@ function showPlanCard(
   const askWeb = needsWeb && !research; // só pergunta se ainda não está fundamentado
   const webRow = askWeb
     ? `<label class="plan-web"><input type="checkbox" class="plan-web-cb" checked />
-         ${t("🔎 Pesquisar na web (este plano precisa de dados atuais)")}</label>`
+         ${t("🔎 Pesquisar na web durante a execução (recomendado)")}</label>`
     : "";
   card.innerHTML = `
     <div class="approval-head">${t("Plano — revê, edita e aprova")}</div>
