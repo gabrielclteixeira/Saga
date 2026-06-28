@@ -247,7 +247,10 @@ pub async fn chat_stream<F: FnMut(&str), G: FnMut(&str)>(
         stream: true,
         options: opts_json(opts),
         keep_alive: KEEP_ALIVE,
-        think: think.then_some(true),
+        // Envia o flag SEMPRE explícito: `Some(false)` desliga mesmo o raciocínio. Omiti-lo deixava
+        // modelos que pensam por defeito (qwen3…) gastar todo o num_predict a "pensar" e devolver
+        // conteúdo VAZIO — no Plan mode isso dava 0 passos → eco da pergunta.
+        think: Some(think),
     };
     log::debug!("ollama chat_stream model={model} num_ctx={} think={think} msgs={}", opts.num_ctx, wire.len());
 
