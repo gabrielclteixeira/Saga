@@ -557,6 +557,14 @@ const EN: Record<string, string> = {
   "Pesquisar na web durante a execução (recomendado)":
     "Search the web during execution (recommended)",
   "Rejeitar": "Reject",
+  "Antes de planear — esclarece": "Before planning — clarify",
+  "Responde ao que souberes; salta o resto.": "Answer what you know; skip the rest.",
+  "Responder": "Answer",
+  "Saltar": "Skip",
+  "Plan mode: perguntar antes de planear quando o pedido é vago":
+    "Plan mode: ask before planning when the request is vague",
+  "Só dispara em mensagens vagas; faz 1-3 perguntas curtas e podes saltar.":
+    "Only triggers on vague messages; asks 1-3 short questions and you can skip.",
   "a decompor a pergunta…": "breaking down the question…",
   "a verificar os factos…": "fact-checking…",
   "a escrever a resposta…": "writing the answer…",

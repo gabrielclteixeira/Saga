@@ -202,7 +202,13 @@ image attachments; the prompt is piped via stdin so long conversations don't hit
 (global request pacing + cooldown to avoid the keyless anti-bot blocks) ·
 **Plan mode** (the model drafts an actionable step-by-step plan you **approve / edit / reject**, then executes it
 step by step with a live status checklist; each step is reasoned/written, or grounded via the 🔎 toggle;
-local-first on Ollama or on Claude — the planning sibling of grounded deep-research).
+local-first on Ollama or on Claude — the planning sibling of grounded deep-research) ·
+**keyless Mojeek failover** (when DuckDuckGo's anti-bot blocks, Mojeek takes over for a cooldown window —
+grounding keeps working with no API key) · **per-step collapsible plan result** (the checklist becomes an
+index: click a step to expand its content) + **numbered editable plan editor** ·
+**clarification before planning** (a *deterministic* ambiguity gate — cheap text features, **not** model
+self-judgment, which research shows over-flags — asks 1-3 slot-based questions only when the request is vague,
+then plans with your answers; the planning counterpart of asking-before-acting).
 
 **Next:**
 
@@ -214,6 +220,19 @@ local-first on Ollama or on Claude — the planning sibling of grounded deep-res
 - **Agentic Plan execution (v2)** — today Plan mode *generates* each step (reasoning/writing, optionally web-grounded);
   a v2 would let approved steps take **real actions** via the agentic tool loop (browser, workspace, MCP, files) on
   the Claude route, with per-step approval for risky ones.
+- **Smarter ambiguity gate (clarification v2)** — today's gate is deterministic text features + slot extraction;
+  a v2 would add an **embedding classifier** (query embedding + features, via `/api/embeddings`) to refine borderline
+  cases, a **self-consistency** signal (sample a few drafts, measure assumption divergence) for the hardest calls,
+  per-model default sensitivity, and a 👍/👎 feedback loop that nudges the threshold.
+
+**Open questions:**
+
+- **High-performance inference backend?** — worth supporting **TabbyAPI / ExLlama (EXL3)** alongside Ollama, for
+  ~2× single-stream speed and larger models within 12 GB VRAM? Trade-off: more setup vs more speed. The app already
+  speaks OpenAI-compatible APIs, so a backend can be A/B-tested behind the same endpoint with **no code change**.
+  (vLLM / TGI / SGLang are throughput/server engines — Linux-first, batching wasted for a single desktop user — so
+  likely not the fit here. Internal-activation methods like sparse-neuron ambiguity probes stay out of reach until/unless
+  the inference stack exposes hidden states.)
 
 ### Browser tool setup
 

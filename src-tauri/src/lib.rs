@@ -1,5 +1,6 @@
 mod accounting;
 mod agent;
+mod clarify;
 mod commands;
 mod deep_research;
 mod extract;
@@ -161,6 +162,7 @@ pub fn run() {
             commands::get_action_log,
             commands::approve_action,
             commands::respond_plan,
+            commands::respond_clarify,
             commands::ensure_workspace_defaults,
             commands::get_workspace_index,
             commands::read_workspace_doc,

@@ -58,6 +58,8 @@ pub struct Settings {
     pub workspace_dir: String,
     /// Confirmação de ações: "off" | "dry_run" | "ask".
     pub confirm_mode: String,
+    /// Fase de esclarecimento do Plan mode: "off" | "light" (deteção determinística + perguntas por slots).
+    pub clarify_level: String,
     /// Pesquisa web para o modelo local (Ollama tool-calling).
     pub local_web_search: bool,
     /// Motor de pesquisa: "duckduckgo" (sem chave) | "tavily" | "brave" | "serper" | "exa" | "jina".
@@ -110,6 +112,7 @@ impl Default for Settings {
                 .to_string_lossy()
                 .to_string(),
             confirm_mode: "off".into(),
+            clarify_level: "light".into(),
             local_web_search: false,
             // DuckDuckGo: keyless, funciona logo (com limites de ritmo). Motores com chave
             // (Tavily/Jina/…) ficam disponíveis para mais fiabilidade/volume.

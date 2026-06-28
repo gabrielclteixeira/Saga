@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 
+use crate::clarify;
 use crate::providers::ollama::{self, GenOpts};
 use crate::providers::{claude_api, ChatMessage, LlmResponse};
 use crate::settings::Settings;
@@ -29,7 +30,7 @@ fn msg(role: &str, content: String) -> ChatMessage {
 /// Acrescenta uma instrução à ÚLTIMA mensagem do utilizador, preservando todo o histórico e a
 /// alternância de papéis. Assim o modelo planeia/executa COM o contexto da conversa (e não sobre
 /// uma linha solta como "dá-me exemplos", que sozinha não tem significado).
-fn with_instruction(messages: &[ChatMessage], instruction: &str) -> Vec<ChatMessage> {
+pub(crate) fn with_instruction(messages: &[ChatMessage], instruction: &str) -> Vec<ChatMessage> {
     let mut m = messages.to_vec();
     if let Some(last) = m.iter_mut().rev().find(|x| x.role == "user") {
         last.content = format!("{}\n\n{instruction}", last.content);
@@ -50,7 +51,7 @@ fn truncate(s: &str, max: usize) -> String {
 /// Para o RASCUNHO do plano: histórico enxuto. Os resultados de planos anteriores têm milhares de
 /// caracteres e, repetidos no contexto, afogam a instrução → o modelo pequeno degenera em ECO da
 /// pergunta. Limita cada mensagem antiga; a ÚLTIMA do utilizador (que leva a instrução) fica completa.
-fn lean_for_draft(messages: &[ChatMessage]) -> Vec<ChatMessage> {
+pub(crate) fn lean_for_draft(messages: &[ChatMessage]) -> Vec<ChatMessage> {
     let last_user = messages.iter().rposition(|m| m.role == "user");
     messages
         .iter()
@@ -68,7 +69,7 @@ fn lean_for_draft(messages: &[ChatMessage]) -> Vec<ChatMessage> {
 /// Extrai os passos do rascunho. Tenta primeiro o array JSON de strings (robusto a texto à volta);
 /// se falhar (o modelo devolveu uma lista markdown ou prosa), cai numa análise de lista numerada/
 /// com marcadores. Assim evita-se o eco da pergunta quando o formato escorrega.
-fn parse_steps(text: &str) -> Vec<String> {
+pub(crate) fn parse_steps(text: &str) -> Vec<String> {
     if let (Some(a), Some(b)) = (text.find('['), text.rfind(']')) {
         if b >= a {
             if let Ok(v) = serde_json::from_str::<Vec<String>>(&text[a..=b]) {
@@ -127,7 +128,7 @@ fn parse_list_lines(text: &str) -> Vec<String> {
 /// Limpa a saída de um passo: remove blocos/tags `<think>…</think>` (vazamento de raciocínio) e
 /// desembrulha cercas de código que envolvam toda a resposta (`​```markdown … ​````), que de outro modo
 /// seriam extraídas como artefactos separados.
-fn clean_step(text: &str) -> String {
+pub(crate) fn clean_step(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     // Remove blocos <think>…</think> completos.
@@ -167,12 +168,14 @@ fn clean_step(text: &str) -> String {
 /// Plan mode. `approve(draft)` emite o plano à UI e devolve `None` (rejeitado) ou os passos
 /// (possivelmente editados). `on_step(i, status)`, `on_delta(texto)`, `on_tool(nome, detalhe)`.
 #[allow(clippy::too_many_arguments)]
-pub async fn run<A, F, S, D, T>(
+pub async fn run<A, B, F, G, S, D, T>(
     settings: &Settings,
     use_api: bool,
     model: &str,
     messages: &[ChatMessage],
     opts: GenOpts,
+    clarify_level: &str,
+    ask: B,
     approve: A,
     mut on_step: S,
     mut on_delta: D,
@@ -181,6 +184,8 @@ pub async fn run<A, F, S, D, T>(
 where
     A: FnOnce(Vec<String>, bool) -> F,
     F: std::future::Future<Output = Option<(Vec<String>, bool)>>,
+    B: FnOnce(Vec<String>) -> G,
+    G: std::future::Future<Output = Option<Vec<String>>>,
     S: FnMut(usize, &str),
     D: FnMut(&str),
     T: FnMut(&str, &str),
@@ -190,6 +195,30 @@ where
     let mut total_in = 0u64;
     let mut total_out = 0u64;
     let mut sources: Vec<(String, String)> = Vec::new();
+    // Conversa de trabalho: pode ganhar os esclarecimentos do utilizador antes de planear.
+    let mut conv: Vec<ChatMessage> = messages.to_vec();
+
+    // ── Fase 0: esclarecer (determinístico decide SE perguntar; o modelo gera as perguntas) ──
+    if clarify_level != "off" && clarify::specificity(&task) == clarify::Specificity::Vague {
+        let qs = clarify::clarifying_questions(settings, use_api, model, &conv, opts, &mut total_in, &mut total_out).await;
+        log::info!("[clarify] vague=true perguntas={}", qs.len());
+        if !qs.is_empty() {
+            if let Some(answers) = ask(qs.clone()).await {
+                let qa = qs
+                    .iter()
+                    .zip(answers.iter())
+                    .filter(|(_, a)| !a.trim().is_empty())
+                    .map(|(q, a)| format!("- {q} {}", a.trim()))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if !qa.is_empty() {
+                    conv = with_instruction(&conv, &format!("Esclarecimentos que dei:\n{qa}"));
+                }
+            }
+        }
+    } else if clarify_level != "off" {
+        log::info!("[clarify] vague=false");
+    }
 
     // Chamada one-shot (texto limpo) — local sem thinking, ou Claude.
     // ── Fase 1: planear (COM o contexto da conversa) ────────────────────────────────────────
@@ -205,7 +234,7 @@ um array JSON de strings (os passos), nada mais."
     // tipo "[Erro] …") e o parse falha → caía no eco da pergunta.
     let plan_opts = GenOpts { num_predict: Some(1024), temperature: Some(0.2), ..opts };
     // Histórico enxuto SÓ no rascunho: evita que outputs de planos anteriores afoguem a instrução.
-    let plan_msgs = with_instruction(&lean_for_draft(messages), &plan_instruction);
+    let plan_msgs = with_instruction(&lean_for_draft(&conv), &plan_instruction);
     let dz = if use_api {
         claude_api::messages(&settings.claude_api_key, model, settings.claude_max_tokens, &plan_msgs, false).await?
     } else {
@@ -298,7 +327,7 @@ dólares ($). Só inclui um link se tiveres a certeza de que existe; na dúvida,
             total = steps.len(),
             prior_txt = truncate(&prior, PRIOR_CAP)
         );
-        let step_msgs = with_instruction(messages, &step_instruction);
+        let step_msgs = with_instruction(&conv, &step_instruction);
         // Bufferiza a saída do passo (sem stream ao vivo) para a poder limpar antes de a mostrar:
         // remove vazamentos de <think> e cercas de código que partiriam a resposta em artefactos.
         let out = if use_api {

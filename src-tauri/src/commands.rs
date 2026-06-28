@@ -58,6 +58,8 @@ pub struct AppState {
     /// Planos pendentes de aprovação (id → canal); `None` = rejeitado, `Some((steps, research))` =
     /// aprovado (passos editados + se executa fundamentado na web).
     pub pending_plans: tokio::sync::Mutex<HashMap<u64, oneshot::Sender<Option<(Vec<String>, bool)>>>>,
+    /// Esclarecimentos pendentes (id → canal); `None` = saltou, `Some(answers)` = respondeu (por pergunta).
+    pub pending_clarify: tokio::sync::Mutex<HashMap<u64, oneshot::Sender<Option<Vec<String>>>>>,
 }
 
 impl AppState {
@@ -72,6 +74,7 @@ impl AppState {
             pending: tokio::sync::Mutex::new(HashMap::new()),
             approval_seq: AtomicU64::new(0),
             pending_plans: tokio::sync::Mutex::new(HashMap::new()),
+            pending_clarify: tokio::sync::Mutex::new(HashMap::new()),
         }
     }
 }
@@ -121,6 +124,11 @@ pub enum StreamEvent {
         id: u64,
         tool: String,
         preview: String,
+    },
+    /// Perguntas de esclarecimento antes de planear (Plan mode); a UI responde com `respond_clarify`.
+    Clarify {
+        id: u64,
+        questions: Vec<String>,
     },
     /// Plano rascunhado, à espera de aprovação/edição do utilizador (Plan mode).
     Plan {
@@ -599,6 +607,21 @@ pub async fn respond_plan(
 ) -> Result<(), String> {
     if let Some(tx) = state.pending_plans.lock().await.remove(&id) {
         let _ = tx.send(if approved { Some((steps, research)) } else { None });
+    }
+    Ok(())
+}
+
+/// Resposta às perguntas de esclarecimento (Plan mode): `answered=false` → saltou; caso contrário
+/// entrega as respostas (uma por pergunta, alinhadas por índice; podem vir vazias).
+#[tauri::command]
+pub async fn respond_clarify(
+    state: State<'_, AppState>,
+    id: u64,
+    answered: bool,
+    answers: Vec<String>,
+) -> Result<(), String> {
+    if let Some(tx) = state.pending_clarify.lock().await.remove(&id) {
+        let _ = tx.send(if answered { Some(answers) } else { None });
     }
     Ok(())
 }
@@ -1213,12 +1236,23 @@ pub async fn send_message_stream(
             let _ = tx_plan.send(StreamEvent::Plan { id, steps, needs_web, research: research_now });
             rxo.await.unwrap_or(None)
         };
+        // Esclarecimento: emite as perguntas e bloqueia até a UI responder (respostas por pergunta).
+        let tx_clarify = channel.clone();
+        let ask = move |questions: Vec<String>| async move {
+            let id = st.approval_seq.fetch_add(1, Ordering::Relaxed) + 1;
+            let (txo, rxo) = oneshot::channel();
+            st.pending_clarify.lock().await.insert(id, txo);
+            let _ = tx_clarify.send(StreamEvent::Clarify { id, questions });
+            rxo.await.unwrap_or(None)
+        };
         let r = crate::planner::run(
             &settings,
             use_api,
             &prepared.model,
             &prepared.full_messages,
             plan_gopts,
+            &settings.clarify_level,
+            ask,
             approve,
             on_step,
             on_delta,

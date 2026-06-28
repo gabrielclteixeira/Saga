@@ -546,6 +546,8 @@ app.innerHTML = `
           <label class="ws-check"><input type="checkbox" id="hub-temp-auto" /> ${t("Temperatura automática (recomendada do modelo)")}</label>
           <label id="hub-temp-wrap">${t("Temperatura")} <input id="hub-temp" type="number" min="0" max="1.5" step="0.1" /></label>
           <p class="wiz-hint">${t("Auto deixa cada modelo usar a amostragem afinada do seu Modelfile (melhor por modelo). Desliga para forçar um valor.")}</p>
+          <label class="ws-check"><input type="checkbox" id="hub-clarify" /> ${t("Plan mode: perguntar antes de planear quando o pedido é vago")}</label>
+          <p class="wiz-hint">${t("Só dispara em mensagens vagas; faz 1-3 perguntas curtas e podes saltar.")}</p>
         </fieldset>
 
         <fieldset>
@@ -2253,6 +2255,9 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
           paintBubble();
         } else if (evt.kind === "ApprovalRequest") {
           showApproval(evt.id, evt.tool, evt.preview);
+        } else if (evt.kind === "Clarify") {
+          stopWaitTicker(); // agora espera-se o utilizador
+          showClarifyCard(evt.id, evt.questions);
         } else if (evt.kind === "Plan") {
           stopWaitTicker(); // agora espera-se o utilizador (não o modelo)
           showPlanCard(evt.id, evt.steps, assistant, evt.needs_web, evt.research);
@@ -3406,6 +3411,53 @@ function showApproval(id: number, tool: string, preview: string) {
   els.messages.scrollTop = els.messages.scrollHeight;
 }
 
+/** Cartão de esclarecimento (Plan mode): perguntas com campos de resposta + Responder/Saltar.
+ * Saltar planeia na mesma com o que houver. */
+function showClarifyCard(id: number, questions: string[]) {
+  const card = document.createElement("div");
+  card.className = "approval-card plan-card";
+  card.innerHTML = `
+    <div class="approval-head">${t("Antes de planear — esclarece")}</div>
+    <div class="plan-hint">${t("Responde ao que souberes; salta o resto.")}</div>
+    <div class="clarify-list"></div>
+    <div class="approval-bar">
+      <button type="button" class="ghost" data-ok="0">${t("Saltar")}</button>
+      <button type="button" class="primary" data-ok="1">${t("Responder")}</button>
+    </div>`;
+  const list = card.querySelector<HTMLDivElement>(".clarify-list")!;
+  const inputs: HTMLTextAreaElement[] = [];
+  for (const q of questions) {
+    const row = document.createElement("div");
+    row.className = "clarify-row";
+    const label = document.createElement("div");
+    label.className = "clarify-q";
+    label.textContent = q;
+    const ta = document.createElement("textarea");
+    ta.className = "pe-input";
+    ta.rows = 1;
+    const grow = () => {
+      ta.style.height = "auto";
+      ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
+    };
+    ta.addEventListener("input", grow);
+    requestAnimationFrame(grow);
+    inputs.push(ta);
+    row.append(label, ta);
+    list.appendChild(row);
+  }
+  const done = (answered: boolean) => {
+    const answers = inputs.map((i) => i.value.trim());
+    api.respondClarify(id, answered, answered ? answers : []).catch(() => {});
+    card.remove();
+    renderMessages();
+    scrollChatToBottom();
+  };
+  card.querySelector('[data-ok="1"]')!.addEventListener("click", () => done(true));
+  card.querySelector('[data-ok="0"]')!.addEventListener("click", () => done(false));
+  els.messages.appendChild(card);
+  els.messages.scrollTop = els.messages.scrollHeight;
+}
+
 /** Cartão de plano editável (Plan mode): textarea com 1 passo por linha + Aprovar/Rejeitar.
  * Quando o modelo sinaliza que precisa de dados atuais (`needsWeb`) e o 🔎 está desligado,
  * o cartão pede para escalar para pesquisa web (checkbox pré-marcada). */
@@ -4340,6 +4392,7 @@ function hubLoad(s: Settings) {
   // Avançado
   hubIn("#hub-research-rounds").value = String(s.research_max_rounds);
   hubIn("#hub-local-web").checked = s.local_web_search;
+  hubIn("#hub-clarify").checked = s.clarify_level !== "off";
   hubSel("#hub-web-provider").value = s.web_search_provider;
   applyWebProviderUi(true);
   hubIn("#hub-num-ctx").value = String(s.ollama_num_ctx);
@@ -4443,6 +4496,7 @@ async function hubSave() {
       // Avançado
       research_max_rounds: Math.min(5, Math.max(1, parseInt(hubIn("#hub-research-rounds").value) || 3)),
       local_web_search: hubIn("#hub-local-web").checked,
+      clarify_level: hubIn("#hub-clarify").checked ? "light" : "off",
       web_search_provider: hubSel("#hub-web-provider").value as Settings["web_search_provider"],
       web_search_keys: webSearchKeysPatch(),
       ollama_num_ctx: Math.max(2048, parseInt(hubIn("#hub-num-ctx").value) || 8192),

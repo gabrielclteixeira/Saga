@@ -53,6 +53,7 @@ export interface Settings {
   mcp_servers: McpServerConfig[];
   workspace_dir: string;
   confirm_mode: "off" | "dry_run" | "ask";
+  clarify_level: "off" | "light";
   local_web_search: boolean;
   web_search_provider: "duckduckgo" | "tavily" | "brave" | "serper" | "exa" | "jina";
   web_search_keys: Record<string, string>;
@@ -218,6 +219,7 @@ export type StreamEvent =
   | { kind: "Thinking"; text: string }
   | { kind: "ToolStep"; tool: string; detail: string }
   | { kind: "ApprovalRequest"; id: number; tool: string; preview: string }
+  | { kind: "Clarify"; id: number; questions: string[] }
   | { kind: "Plan"; id: number; steps: string[]; needs_web: boolean; research: boolean }
   | { kind: "PlanStep"; index: number; status: string }
   | {
@@ -303,6 +305,8 @@ export const api = {
   },
   respondPlan: (id: number, approved: boolean, steps: string[], research: boolean) =>
     invoke<void>("respond_plan", { id, approved, steps, research }),
+  respondClarify: (id: number, answered: boolean, answers: string[]) =>
+    invoke<void>("respond_clarify", { id, answered, answers }),
   listConversations: () => invoke<ConversationMeta[]>("list_conversations"),
   getConversation: (id: number) => invoke<StoredMessage[]>("get_conversation", { id }),
   newConversation: (title?: string) =>
