@@ -342,6 +342,12 @@ app.innerHTML = `
           <label>${t("Descrição")} <input id="ws-desc" type="text" placeholder="${t("o que é / quando usar")}" /></label>
           <label id="ws-triggers-wrap">${t("Triggers (palavras que ativam)")} <input id="ws-triggers" type="text" placeholder="${t("resumir, o que diz este link, …")}" /></label>
           <label id="ws-arghint-wrap" hidden>${t("Argumentos esperados")} <input id="ws-arghint" type="text" placeholder="${t("ex.: o URL a abrir")}" /></label>
+          <label class="ws-inline" id="ws-workflow-route-wrap" hidden title="${t("Claude só se precisar de browser/ferramentas avançadas; senão corre local.")}">${t("Correr em")}
+            <select id="ws-workflow-route">
+              <option value="local">${t("Modelo local")}</option>
+              <option value="claude">Claude</option>
+            </select>
+          </label>
           <fieldset id="ws-agent-wrap" class="ws-agent-fields" hidden>
             <legend>${t("Predefinições do agente")}</legend>
             <label class="ws-inline">${t("Escalar para")}
@@ -3693,6 +3699,8 @@ interface DocFields {
   arghint: string;
   body: string;
   enabled: boolean;
+  // Rota de execução do workflow (só para kind "workflow"): local (default) | claude.
+  workflowRoute?: "local" | "claude";
   // Predefinições de agente (só para kind "agent").
   agentRoute?: "local" | "claude";
   agentTools?: boolean;
@@ -3710,6 +3718,7 @@ function applyDocKindFields() {
   const isAgent = wsKind === "agent";
   wsq("#ws-triggers-wrap").toggleAttribute("hidden", !isSkill);
   wsq("#ws-arghint-wrap").toggleAttribute("hidden", !isWorkflow);
+  wsq("#ws-workflow-route-wrap").toggleAttribute("hidden", !isWorkflow);
   wsq("#ws-agent-wrap").toggleAttribute("hidden", !isAgent);
   (wsq<HTMLInputElement>("#ws-desc").closest("label") as HTMLElement).toggleAttribute(
     "hidden",
@@ -3759,6 +3768,7 @@ function parseDocFields(kind: WsKind, raw: string): DocFields {
     body,
     // Ausente = ativo (retrocompatível); só false desativa.
     enabled: fm["enabled"] === undefined ? true : truthy(fm["enabled"]),
+    workflowRoute: fm["route"] === "claude" ? "claude" : "local",
     agentRoute: fm["route"] === "claude" ? "claude" : "local",
     agentTools: truthy(fm["tools"]),
     agentResearch: truthy(fm["research"]),
@@ -3786,7 +3796,11 @@ function assembleDoc(kind: WsKind, f: DocFields): string {
       `route: ${f.agentRoute === "claude" ? "claude" : "local"}`
     );
   } else {
-    lines.push(`description: "${esc(f.desc)}"`, `argument-hint: ${f.arghint}`);
+    lines.push(
+      `description: "${esc(f.desc)}"`,
+      `argument-hint: ${f.arghint}`,
+      `route: ${f.workflowRoute === "claude" ? "claude" : "local"}`
+    );
   }
   lines.push("---", "", f.body.trim(), "");
   return lines.join("\n");
@@ -3797,6 +3811,7 @@ function fillEditorFields(f: Partial<DocFields>) {
   wsq<HTMLInputElement>("#ws-triggers").value = f.triggers || "";
   wsq<HTMLInputElement>("#ws-arghint").value = f.arghint || "";
   wsq<HTMLTextAreaElement>("#ws-content").value = f.body || "";
+  wsq<HTMLSelectElement>("#ws-workflow-route").value = f.workflowRoute || "local";
   wsq<HTMLSelectElement>("#ws-agent-route").value = f.agentRoute || "local";
   wsq<HTMLInputElement>("#ws-agent-tools").checked = !!f.agentTools;
   wsq<HTMLInputElement>("#ws-agent-research").checked = !!f.agentResearch;
@@ -3814,6 +3829,8 @@ function readEditorFields(): DocFields {
     arghint: wsq<HTMLInputElement>("#ws-arghint").value.trim(),
     body: wsq<HTMLTextAreaElement>("#ws-content").value,
     enabled: wsEditingEnabled,
+    workflowRoute:
+      wsq<HTMLSelectElement>("#ws-workflow-route").value === "claude" ? "claude" : "local",
     agentRoute: wsq<HTMLSelectElement>("#ws-agent-route").value === "claude" ? "claude" : "local",
     agentTools: wsq<HTMLInputElement>("#ws-agent-tools").checked,
     agentResearch: wsq<HTMLInputElement>("#ws-agent-research").checked,

@@ -91,7 +91,10 @@ async fn run_schedule_inner(app: &AppHandle, sched: &Schedule) -> (String, Strin
             )
         }
     };
-    if settings.claude_mode != "api" || settings.claude_api_key.trim().is_empty() {
+    // Rota do workflow: `claude` (browser/MCP/agêntico) exige Claude API; `local` (default) corre no
+    // modelo local sem Claude.
+    let route = workspace::doc_route(&settings.workspace_dir, "workflow", &sched.workflow_name);
+    if route == "claude" && (settings.claude_mode != "api" || settings.claude_api_key.trim().is_empty()) {
         return ("ERRO".into(), "requer Claude API configurado".into());
     }
 
@@ -132,31 +135,30 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
         },
     ];
 
-    let any_mcp = settings
-        .mcp_servers
-        .iter()
-        .any(|s| s.enabled && !s.name.trim().is_empty());
-    let ws_index = workspace::index(&settings.workspace_dir).active();
-
-    let mut browser_guard = state.browser.lock().await;
-    if settings.enable_browser_tools && browser_guard.is_none() {
-        if let Ok(s) = PlaywrightSidecar::spawn(
-            &settings.browser_node_path,
-            &settings.browser_sidecar_script,
-            &settings.browser_user_data_dir,
-        )
-        .await
-        {
-            *browser_guard = Some(s);
-        }
-    }
-    let mut mcp_guard = state.mcp.lock().await;
-    if any_mcp {
-        mcp_guard.ensure_ready(&settings.mcp_servers).await;
-    }
-
     let mut buf = String::new();
-    let result = {
+    let result = if route == "claude" {
+        // Rota Claude: loop agêntico completo (browser + MCP + workspace tools).
+        let any_mcp = settings
+            .mcp_servers
+            .iter()
+            .any(|s| s.enabled && !s.name.trim().is_empty());
+        let ws_index = workspace::index(&settings.workspace_dir).active();
+        let mut browser_guard = state.browser.lock().await;
+        if settings.enable_browser_tools && browser_guard.is_none() {
+            if let Ok(s) = PlaywrightSidecar::spawn(
+                &settings.browser_node_path,
+                &settings.browser_sidecar_script,
+                &settings.browser_user_data_dir,
+            )
+            .await
+            {
+                *browser_guard = Some(s);
+            }
+        }
+        let mut mcp_guard = state.mcp.lock().await;
+        if any_mcp {
+            mcp_guard.ensure_ready(&settings.mcp_servers).await;
+        }
         let mut dispatcher = Dispatcher {
             browser: if settings.enable_browser_tools {
                 browser_guard.as_mut()
@@ -185,15 +187,56 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
             |_t, _d| {},
         )
         .await
+    } else {
+        // Rota local: modelo local (com web/skills se o 🔎 estiver ligado). Sem browser/MCP/ações com gate.
+        let gopts = crate::providers::ollama::GenOpts {
+            num_ctx: settings.ollama_num_ctx,
+            temperature: settings.ollama_temp_opt(),
+            num_predict: None,
+        };
+        if settings.local_provider == "openai" {
+            crate::providers::openai_compat::chat(
+                &settings.openai_local_endpoint,
+                &settings.openai_local_key,
+                &settings.openai_local_model,
+                &messages,
+                settings.claude_max_tokens.max(1024),
+            )
+            .await
+        } else if settings.local_web_search {
+            crate::web_agent::run(
+                &settings.ollama_endpoint,
+                &settings.ollama_model,
+                &settings.web_search_provider,
+                &settings.active_web_key(),
+                &messages,
+                &settings.workspace_dir,
+                &[],
+                gopts,
+                |d| buf.push_str(d),
+                |_t, _d| {},
+            )
+            .await
+        } else {
+            crate::providers::ollama::chat(
+                &settings.ollama_endpoint,
+                &settings.ollama_model,
+                &messages,
+                gopts,
+            )
+            .await
+        }
     };
 
     let (status, text) = match result {
-        Ok(_) => (
+        Ok(resp) => (
             "OK".to_string(),
-            if buf.trim().is_empty() {
-                "(sem texto)".into()
-            } else {
+            if !buf.trim().is_empty() {
                 buf
+            } else if !resp.text.trim().is_empty() {
+                resp.text
+            } else {
+                "(sem texto)".into()
             },
         ),
         Err(e) => ("ERRO".to_string(), format!("erro: {e}")),

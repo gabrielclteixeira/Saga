@@ -309,6 +309,9 @@ const EN: Record<string, string> = {
   "A gerar…": "Generating…",
   "A gerar (Claude)…": "Generating (Claude)…",
   "Usar Claude": "Use Claude",
+  "Correr em": "Run on",
+  "Claude só se precisar de browser/ferramentas avançadas; senão corre local.":
+    "Claude only if it needs the browser/advanced tools; otherwise runs local.",
   "Gerar com o Claude (cloud) em vez do modelo local":
     "Generate with Claude (cloud) instead of the local model",
   "✓ Gerado — revê e guarda": "✓ Generated — review and save",

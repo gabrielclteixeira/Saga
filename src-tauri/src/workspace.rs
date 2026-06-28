@@ -73,6 +73,23 @@ fn clean_value(v: &str) -> String {
     v.trim().trim_matches('"').trim_matches('\'').to_string()
 }
 
+/// Lê a rota `route:` do frontmatter. Default `"local"` (local-first); `"claude"` só se explícito.
+pub fn parse_route(content: &str) -> String {
+    let trimmed = content.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("---") {
+        if let Some(end) = rest.find("\n---") {
+            for line in rest[..end].lines() {
+                if let Some(v) = line.strip_prefix("route:") {
+                    if clean_value(v).eq_ignore_ascii_case("claude") {
+                        return "claude".to_string();
+                    }
+                }
+            }
+        }
+    }
+    "local".to_string()
+}
+
 /// Lê a flag `enabled:` do frontmatter. Default `true` (ausente = ativo); só `false` se for
 /// explicitamente false/0/no/não.
 pub fn parse_enabled(content: &str) -> bool {
@@ -301,6 +318,13 @@ pub fn is_enabled(root: &str, kind: &str, name: &str) -> bool {
     read_doc(root, kind, name)
         .map(|c| parse_enabled(&c))
         .unwrap_or(true)
+}
+
+/// Rota de um documento ("local"|"claude"; default "local"; ficheiro inexistente = "local").
+pub fn doc_route(root: &str, kind: &str, name: &str) -> String {
+    read_doc(root, kind, name)
+        .map(|c| parse_route(&c))
+        .unwrap_or_else(|| "local".to_string())
 }
 
 /// Cria/atualiza um documento do workspace.

@@ -445,7 +445,7 @@ pub async fn generate_doc(
     let settings = state.settings.lock().unwrap().clone();
     let sys = match kind.as_str() {
         "skill" => "Escreve uma SKILL.md para a Saga. Formato EXATO:\n---\nname: <slug-sem-espacos>\ndescription: \"<uma frase sobre quando usar>. Triggers: <palavras/expressões que ativam>\"\n---\n\n# <título>\n<instruções claras, passo a passo, em markdown>\n\nResponde APENAS com o markdown final — sem cercas de código nem comentários.",
-        "workflow" => "Escreve um workflow em markdown para a Saga. Formato EXATO:\n---\nname: <slug-sem-espacos>\ndescription: \"<o que faz>\"\nargument-hint: <que argumentos espera>\n---\n\n<procedimento passo-a-passo; usa $ARGUMENTS onde os argumentos do utilizador entram>\n\nResponde APENAS com o markdown final — sem cercas nem comentários.",
+        "workflow" => "Escreve um workflow em markdown para a Saga. Formato EXATO:\n---\nname: <slug-sem-espacos>\ndescription: \"<o que faz>\"\nargument-hint: <que argumentos espera>\nroute: <local|claude — usa 'claude' SÓ se precisar de browser/MCP; senão 'local'>\n---\n\n<procedimento passo-a-passo; usa $ARGUMENTS onde os argumentos do utilizador entram>\n\nResponde APENAS com o markdown final — sem cercas nem comentários.",
         "agent" => "Escreve um agente (persona) em markdown para a Saga. Formato EXATO:\n---\nname: <Nome legível>\ndescription: \"<uma frase sobre o que faz>\"\ntools: <true|false>\nresearch: <true|false>\nsubagents: <true|false>\nroute: <local|claude>\n---\n\n<system prompt na 2.ª pessoa (\"És um…\"): define o papel, o estilo e as regras de comportamento do agente>\n\nResponde APENAS com o markdown final — sem cercas de código nem comentários.",
         _ => "Escreve um playbook em markdown simples (sem frontmatter): um título e um procedimento reutilizável e claro. Responde APENAS com o markdown — sem cercas nem comentários.",
     };
@@ -1198,7 +1198,12 @@ pub async fn send_message_stream(
         }
     }
     let forced_workflow = workflow_system.is_some();
-    let route_override_eff = if forced_workflow {
+    // Workflow `route: claude` força o Claude; `route: local` (default) segue a rota do utilizador.
+    let workflow_route = workflow_name
+        .as_deref()
+        .map(|n| crate::workspace::doc_route(&settings.workspace_dir, "workflow", n))
+        .unwrap_or_else(|| "local".to_string());
+    let route_override_eff = if forced_workflow && workflow_route == "claude" {
         Some("claude".to_string())
     } else {
         route_override.clone()
