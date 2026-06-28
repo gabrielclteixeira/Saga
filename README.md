@@ -208,7 +208,12 @@ grounding keeps working with no API key) · **per-step collapsible plan result**
 index: click a step to expand its content) + **numbered editable plan editor** ·
 **clarification before planning** (a *deterministic* ambiguity gate — cheap text features, **not** model
 self-judgment, which research shows over-flags — asks 1-3 slot-based questions only when the request is vague,
-then plans with your answers; the planning counterpart of asking-before-acting).
+then plans with your answers; the planning counterpart of asking-before-acting) ·
+**embedding-refined clarification** (an embedding classifier — auto-detecting any installed embed model — settles
+the borderline cases the deterministic gate can't; degrades safely to L1 when none is installed) +
+**adaptive per-model sensitivity** (answering/skipping the clarify card nudges a per-model threshold) ·
+**focused per-step search queries** (keyword + clarified-region queries — e.g. "RTX 4090 price Portugal" — instead
+of the verbose step label) · **live token streaming during Plan execution**.
 
 **Next:**
 
@@ -220,10 +225,17 @@ then plans with your answers; the planning counterpart of asking-before-acting).
 - **Agentic Plan execution (v2)** — today Plan mode *generates* each step (reasoning/writing, optionally web-grounded);
   a v2 would let approved steps take **real actions** via the agentic tool loop (browser, workspace, MCP, files) on
   the Claude route, with per-step approval for risky ones.
-- **Smarter ambiguity gate (clarification v2)** — today's gate is deterministic text features + slot extraction;
-  a v2 would add an **embedding classifier** (query embedding + features, via `/api/embeddings`) to refine borderline
-  cases, a **self-consistency** signal (sample a few drafts, measure assumption divergence) for the hardest calls,
-  per-model default sensitivity, and a 👍/👎 feedback loop that nudges the threshold.
+- **Clarification v3 — self-consistency** — the embedding L2 and adaptive per-model sensitivity shipped; the
+  remaining lever is a **self-consistency** signal (sample a few plan drafts, measure assumption divergence) for the
+  hardest borderline calls.
+- **Per-context model selection** — pick which model runs a task, since some models beat others per task (a coding
+  model for code, gemma4 for planning, a small fast one for triage). Add a `model` field to **Agents** (the
+  frontmatter already carries route/tools/research/subagents) and to **scheduled automations** (the runner uses the
+  default model today), plus quick in-chat model switching to A/B the same prompt. Open: what happens when a named
+  model isn't installed — fall back to the active model and warn?
+- **Smart Saga** — in *normal* chat (not just Plan mode), the model decides when it actually needs the web and
+  **asks you inline** before searching (e.g. "queres que pesquise os preços atuais?"), instead of guessing or
+  hallucinating — the ask-before-acting / clarification pattern extended to regular chat.
 
 **Open questions:**
 
