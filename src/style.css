@@ -2378,10 +2378,42 @@ dialog::backdrop {
 }
 
 /* ---- Workspace / MCP / Atividade ---- */
+.ws-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .ws-tabs {
   display: flex;
   gap: 6px;
   margin-bottom: 10px;
+}
+/* Card "+" no fim da lista para criar um item novo (substitui o botão "+ Novo"). */
+.ws-add-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ws-add-card:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg);
+}
+.ws-add-plus {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
 }
 .ws-tab {
   padding: 6px 12px;

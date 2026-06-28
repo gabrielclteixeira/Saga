@@ -314,7 +314,10 @@ app.innerHTML = `
 
   <dialog id="workspace-dialog">
     <div class="settings ws">
-      <h2>${t("Workspace")}</h2>
+      <div class="ws-head">
+        <h2>${t("Workspace")}</h2>
+        <button type="button" class="icon-x" id="ws-x" title="${t("Fechar")}" aria-label="${t("Fechar")}">${icon("x")}</button>
+      </div>
       <div class="ws-tabs" id="ws-tabs">
         <button type="button" class="ws-tab active" data-kind="skill">${t("Skills")}</button>
         <button type="button" class="ws-tab" data-kind="playbook">${t("Playbooks")}</button>
@@ -357,10 +360,6 @@ app.innerHTML = `
           </div>
         </div>
       </div>
-      <menu id="ws-footer">
-        <button type="button" class="ghost" id="ws-new">${t("+ Novo")}</button>
-        <button type="button" class="ghost" id="ws-close">${t("Fechar")}</button>
-      </menu>
     </div>
   </dialog>
 
@@ -3608,11 +3607,15 @@ async function renderWorkspaceList() {
         : wsKind === "agent"
           ? idx.agents
           : idx.playbooks.map((n) => ({ name: n, description: "" }));
-  if (items.length === 0) {
-    list.innerHTML = `<div class="empty-sm">${t("Nada ainda. Cria o primeiro com “+ Novo”.")}</div>`;
-    return;
-  }
-  list.innerHTML = items
+  const addLabel =
+    wsKind === "skill"
+      ? t("Nova skill")
+      : wsKind === "playbook"
+        ? t("Novo playbook")
+        : wsKind === "workflow"
+          ? t("Novo workflow")
+          : t("Novo agente");
+  const itemsHtml = items
     .map(
       (it) => `
     <div class="ws-item">
@@ -3625,6 +3628,10 @@ async function renderWorkspaceList() {
     </div>`
     )
     .join("");
+  // Card "+" no fim da lista — substitui o antigo botão "+ Novo".
+  const addCard = `<button type="button" class="ws-add-card" id="ws-add-card"><span class="ws-add-plus">+</span><span>${escapeHtml(addLabel)}</span></button>`;
+  list.innerHTML = itemsHtml + addCard;
+  list.querySelector("#ws-add-card")?.addEventListener("click", () => newWsDoc());
   list
     .querySelectorAll<HTMLButtonElement>("[data-edit]")
     .forEach((b) => b.addEventListener("click", () => editWsDoc(b.dataset.edit!)));
@@ -3760,18 +3767,11 @@ function readEditorFields(): DocFields {
   };
 }
 
-/** Mostra/esconde o editor do Workspace e troca o rodapé: a editar → só [Cancelar][Guardar]; na lista →
- * [+ Novo][Fechar]. Evita ter dois "Fechar" ao mesmo tempo e separa as ações do editor das do diálogo. */
+/** Alterna entre a LISTA (cards + card "+") e o EDITOR. A editar mostra só o editor (com Cancelar/Guardar);
+ * caso contrário, a lista. Fechar o diálogo é o X no cabeçalho. */
 function wsEditorOpen(open: boolean) {
-  const ed = document.querySelector("#ws-editor");
-  const footer = document.querySelector("#ws-footer");
-  if (open) {
-    ed?.removeAttribute("hidden");
-    footer?.setAttribute("hidden", "");
-  } else {
-    ed?.setAttribute("hidden", "");
-    footer?.removeAttribute("hidden");
-  }
+  document.querySelector("#ws-editor")?.toggleAttribute("hidden", !open);
+  document.querySelector("#ws-list")?.toggleAttribute("hidden", open);
 }
 
 function newWsDoc() {
@@ -5021,11 +5021,10 @@ function wireWorkspaceUi() {
   wsDialog
     .querySelectorAll<HTMLButtonElement>(".ws-tab")
     .forEach((b) => b.addEventListener("click", () => setWsKind(b.dataset.kind as typeof wsKind)));
-  document.querySelector("#ws-new")!.addEventListener("click", newWsDoc);
   document.querySelector("#ws-save")!.addEventListener("click", saveWsDoc);
   document.querySelector("#ws-gen-btn")!.addEventListener("click", genWsDoc);
   document.querySelector("#ws-cancel")!.addEventListener("click", () => wsEditorOpen(false));
-  document.querySelector("#ws-close")!.addEventListener("click", () => showView(null));
+  document.querySelector("#ws-x")!.addEventListener("click", () => showView(null));
 
   document.querySelector("#mcp-add")!.addEventListener("click", addOrUpdateMcp);
   document.querySelector("#mcp-test")!.addEventListener("click", testMcp);
