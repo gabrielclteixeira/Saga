@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Saga — Guia de design</title>
+  <meta name="description" content="Sistema visual da app Saga: tokens, escalas, ícones e componentes (identidade azulejo Caravel)." />
+</head>
+<body>
+<style>
+  :root {
+    /* Tokens reais — tema claro azulejo (espelho de src/style.css :root) */
+    --bg: #f4f1e9;
+    --bg-2: #eaf0f4;
+    --bg-3: #dde8f0;
+    --border: #b9cdde;
+    --text: #1c3f73;
+    --muted: #5a7596;
+    --accent: #2f6ea5;
+    --on-accent: #f4f1e9;
+    --local: #4f8a6d;
+    --claude: #d98e3c;
+    --danger: #c0413b;
+    --radius: 12px;
+    --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, monospace;
+  }
+  /* Re-escopa os tokens para demonstrar o tema escuro cobalto dentro de painéis. */
+  .theme-dark {
+    --bg: #0e1d33;
+    --bg-2: #13294a;
+    --bg-3: #1a3357;
+    --border: #29456f;
+    --text: #eaf1f7;
+    --muted: #8fa6c2;
+    --accent: #6fa8d6;
+    --on-accent: #0e1d33;
+    --local: #5fae87;
+    --claude: #e0a45a;
+    --danger: #f08a8a;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 24px 96px; }
+
+  /* ---- Masthead ---- */
+  .mast {
+    display: flex; align-items: center; gap: 18px;
+    padding: 48px 0 28px;
+  }
+  .emblem { width: 52px; height: 52px; flex-shrink: 0; }
+  .mast h1 {
+    margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em;
+    line-height: 1.05; text-wrap: balance;
+  }
+  .mast .sub { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+  .eyebrow {
+    text-transform: uppercase; letter-spacing: 0.18em; font-size: 11px;
+    font-weight: 600; color: var(--claude);
+  }
+
+  /* ---- Rope divider (cordão com conta ocre) ---- */
+  .rope { height: 1px; background: var(--border); position: relative; margin: 0; }
+  .rope::after {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: 7px; height: 7px; transform: translate(-50%, -50%) rotate(45deg);
+    background: var(--claude); border-radius: 1px;
+  }
+
+  /* ---- Sticky nav ---- */
+  nav {
+    position: sticky; top: 0; z-index: 5; background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 0; margin-bottom: 8px;
+  }
+  nav a {
+    color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 600;
+    padding: 5px 10px; border-radius: 999px; white-space: nowrap;
+  }
+  nav a:hover { background: var(--bg-3); color: var(--text); }
+
+  section { padding: 36px 0 8px; }
+  section > h2 {
+    margin: 8px 0 4px; font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
+  }
+  section > .lead { margin: 0 0 22px; color: var(--muted); font-size: 14px; max-width: 62ch; }
+  h3.sub-h { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 26px 0 12px; }
+  code.tok { font-family: var(--mono); font-size: 0.86em; background: var(--bg-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; color: var(--text); }
+
+  /* ---- Color swatches ---- */
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 720px) { .pair { grid-template-columns: 1fr; } }
+  .theme-card { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .theme-card .hd { padding: 10px 14px; font-weight: 600; font-size: 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; background: var(--bg-2); color: var(--text); }
+  .swatches { display: grid; grid-template-columns: 1fr; }
+  .sw { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 12px; padding: 8px 14px; font-size: 12px; }
+  .sw + .sw { border-top: 1px solid var(--border); }
+  .chip { width: 28px; height: 28px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); }
+  .sw .nm { font-family: var(--mono); font-weight: 600; }
+  .sw .role { color: var(--muted); }
+  .sw .hex { font-family: var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  /* ---- Type specimen ---- */
+  .type-row { display: flex; align-items: baseline; gap: 18px; padding: 9px 0; border-top: 1px solid var(--border); }
+  .type-row .px { width: 88px; flex-shrink: 0; color: var(--muted); font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .weights { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 8px; }
+  .weights span { display: flex; flex-direction: column; gap: 2px; }
+  .weights b { font-size: 22px; }
+  .weights small { color: var(--muted); font-size: 11px; font-family: var(--mono); }
+
+  /* ---- Scales ---- */
+  .scale-row { display: flex; align-items: center; gap: 14px; padding: 6px 0; }
+  .scale-row .lbl { width: 64px; color: var(--muted); font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .space-bar { height: 16px; background: var(--accent); border-radius: 3px; }
+  .radius-box { height: 56px; width: 56px; background: var(--bg-3); border: 1px solid var(--border); display: grid; place-content: center; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .radius-grid { display: flex; gap: 14px; flex-wrap: wrap; }
+
+  /* ---- Icon grid ---- */
+  .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+  .icon-cell { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2); }
+  .icon-cell .ic { width: 22px; height: 22px; color: var(--text); }
+  .icon-cell span { font-size: 11px; font-family: var(--mono); color: var(--muted); }
+
+  /* ---- Component demos ---- */
+  .demo { padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2); color: var(--text); }
+  .demo .demo-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 14px; font-weight: 600; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .row + .row { margin-top: 14px; }
+
+  /* Componentes reais (espelham as classes da app) */
+  .btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 12px; cursor: pointer; }
+  .btn-ghost:hover { background: var(--bg-3); color: var(--text); }
+  .btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent); border-radius: 8px; padding: 7px 16px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .icon-x { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); cursor: pointer; }
+  .icon-x:hover { border-color: var(--danger); color: var(--danger); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; }
+  .chip:hover { background: var(--bg-3); color: var(--text); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .btn-ghost .ic, .chip .ic, .btn-primary .ic { width: 14px; height: 14px; }
+  .icon-x .ic { width: 15px; height: 15px; }
+
+  .field input { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; font: inherit; font-size: 14px; width: 100%; }
+  .field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+
+  /* Checkbox custom global — idêntica à app */
+  input[type="checkbox"] { appearance: none; -webkit-appearance: none; flex: 0 0 auto; width: 18px; height: 18px; margin: 0; border: 1.5px solid var(--border); border-radius: 6px; background: var(--bg); display: inline-grid; place-content: center; vertical-align: middle; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+  input[type="checkbox"]:hover { border-color: var(--accent); }
+  input[type="checkbox"]::before { content: ""; width: 5px; height: 9px; margin-top: -2px; border: solid var(--on-accent); border-width: 0 2px 2px 0; transform: rotate(45deg) scale(0); transition: transform .15s cubic-bezier(.34,1.56,.64,1); }
+  input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+  input[type="checkbox"]:checked::before { transform: rotate(45deg) scale(1); }
+  label.cbx { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+
+  .badge { font-weight: 700; letter-spacing: 0.4px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
+  .badge .dot { width: 8px; height: 8px; border-radius: 999px; }
+  .badge.local { color: var(--local); } .badge.local .dot { background: var(--local); }
+  .badge.claude { color: var(--claude); } .badge.claude .dot { background: var(--claude); }
+
+  .card-demo { border: 1px solid var(--border); border-radius: 10px; background: var(--bg); padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
+  .card-demo.off { opacity: 0.55; }
+  .card-demo .cd-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+  .card-demo .cd-main strong { font-size: 14px; } .card-demo .cd-main span { font-size: 12px; color: var(--muted); }
+
+  .status-row { display: flex; gap: 18px; flex-wrap: wrap; }
+  .st { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; }
+  .st .ic { width: 15px; height: 15px; }
+  .st.ok { color: var(--local); } .st.err { color: var(--danger); } .st.run { color: var(--accent); }
+
+  /* ---- Do / Don't ---- */
+  .dd { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .dd { grid-template-columns: 1fr; } }
+  .dd ul { margin: 0; padding: 0; list-style: none; }
+  .dd li { padding: 8px 0 8px 26px; position: relative; font-size: 13px; border-top: 1px solid var(--border); }
+  .dd li:first-child { border-top: 0; }
+  .dd .h { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+  .dd .do li::before { content: "✓"; position: absolute; left: 4px; color: var(--local); font-weight: 700; }
+  .dd .dont li::before { content: "✕"; position: absolute; left: 4px; color: var(--danger); font-weight: 700; }
+
+  footer { margin-top: 40px; color: var(--muted); font-size: 12px; }
+  footer code { font-family: var(--mono); color: var(--text); }
+  a.src { color: var(--accent); text-decoration: none; }
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <svg class="emblem" viewBox="0 0 100 100" aria-hidden="true">
+      <g fill="var(--accent)">
+        <polygon points="42,42 58,42 70,10 30,10" />
+        <polygon points="42,58 58,58 70,90 30,90" />
+        <polygon points="42,42 42,58 10,70 10,30" />
+        <polygon points="58,42 58,58 90,70 90,30" />
+      </g>
+      <polygon points="50,43 57,50 50,57 43,50" fill="var(--claude)" />
+    </svg>
+    <div>
+      <p class="eyebrow" style="margin:0 0 4px;">Saga · azulejo "Caravel"</p>
+      <h1>Guia de design</h1>
+      <p class="sub">O sistema visual da app — tokens, escalas, ícones e componentes. Extraído de
+        <code class="tok">src/style.css</code> e <code class="tok">ICON_PATHS</code>, alinhado com o brand brief.</p>
+    </div>
+  </header>
+  <div class="rope"></div>
+
+  <nav>
+    <a href="#cor">Cor</a>
+    <a href="#tipo">Tipografia</a>
+    <a href="#escalas">Espaço &amp; raio</a>
+    <a href="#icones">Ícones</a>
+    <a href="#componentes">Componentes</a>
+    <a href="#padroes">Padrões</a>
+    <a href="#convencoes">Convenções</a>
+  </nav>
+
+  <section id="cor">
+    <p class="eyebrow">01</p>
+    <h2>Cor</h2>
+    <p class="lead">Monocromia cobalto sobre glaze morno, com um único quente — o ocre. Tema claro por
+      omissão, escuro cobalto via <code class="tok">prefers-color-scheme</code>. Nunca usar hex fixo: sempre
+      <code class="tok">var(--token)</code>.</p>
+    <div class="pair">
+      <div class="theme-card" id="sw-light"><div class="hd"><span>Claro · azulejo</span><span>default</span></div><div class="swatches"></div></div>
+      <div class="theme-card theme-dark" id="sw-dark"><div class="hd"><span>Escuro · cobalto</span><span>prefers-color-scheme: dark</span></div><div class="swatches"></div></div>
+    </div>
+  </section>
+  <div class="rope"></div>
+
+  <section id="tipo">
+    <p class="eyebrow">02</p>
+    <h2>Tipografia</h2>
+    <p class="lead">Inter (fallback Segoe UI / system). Escala compacta de ferramenta desktop; o chat escala
+      por <code class="tok">--font-scale</code>. Números em colunas usam <code class="tok">tabular-nums</code>.</p>
+    <div id="type-specimen"></div>
+    <h3 class="sub-h">Pesos</h3>
+    <div class="weights">
+      <span><b style="font-weight:400">Aa</b><small>400 · corpo</small></span>
+      <span><b style="font-weight:500">Aa</b><small>500 · medium</small></span>
+      <span><b style="font-weight:600">Aa</b><small>600 · rótulos</small></span>
+      <span><b style="font-weight:700">Aa</b><small>700 · títulos</small></span>
+    </div>
+  </section>
+  <div class="rope"></div>
+
+  <section id="escalas">
+    <p class="eyebrow">03</p>
+    <h2>Espaço &amp; raio</h2>
+    <p class="lead">Grelha base 4px; compor com <code class="tok">gap</code> (flex/grid), não margens.
+      Profundidade por camadas (<code class="tok">--bg</code> → <code class="tok">--bg-2</code> →
+      <code class="tok">--bg-3</code>), sem sombras.</p>
+    <h3 class="sub-h">Espaçamento</h3>
+    <div id="space-scale"></div>
+    <h3 class="sub-h">Raio</h3>
+    <div class="radius-grid" id="radius-scale"></div>
+  </section>
+  <div class="rope"></div>
+
+  <section id="icones">
+    <p class="eyebrow">04</p>
+    <h2>Ícones</h2>
+    <p class="lead">Linha monocromática, grelha 24, <code class="tok">currentColor</code>, traço 1.8, pontas
+      redondas. Renderizados por <code class="tok">icon(name)</code>. Sem emojis na UI — ícone novo entra em
+      <code class="tok">ICON_PATHS</code>.</p>
+    <div class="icon-grid" id="icon-grid"></div>
+  </section>
+  <div class="rope"></div>
+
+  <section id="componentes">
+    <p class="eyebrow">05</p>
+    <h2>Componentes</h2>
+    <p class="lead">Mostrados nos dois temas — as classes usam <code class="tok">var(--token)</code>, por isso
+      adaptam-se sozinhas.</p>
+    <div class="pair" id="components"></div>
+  </section>
+  <div class="rope"></div>
+
+  <section id="padroes">
+    <p class="eyebrow">06</p>
+    <h2>Padrões</h2>
+    <p class="lead">A cor carrega significado: a rota e o estado leem-se num relance.</p>
+    <h3 class="sub-h">Semântica de rota</h3>
+    <div class="row">
+      <span class="badge local"><span class="dot"></span>LOCAL</span>
+      <span class="badge claude"><span class="dot"></span>CLAUDE</span>
+      <span style="color:var(--muted);font-size:13px;">local = verde <code class="tok">--local</code> · Claude = ocre <code class="tok">--claude</code></span>
+    </div>
+    <h3 class="sub-h">Estado (action_log)</h3>
+    <div class="status-row" id="status-demo"></div>
+  </section>
+  <div class="rope"></div>
+
+  <section id="convencoes">
+    <p class="eyebrow">07</p>
+    <h2>Convenções</h2>
+    <div class="dd">
+      <div><div class="h" style="color:var(--local)">Faz</div><ul class="do">
+        <li>Cor sempre por <code class="tok">var(--…)</code> — suporta claro/escuro.</li>
+        <li><code class="tok">icon()</code> monocromático para qualquer símbolo.</li>
+        <li>Layout por <code class="tok">gap</code> em flex/grid.</li>
+        <li>Profundidade por camadas de fundo.</li>
+        <li>Estado na forma <em>e</em> na cor (pill + cor).</li>
+      </ul></div>
+      <div><div class="h" style="color:var(--danger)">Não faz</div><ul class="dont">
+        <li>Hex fixo no CSS/TS.</li>
+        <li>Emojis na UI.</li>
+        <li>Margens por-elemento para espaçar grupos.</li>
+        <li><code class="tok">box-shadow</code> para profundidade.</li>
+        <li>Cores fora da paleta azulejo.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="rope" style="margin-bottom:18px"></div>
+    Fonte de verdade — tokens: <code>src/style.css</code> · ícones: <code>ICON_PATHS</code> em
+    <code>src/main.ts</code> · identidade: <code>docs/brand/azulejo-brief.md</code> · referência textual:
+    <code>docs/design.md</code>.
+  </footer>
+</div>
+
+<script>
+  const LIGHT = {
+    "--bg": ["#f4f1e9", "Fundo da app (glaze)"],
+    "--bg-2": ["#eaf0f4", "Superfícies (cards, diálogos)"],
+    "--bg-3": ["#dde8f0", "Elevado / hover"],
+    "--border": ["#b9cdde", "Linhas, contornos"],
+    "--text": ["#1c3f73", "Tinta cobalto"],
+    "--muted": ["#5a7596", "Secundário, legendas"],
+    "--accent": ["#2f6ea5", "Ação primária, foco"],
+    "--on-accent": ["#f4f1e9", "Texto sobre o accent"],
+    "--local": ["#4f8a6d", "Rota local · sucesso"],
+    "--claude": ["#d98e3c", "Rota Claude · ocre"],
+    "--danger": ["#c0413b", "Erro, crítico"],
+  };
+  const DARK = {
+    "--bg": ["#0e1d33", "Fundo da app (noite)"],
+    "--bg-2": ["#13294a", "Superfícies"],
+    "--bg-3": ["#1a3357", "Elevado / hover"],
+    "--border": ["#29456f", "Linhas, contornos"],
+    "--text": ["#eaf1f7", "Branco-glaze"],
+    "--muted": ["#8fa6c2", "Secundário"],
+    "--accent": ["#6fa8d6", "Cobalto claro"],
+    "--on-accent": ["#0e1d33", "Texto sobre o accent"],
+    "--local": ["#5fae87", "Rota local · sucesso"],
+    "--claude": ["#e0a45a", "Rota Claude · ocre"],
+    "--danger": ["#f08a8a", "Erro, crítico"],
+  };
+  function fillSwatches(elId, map) {
+    const box = document.querySelector(elId + " .swatches");
+    box.innerHTML = Object.entries(map).map(([name, [hex, role]]) => `
+      <div class="sw">
+        <span class="chip" style="background:${hex}"></span>
+        <span><span class="nm">${name}</span><br><span class="role">${role}</span></span>
+        <span class="hex">${hex}</span>
+      </div>`).join("");
+  }
+  fillSwatches("#sw-light", LIGHT);
+  fillSwatches("#sw-dark", DARK);
+
+  // Tipografia — escala real
+  const TYPE = [
+    [22, "Título de diálogo / página", 700],
+    [18, "Cabeçalho de secção", 600],
+    [16, "Inputs / composer", 400],
+    [14, "Ênfase — nomes, rótulos fortes", 600],
+    [13, "UI por omissão — corpo, listas, botões", 400],
+    [12, "Secundário — metadados, descrições", 400],
+    [11, "Micro — legendas, badges, dicas", 600],
+  ];
+  document.getElementById("type-specimen").innerHTML = TYPE.map(([px, use, w]) => `
+    <div class="type-row">
+      <span class="px">${px}px</span>
+      <span style="font-size:${px}px;font-weight:${w}">${use}</span>
+    </div>`).join("");
+
+  // Espaçamento
+  const SPACE = [4, 6, 8, 10, 12, 16, 20, 24];
+  document.getElementById("space-scale").innerHTML = SPACE.map(s => `
+    <div class="scale-row">
+      <span class="lbl">${s}px</span>
+      <span class="space-bar" style="width:${s * 4}px"></span>
+    </div>`).join("");
+
+  // Raio
+  const RADII = [["4", "xs"], ["6", "sm"], ["8", "md"], ["10", "lg"], ["12", "xl"], ["14", "dlg"], ["999", "pill"]];
+  document.getElementById("radius-scale").innerHTML = RADII.map(([r, n]) => `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+      <div class="radius-box" style="border-radius:${r}px">${r}</div>
+      <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">${n}</span>
+    </div>`).join("");
+
+  // Ícones — dados reais de ICON_PATHS
+  const ICONS = {
+    search: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+    nodes: '<circle cx="6" cy="12" r="2.3"/><circle cx="18" cy="6" r="2.3"/><circle cx="18" cy="18" r="2.3"/><line x1="8.1" y1="10.9" x2="15.9" y2="7.1"/><line x1="8.1" y1="13.1" x2="15.9" y2="16.9"/>',
+    brain: '<path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.8.7 1 1.2 1 2.5h6c0-1.3.2-1.8 1-2.5A6 6 0 0 0 12 3z"/>',
+    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+    tool: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.1-3.1a6 6 0 0 1-7.9 7.9l-6.3 6.3a2.1 2.1 0 0 1-3-3l6.3-6.3a6 6 0 0 1 7.9-7.9l-3.1 3.1z"/>',
+    hash: '<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>',
+    refresh: '<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>',
+    escalate: '<line x1="7" y1="17" x2="17" y2="7"/><polyline points="8 7 17 7 17 16"/>',
+    pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>',
+    doc: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/>',
+    play: '<polygon points="6 4 20 12 6 20 6 4"/>',
+    sparkles: '<path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7z"/><path d="M18 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+    download: '<path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><path d="M5 21h14"/>',
+    gear: '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 13a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+    export: '<path d="M12 15V3"/><polyline points="7 8 12 3 17 8"/><path d="M5 21h14a2 2 0 0 0 2-2v-4"/><path d="M3 15v4a2 2 0 0 0 2 2"/>',
+    book: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 17H6a2 2 0 0 0-2 2"/>',
+    chevron: '<polyline points="9 6 15 12 9 18"/>',
+    info: '<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+    list: '<line x1="10" y1="6" x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="10" y1="18" x2="20" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/>',
+    x: '<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>',
+    check: '<polyline points="20 6 9 17 4 12"/>',
+    circle: '<circle cx="12" cy="12" r="8"/>',
+  };
+  const svg = (paths) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  document.getElementById("icon-grid").innerHTML = Object.entries(ICONS).map(([n, p]) =>
+    `<div class="icon-cell">${svg(p)}<span>${n}</span></div>`).join("");
+
+  // Componentes — render igual nos dois temas
+  function componentDemo(themeClass, label) {
+    return `<div class="demo ${themeClass}">
+      <div class="demo-lbl">${label}</div>
+      <div class="row">
+        <button class="btn-primary">${svg(ICONS.escalate)}Primary</button>
+        <button class="btn-ghost">${svg(ICONS.refresh)}Ghost</button>
+        <button class="icon-x">${svg(ICONS.x)}</button>
+      </div>
+      <div class="row">
+        <span class="chip active">${svg(ICONS.search)}Pesquisar</span>
+        <span class="chip">${svg(ICONS.brain)}Think</span>
+        <span class="chip">${svg(ICONS.nodes)}Subagentes</span>
+      </div>
+      <div class="row">
+        <label class="cbx"><input type="checkbox" checked> Skill ativa</label>
+        <label class="cbx"><input type="checkbox"> Inativa</label>
+      </div>
+      <div class="row" style="display:block">
+        <div class="field"><input type="text" placeholder="Escreve uma mensagem…" value="caravela à vela"></div>
+      </div>
+      <div class="row" style="display:block">
+        <div class="card-demo"><label class="cbx"><input type="checkbox" checked></label><div class="cd-main"><strong>pdf</strong><span>Cria um PDF a partir de um documento</span></div><button class="btn-ghost">Editar</button></div>
+        <div class="card-demo off" style="margin-top:8px"><label class="cbx"><input type="checkbox"></label><div class="cd-main"><strong>relatorio</strong><span>Desativado</span></div><button class="btn-ghost">Editar</button></div>
+      </div>
+    </div>`;
+  }
+  document.getElementById("components").innerHTML =
+    componentDemo("", "Tema claro") + componentDemo("theme-dark", "Tema escuro");
+
+  document.getElementById("status-demo").innerHTML = `
+    <span class="st ok">${svg(ICONS.check)}OK</span>
+    <span class="st err">${svg(ICONS.x)}ERRO</span>
+    <span class="st run">${svg(ICONS.circle)}em execução</span>`;
+</script>
+</body>
+</html>
