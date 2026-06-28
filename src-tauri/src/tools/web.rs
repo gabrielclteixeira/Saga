@@ -43,13 +43,18 @@ pub async fn web_search(
     }
 }
 
-/// Pesquisa keyless (sem chave): lidera com o Mojeek — motor de índice PRÓPRIO, independente e
-/// tolerante a scraping — e só cai para o DuckDuckGo se o Mojeek falhar/vier vazio. O DDG, sozinho,
-/// é uma roleta (devolve 202 anti-bot com frequência); o Mojeek dá resultados atuais de forma fiável.
+/// Pesquisa keyless (sem chave). Política: o DuckDuckGo é o motor por omissão; quando ele bloqueia
+/// (202/429) entra em cooldown e o **Mojeek assume como motor durante essa janela** — re-tentando o
+/// DDG só quando o cooldown expira. Assim não martelamos um IP bloqueado nem o Mojeek sem necessidade.
 async fn keyless_search(query: &str, max: usize) -> Result<Vec<WebResult>> {
-    match mojeek_search(query, max).await {
+    // Enquanto o DDG está em cooldown pós-bloqueio, vai direto ao Mojeek (não vale a pena pedir).
+    if ddg_in_cooldown().await {
+        return mojeek_search(query, max).await;
+    }
+    match duckduckgo_search(query, max).await {
         Ok(out) if !out.is_empty() => Ok(out),
-        _ => duckduckgo_search(query, max).await,
+        // DDG falhou/vazio (um bloqueio já terá marcado o cooldown) → o Mojeek assume.
+        _ => mojeek_search(query, max).await,
     }
 }
 
@@ -329,6 +334,13 @@ async fn ddg_throttle() -> bool {
 /// Marca um bloqueio (202/429): pausa os pedidos DDG durante o cooldown.
 async fn ddg_mark_blocked() {
     ddg_gate().lock().await.blocked_until = Some(std::time::Instant::now() + DDG_COOLDOWN);
+}
+
+/// Leitura (sem consumir o throttle): o DDG está em cooldown pós-bloqueio? Usado para encaminhar a
+/// pesquisa keyless para o Mojeek durante a janela de bloqueio do DuckDuckGo.
+async fn ddg_in_cooldown() -> bool {
+    let g = ddg_gate().lock().await;
+    matches!(g.blocked_until, Some(until) if std::time::Instant::now() < until)
 }
 
 async fn duckduckgo_search(query: &str, max: usize) -> Result<Vec<WebResult>> {
