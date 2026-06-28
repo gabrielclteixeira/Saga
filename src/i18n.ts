@@ -549,8 +549,10 @@ const EN: Record<string, string> = {
   "A planear…": "Planning…",
   "a planear…": "planning…",
   "Plano — revê, edita e aprova": "Plan — review, edit and approve",
-  "Um passo por linha. Edita/remove à vontade antes de executar.":
-    "One step per line. Edit/remove freely before running.",
+  "Edita, remove ou adiciona passos antes de executar.":
+    "Edit, remove or add steps before running.",
+  "Adicionar passo": "Add step",
+  "Remover passo": "Remove step",
   "Aprovar e executar": "Approve & run",
   "🔎 Pesquisar na web durante a execução (recomendado)":
     "🔎 Search the web during execution (recommended)",

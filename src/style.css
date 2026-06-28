@@ -2190,22 +2190,70 @@ dialog::backdrop {
   color: var(--muted);
   margin: 2px 0 8px;
 }
-.plan-edit {
-  width: 100%;
+/* Editor de plano: passos numerados editáveis */
+.plan-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+.plan-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pe-num {
+  flex: 0 0 auto;
+  min-width: 18px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.pe-input {
+  flex: 1 1 auto;
   box-sizing: border-box;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
-  padding: 8px 10px;
+  padding: 7px 10px;
   font: inherit;
   font-size: 13px;
-  line-height: 1.5;
-  resize: vertical;
-  margin-bottom: 8px;
 }
-.plan-edit:focus {
+.pe-input:focus {
   outline: none;
+  border-color: var(--accent);
+}
+.pe-del {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.pe-del:hover {
+  color: var(--danger);
+  background: var(--bg-2);
+}
+.pe-add {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+.pe-add:hover {
+  color: var(--accent);
   border-color: var(--accent);
 }
 .plan-web {
@@ -2246,6 +2294,42 @@ dialog::backdrop {
 }
 .plan-step.error {
   color: var(--danger);
+}
+/* Resultado colapsável: cabeçalho clicável (índice) + corpo do passo */
+.plan-step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 4px;
+  margin: 0;
+  border-radius: 6px;
+}
+.plan-step-head:hover:not(:disabled) {
+  background: var(--bg);
+}
+.plan-step-head:disabled {
+  cursor: default;
+}
+.plan-step-head .ps-title {
+  flex: 1 1 auto;
+}
+.plan-step-head .ps-caret {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+.plan-step-body {
+  padding: 2px 8px 12px 26px;
+  margin: 0 0 4px 8px;
+  font-size: 13px;
+  border-left: 2px solid var(--border);
 }
 
 /* ---- Workspace / MCP / Atividade ---- */

@@ -969,27 +969,44 @@ function renderMessagesInner() {
       row.appendChild(steps);
     }
 
-    // Checklist do plano (Plan mode): passos com estado pendente/▶/✓/✗.
+    // Resposta do assistente: separa o corpo da secção "## Fontes".
+    const parsed =
+      item.role === "assistant" && !item.error ? parseSources(item.content) : null;
+    // Plano concluído (não a fazer stream agora) → resultado colapsável por passo.
+    let planResultShown = false;
+
+    // Plan mode: durante a execução, checklist ao vivo; concluído, resultado colapsável por passo.
     if (item.plan && item.plan.steps.length) {
-      const box = document.createElement("div");
-      box.className = "plan-steps";
-      item.plan.steps.forEach((s, i) => {
-        const mark =
-          s.status === "done"
-            ? "✓"
-            : s.status === "searching"
-              ? "🔎"
-              : s.status === "executing"
-                ? "▶"
-                : s.status === "error"
-                  ? "✗"
-                  : "○";
-        const line = document.createElement("div");
-        line.className = `plan-step ${s.status}`;
-        line.textContent = `${mark} ${i + 1}. ${s.title}`;
-        box.appendChild(line);
-      });
-      row.appendChild(box);
+      const liveStreaming = index === state.items.length - 1 && state.busy;
+      let sections: string[] | null = null;
+      if (item.role === "assistant" && item.content !== "" && !liveStreaming) {
+        const secs = splitPlanSections(parsed ? parsed.body : item.content, item.plan.steps.length);
+        if (secs.some((s) => s)) sections = secs;
+      }
+      if (sections) {
+        row.appendChild(buildPlanResult(item, sections));
+        planResultShown = true;
+      } else {
+        const box = document.createElement("div");
+        box.className = "plan-steps";
+        item.plan.steps.forEach((s, i) => {
+          const mark =
+            s.status === "done"
+              ? "✓"
+              : s.status === "searching"
+                ? "🔎"
+                : s.status === "executing"
+                  ? "▶"
+                  : s.status === "error"
+                    ? "✗"
+                    : "○";
+          const line = document.createElement("div");
+          line.className = `plan-step ${s.status}`;
+          line.textContent = `${mark} ${i + 1}. ${s.title}`;
+          box.appendChild(line);
+        });
+        row.appendChild(box);
+      }
     }
 
     if (item.thinking) {
@@ -1007,9 +1024,7 @@ function renderMessagesInner() {
       row.appendChild(det);
     }
 
-    const parsed =
-      item.role === "assistant" && !item.error ? parseSources(item.content) : null;
-    if (item.content !== "" || item.role === "assistant") {
+    if ((item.content !== "" || item.role === "assistant") && !planResultShown) {
       const bubble = document.createElement("div");
       bubble.className = "bubble";
       const liveEmpty =
@@ -1200,6 +1215,75 @@ function buildSources(sources: Source[]): HTMLDetailsElement {
   }
   det.appendChild(list);
   return det;
+}
+
+/** Divide o corpo de um resultado de Plan mode pelas secções «## N. …» que o planner emite.
+ * Mapeia cada cabeçalho ao passo pelo NÚMERO capturado (robusto a cabeçalhos extra/faltas). */
+function splitPlanSections(body: string, n: number): string[] {
+  const sections = new Array<string>(n).fill("");
+  const re = /^##\s*(\d+)\.\s+.*$/gm;
+  const heads: { num: number; matchStart: number; contentStart: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    heads.push({ num: parseInt(m[1], 10), matchStart: m.index, contentStart: m.index + m[0].length });
+  }
+  for (let i = 0; i < heads.length; i++) {
+    const h = heads[i];
+    if (h.num < 1 || h.num > n) continue;
+    const end = i + 1 < heads.length ? heads[i + 1].matchStart : body.length;
+    sections[h.num - 1] = body.slice(h.contentStart, end).trim();
+  }
+  return sections;
+}
+
+/** Resultado do Plan mode (concluído): a checklist vira índice — clicar num passo abre/fecha o seu
+ * conteúdo. 1.º passo aberto por omissão. Pressupõe `item.plan` e `sections` (uma por passo). */
+function buildPlanResult(item: Item, sections: string[]): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "plan-steps plan-result";
+  item.plan!.steps.forEach((s, i) => {
+    const mark =
+      s.status === "done"
+        ? "✓"
+        : s.status === "searching"
+          ? "🔎"
+          : s.status === "executing"
+            ? "▶"
+            : s.status === "error"
+              ? "✗"
+              : "○";
+    const content = sections[i] ?? "";
+    const head = document.createElement("button");
+    head.type = "button";
+    head.className = `plan-step plan-step-head ${s.status}`;
+    const open = i === 0 && !!content; // 1.º passo aberto
+    head.innerHTML =
+      `<span class="ps-mark">${mark}</span>` +
+      `<span class="ps-title">${i + 1}. ${escapeHtml(s.title)}</span>` +
+      (content ? `<span class="ps-caret">${open ? "▾" : "▸"}</span>` : "");
+    box.appendChild(head);
+    if (!content) {
+      head.disabled = true;
+      return;
+    }
+    const bodyEl = document.createElement("div");
+    bodyEl.className = "plan-step-body markdown";
+    bodyEl.hidden = !open;
+    bodyEl.innerHTML = renderMarkdown(content);
+    if (open) highlightWithin(bodyEl);
+    let highlighted = open;
+    head.addEventListener("click", () => {
+      const show = bodyEl.hidden;
+      bodyEl.hidden = !show;
+      head.querySelector(".ps-caret")!.textContent = show ? "▾" : "▸";
+      if (show && !highlighted) {
+        highlightWithin(bodyEl);
+        highlighted = true;
+      }
+    });
+    box.appendChild(bodyEl);
+  });
+  return box;
 }
 
 /** Linha divisória da compactação: turnos acima estão resumidos e fora do contexto enviado. */
@@ -3344,18 +3428,66 @@ function showPlanCard(
     : "";
   card.innerHTML = `
     <div class="approval-head">${t("Plano — revê, edita e aprova")}</div>
-    <div class="plan-hint">${t("Um passo por linha. Edita/remove à vontade antes de executar.")}</div>
-    <textarea class="plan-edit" rows="${Math.min(12, Math.max(3, steps.length))}"></textarea>
+    <div class="plan-hint">${t("Edita, remove ou adiciona passos antes de executar.")}</div>
+    <div class="plan-editor"></div>
+    <button type="button" class="pe-add">+ ${t("Adicionar passo")}</button>
     ${webRow}
     <div class="approval-bar">
       <button type="button" class="ghost" data-ok="0">${t("Rejeitar")}</button>
       <button type="button" class="primary" data-ok="1">${t("Aprovar e executar")}</button>
     </div>`;
-  const ta = card.querySelector<HTMLTextAreaElement>(".plan-edit")!;
-  ta.value = steps.join("\n");
+  const editor = card.querySelector<HTMLDivElement>(".plan-editor")!;
   const webCb = card.querySelector<HTMLInputElement>(".plan-web-cb");
+
+  // Renumera os marcadores «N» após adicionar/remover passos.
+  const renumber = () =>
+    editor.querySelectorAll<HTMLElement>(".pe-num").forEach((el, i) => (el.textContent = String(i + 1)));
+
+  // Cria uma linha editável (número + input + remover). Enter adiciona um passo a seguir.
+  const makeRow = (value: string): HTMLDivElement => {
+    const rowEl = document.createElement("div");
+    rowEl.className = "plan-edit-row";
+    const num = document.createElement("span");
+    num.className = "pe-num";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "pe-input";
+    input.value = value;
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const nr = makeRow("");
+        rowEl.after(nr);
+        renumber();
+        nr.querySelector<HTMLInputElement>(".pe-input")!.focus();
+      }
+    });
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "pe-del";
+    del.title = t("Remover passo");
+    del.textContent = "✕";
+    del.addEventListener("click", () => {
+      rowEl.remove();
+      renumber();
+    });
+    rowEl.append(num, input, del);
+    return rowEl;
+  };
+  steps.forEach((s) => editor.appendChild(makeRow(s)));
+  renumber();
+
+  card.querySelector(".pe-add")!.addEventListener("click", () => {
+    const nr = makeRow("");
+    editor.appendChild(nr);
+    renumber();
+    nr.querySelector<HTMLInputElement>(".pe-input")!.focus();
+  });
+
   const done = (ok: boolean) => {
-    const edited = ta.value.split("\n").map((s) => s.trim()).filter(Boolean);
+    const edited = Array.from(editor.querySelectorAll<HTMLInputElement>(".pe-input"))
+      .map((i) => i.value.trim())
+      .filter(Boolean);
     // Executa fundamentado se o 🔎 já estava ligado, ou se o utilizador aceitou a escalada.
     const useWeb = research || (askWeb && !!webCb?.checked);
     if (ok && edited.length) {

@@ -269,9 +269,12 @@ um array JSON de strings (os passos), nada mais."
             "[MODO PLANO · passo {n}/{total} · hoje é {today}] Plano completo:\n{plan_list}\n\n\
 Já produzido (resumo):\n{prior_txt}\n\nExecuta AGORA, no contexto da conversa, SÓ o passo {n}: «{step}». \
 Produz o resultado em Markdown, conciso e concreto. NÃO repitas o plano, a pergunta nem os passos anteriores. \
-NUNCA inventes URLs, links, preços, IDs de produto ou citações: só inclui um link se tiveres a certeza de que \
-existe; na dúvida, refere a fonte pelo NOME (ex.: «PCDiga») sem inventar o endereço. {closing} \
-Se faltar um dado, di-lo numa linha. NÃO envolvas a resposta num bloco de código.{evidence}",
+NUNCA inventes URLs, links, preços, IDs ou NOMES DE PRODUTOS/MODELOS: menciona só produtos e modelos que \
+apareçam nas evidências ou que conheças com CERTEZA; na dúvida, di-lo em vez de inventar. Quando houver \
+evidências da web, CONFIA nelas acima do teu conhecimento — se uma evidência menciona um produto recente, \
+ele EXISTE (não digas «não confirmado» nem «incerto»). Usa SEMPRE euros (€); nunca mistures libras (£) nem \
+dólares ($). Só inclui um link se tiveres a certeza de que existe; na dúvida, refere a fonte pelo NOME \
+(ex.: «PCDiga»). {closing} Se faltar um dado, di-lo numa linha. NÃO envolvas a resposta num bloco de código.{evidence}",
             n = i + 1,
             total = steps.len(),
             prior_txt = truncate(&prior, PRIOR_CAP)
