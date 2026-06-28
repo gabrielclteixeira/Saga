@@ -1,6 +1,6 @@
-//! Ferramentas de pesquisa web para o modelo local: `web_search` (DuckDuckGo sem
-//! chave, ou Tavily com chave) e `web_fetch` (página → texto). Usadas pelo loop
-//! de tool-calling do Ollama (`web_agent`).
+//! Ferramentas de pesquisa web para o modelo local: `web_search` (keyless via Mojeek+DuckDuckGo,
+//! ou Tavily/Brave/… com chave) e `web_fetch` (página → texto). Usadas pelo loop de tool-calling
+//! do Ollama (`web_agent`) e pelos andaimes `planner`/`deep_research`.
 
 use anyhow::{anyhow, Result};
 use scraper::{Html, Selector};
@@ -39,7 +39,100 @@ pub async fn web_search(
         "serper" if has_key => serper_search(api_key, query, max).await,
         "exa" if has_key => exa_search(api_key, query, max).await,
         "jina" if has_key => jina_search(api_key, query, max).await,
+        _ => keyless_search(query, max).await,
+    }
+}
+
+/// Pesquisa keyless (sem chave): lidera com o Mojeek — motor de índice PRÓPRIO, independente e
+/// tolerante a scraping — e só cai para o DuckDuckGo se o Mojeek falhar/vier vazio. O DDG, sozinho,
+/// é uma roleta (devolve 202 anti-bot com frequência); o Mojeek dá resultados atuais de forma fiável.
+async fn keyless_search(query: &str, max: usize) -> Result<Vec<WebResult>> {
+    match mojeek_search(query, max).await {
+        Ok(out) if !out.is_empty() => Ok(out),
         _ => duckduckgo_search(query, max).await,
+    }
+}
+
+/// Mojeek (mojeek.com) — pesquisa GET sem chave, com índice próprio. Sediado no Reino Unido (decisão
+/// de adequação RGPD da UE), preferível a motores US. Estrutura: `a.title[href]` + `p.s` (snippet).
+async fn mojeek_search(query: &str, max: usize) -> Result<Vec<WebResult>> {
+    let resp = http()
+        .get("https://www.mojeek.com/search")
+        .header("Accept", "text/html,application/xhtml+xml")
+        .header("Accept-Language", "pt-PT,pt;q=0.9,en;q=0.8")
+        .query(&[("q", query)])
+        .send()
+        .await
+        .map_err(|e| anyhow!("Mojeek: {e}"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(anyhow!("Mojeek limitou o ritmo ({status})"));
+    }
+    let html = resp
+        .text()
+        .await
+        .map_err(|e| anyhow!("Mojeek resposta inválida: {e}"))?;
+    Ok(parse_mojeek(&html, max))
+}
+
+/// Extrai resultados do HTML do Mojeek. Separado para ser testável sem rede.
+fn parse_mojeek(html: &str, max: usize) -> Vec<WebResult> {
+    let doc = Html::parse_document(html);
+    let title_sel = Selector::parse("a.title").unwrap();
+    let snip_sel = Selector::parse("p.s").unwrap();
+    // Os snippets aparecem na mesma ordem dos títulos → emparelhamos por índice (como no DDG).
+    let snippets: Vec<String> = doc
+        .select(&snip_sel)
+        .map(|s| s.text().collect::<String>().split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect();
+    let mut out = Vec::new();
+    for (i, a) in doc.select(&title_sel).enumerate() {
+        let title = a.text().collect::<String>().trim().to_string();
+        let url = a.value().attr("href").unwrap_or("").trim().to_string();
+        if title.is_empty() || url.is_empty() {
+            continue;
+        }
+        let snippet = snippets.get(i).cloned().unwrap_or_default();
+        out.push(WebResult { title, url, snippet });
+        if out.len() >= max {
+            break;
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_mojeek_extracts_title_url_snippet() {
+        // Fragmento representativo da estrutura real do Mojeek.
+        let html = r#"
+        <ul class="results-standard">
+          <li><a class="ob" href="https://leak.pt/rtx-50/"></a>
+            <a class="title" title="https://leak.pt/rtx-50/" href="https://leak.pt/rtx-50/">Placas RTX 50 e preços</a>
+            <p class="url">leak.pt/rtx-50</p>
+            <p class="s">As RTX 50 chegaram à Europa com preços a rondar os 600€.</p>
+          </li>
+          <li><a class="title" href="https://pcdiga.com/gpu">GPUs na PCDiga</a>
+            <p class="s">Catálogo de placas gráficas.</p>
+          </li>
+        </ul>"#;
+        let out = parse_mojeek(html, 5);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].title, "Placas RTX 50 e preços");
+        assert_eq!(out[0].url, "https://leak.pt/rtx-50/");
+        assert!(out[0].snippet.contains("600€"));
+        assert_eq!(out[1].url, "https://pcdiga.com/gpu");
+    }
+
+    #[test]
+    fn parse_mojeek_respects_max() {
+        let html = r#"<a class="title" href="https://a.pt">A</a>
+                      <a class="title" href="https://b.pt">B</a>
+                      <a class="title" href="https://c.pt">C</a>"#;
+        assert_eq!(parse_mojeek(html, 2).len(), 2);
     }
 }
 
