@@ -33,14 +33,23 @@ pub async fn web_search(
     max: usize,
 ) -> Result<Vec<WebResult>> {
     let has_key = !api_key.trim().is_empty();
-    match provider {
-        "tavily" if has_key => tavily_search(api_key, query, max).await,
-        "brave" if has_key => brave_search(api_key, query, max).await,
-        "serper" if has_key => serper_search(api_key, query, max).await,
-        "exa" if has_key => exa_search(api_key, query, max).await,
-        "jina" if has_key => jina_search(api_key, query, max).await,
-        _ => keyless_search(query, max).await,
+    let started = std::time::Instant::now();
+    let (engine, r) = match provider {
+        "tavily" if has_key => ("tavily", tavily_search(api_key, query, max).await),
+        "brave" if has_key => ("brave", brave_search(api_key, query, max).await),
+        "serper" if has_key => ("serper", serper_search(api_key, query, max).await),
+        "exa" if has_key => ("exa", exa_search(api_key, query, max).await),
+        "jina" if has_key => ("jina", jina_search(api_key, query, max).await),
+        _ => ("keyless", keyless_search(query, max).await),
+    };
+    // Log só de metadados (motor, query truncada, nº de resultados, tempo) — nunca o conteúdo.
+    let ms = started.elapsed().as_millis();
+    let q: String = query.chars().take(100).collect();
+    match &r {
+        Ok(out) => log::info!("[web] search engine={engine} q=\"{q}\" → {} resultados ({ms} ms)", out.len()),
+        Err(e) => log::warn!("[web] search engine={engine} q=\"{q}\" → erro: {e} ({ms} ms)"),
     }
+    r
 }
 
 /// Pesquisa keyless (sem chave). Política: o DuckDuckGo é o motor por omissão; quando ele bloqueia
@@ -49,12 +58,16 @@ pub async fn web_search(
 async fn keyless_search(query: &str, max: usize) -> Result<Vec<WebResult>> {
     // Enquanto o DDG está em cooldown pós-bloqueio, vai direto ao Mojeek (não vale a pena pedir).
     if ddg_in_cooldown().await {
+        log::info!("[web] keyless: DuckDuckGo em cooldown → Mojeek");
         return mojeek_search(query, max).await;
     }
     match duckduckgo_search(query, max).await {
         Ok(out) if !out.is_empty() => Ok(out),
         // DDG falhou/vazio (um bloqueio já terá marcado o cooldown) → o Mojeek assume.
-        _ => mojeek_search(query, max).await,
+        _ => {
+            log::info!("[web] keyless: DuckDuckGo falhou/vazio → Mojeek");
+            mojeek_search(query, max).await
+        }
     }
 }
 
