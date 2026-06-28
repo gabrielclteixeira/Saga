@@ -1344,18 +1344,21 @@ mark.find-current {
 .artifact-controls button {
   margin: 0;
 }
+/* Igual aos botões ghost da barra (fundo transparente) — só mantém a seta nativa de dropdown. */
 .pdf-theme {
-  height: 30px;
-  padding: 0 8px;
-  background: var(--bg);
-  color: var(--text);
+  min-height: 32px;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--muted);
   border: 1px solid var(--border);
   border-radius: 8px;
+  font: inherit;
   font-size: 12px;
   cursor: pointer;
 }
 .pdf-theme:hover {
-  border-color: var(--accent);
+  background: var(--bg-3);
+  color: var(--text);
 }
 .artifact-body {
   flex: 1;
