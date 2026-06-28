@@ -294,7 +294,7 @@ async fn tavily_search(api_key: &str, query: &str, max: usize) -> Result<Vec<Web
 // bloqueio, espaçamos TODOS os pedidos DDG (entre runs, web_agent e deep_research) e, quando
 // apanhamos um bloqueio, entramos em cooldown em vez de continuar a martelar.
 const DDG_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(2500);
-const DDG_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(90);
+const DDG_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(15 * 60);
 
 struct DdgGate {
     last: Option<std::time::Instant>,
@@ -347,7 +347,7 @@ async fn duckduckgo_search(query: &str, max: usize) -> Result<Vec<WebResult>> {
     // Ritma globalmente; se estivermos em cooldown, falha já (não martela um IP bloqueado).
     if !ddg_throttle().await {
         return Err(anyhow!(
-            "DuckDuckGo em pausa (cooldown após bloqueio). Aguarda ~1 min ou usa uma chave de pesquisa."
+            "DuckDuckGo em pausa (cooldown após bloqueio). O Mojeek assume entretanto; o DDG é re-tentado após ~15 min."
         ));
     }
     // POST ao endpoint HTML; se vier vazio (200), tenta o "lite". Um 202/429 = bloqueio → cooldown.
