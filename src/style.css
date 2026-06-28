@@ -2331,6 +2331,20 @@ dialog::backdrop {
   font-size: 13px;
   border-left: 2px solid var(--border);
 }
+.ps-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2em;
+}
+.ps-mark .ic {
+  width: 0.95em;
+  height: 0.95em;
+}
+.plan-web-ic {
+  display: inline-flex;
+  align-items: center;
+}
 
 /* ---- Workspace / MCP / Atividade ---- */
 .ws-tabs {

@@ -990,19 +990,9 @@ function renderMessagesInner() {
         const box = document.createElement("div");
         box.className = "plan-steps";
         item.plan.steps.forEach((s, i) => {
-          const mark =
-            s.status === "done"
-              ? "✓"
-              : s.status === "searching"
-                ? "🔎"
-                : s.status === "executing"
-                  ? "▶"
-                  : s.status === "error"
-                    ? "✗"
-                    : "○";
           const line = document.createElement("div");
           line.className = `plan-step ${s.status}`;
-          line.textContent = `${mark} ${i + 1}. ${s.title}`;
+          line.innerHTML = `<span class="ps-mark">${planStatusMark(s.status)}</span> ${i + 1}. ${escapeHtml(s.title)}`;
           box.appendChild(line);
         });
         row.appendChild(box);
@@ -1238,20 +1228,27 @@ function splitPlanSections(body: string, n: number): string[] {
 
 /** Resultado do Plan mode (concluído): a checklist vira índice — clicar num passo abre/fecha o seu
  * conteúdo. 1.º passo aberto por omissão. Pressupõe `item.plan` e `sections` (uma por passo). */
+/** Marca de estado de um passo (HTML, monocromática). «A pesquisar» usa o ícone SVG, não emoji. */
+function planStatusMark(status: string): string {
+  switch (status) {
+    case "done":
+      return "✓";
+    case "searching":
+      return icon("search");
+    case "executing":
+      return "▶";
+    case "error":
+      return "✗";
+    default:
+      return "○";
+  }
+}
+
 function buildPlanResult(item: Item, sections: string[]): HTMLElement {
   const box = document.createElement("div");
   box.className = "plan-steps plan-result";
   item.plan!.steps.forEach((s, i) => {
-    const mark =
-      s.status === "done"
-        ? "✓"
-        : s.status === "searching"
-          ? "🔎"
-          : s.status === "executing"
-            ? "▶"
-            : s.status === "error"
-              ? "✗"
-              : "○";
+    const mark = planStatusMark(s.status);
     const content = sections[i] ?? "";
     const head = document.createElement("button");
     head.type = "button";
@@ -3423,8 +3420,9 @@ function showPlanCard(
   card.className = "approval-card plan-card";
   const askWeb = needsWeb && !research; // só pergunta se ainda não está fundamentado
   const webRow = askWeb
-    ? `<label class="plan-web"><input type="checkbox" class="plan-web-cb" checked />
-         ${t("🔎 Pesquisar na web durante a execução (recomendado)")}</label>`
+    ? `<label class="plan-web"><input type="checkbox" class="plan-web-cb" checked />` +
+      `<span class="plan-web-ic">${icon("search")}</span>` +
+      `<span>${t("Pesquisar na web durante a execução (recomendado)")}</span></label>`
     : "";
   card.innerHTML = `
     <div class="approval-head">${t("Plano — revê, edita e aprova")}</div>

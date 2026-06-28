@@ -47,6 +47,24 @@ fn truncate(s: &str, max: usize) -> String {
     }
 }
 
+/// Para o RASCUNHO do plano: histórico enxuto. Os resultados de planos anteriores têm milhares de
+/// caracteres e, repetidos no contexto, afogam a instrução → o modelo pequeno degenera em ECO da
+/// pergunta. Limita cada mensagem antiga; a ÚLTIMA do utilizador (que leva a instrução) fica completa.
+fn lean_for_draft(messages: &[ChatMessage]) -> Vec<ChatMessage> {
+    let last_user = messages.iter().rposition(|m| m.role == "user");
+    messages
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            if Some(i) == last_user {
+                m.clone()
+            } else {
+                ChatMessage { role: m.role.clone(), content: truncate(&m.content, 400), attachments: Vec::new() }
+            }
+        })
+        .collect()
+}
+
 /// Extrai os passos do rascunho. Tenta primeiro o array JSON de strings (robusto a texto à volta);
 /// se falhar (o modelo devolveu uma lista markdown ou prosa), cai numa análise de lista numerada/
 /// com marcadores. Assim evita-se o eco da pergunta quando o formato escorrega.
@@ -186,7 +204,8 @@ um array JSON de strings (os passos), nada mais."
     // Com a temperatura criativa do utilizador, o modelo desvia-se do formato (ou inventa recusas
     // tipo "[Erro] …") e o parse falha → caía no eco da pergunta.
     let plan_opts = GenOpts { num_predict: Some(1024), temperature: Some(0.2), ..opts };
-    let plan_msgs = with_instruction(messages, &plan_instruction);
+    // Histórico enxuto SÓ no rascunho: evita que outputs de planos anteriores afoguem a instrução.
+    let plan_msgs = with_instruction(&lean_for_draft(messages), &plan_instruction);
     let dz = if use_api {
         claude_api::messages(&settings.claude_api_key, model, settings.claude_max_tokens, &plan_msgs, false).await?
     } else {

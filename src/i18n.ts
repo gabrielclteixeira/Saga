@@ -554,8 +554,8 @@ const EN: Record<string, string> = {
   "Adicionar passo": "Add step",
   "Remover passo": "Remove step",
   "Aprovar e executar": "Approve & run",
-  "🔎 Pesquisar na web durante a execução (recomendado)":
-    "🔎 Search the web during execution (recommended)",
+  "Pesquisar na web durante a execução (recomendado)":
+    "Search the web during execution (recommended)",
   "Rejeitar": "Reject",
   "a decompor a pergunta…": "breaking down the question…",
   "a verificar os factos…": "fact-checking…",
