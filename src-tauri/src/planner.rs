@@ -47,20 +47,63 @@ fn truncate(s: &str, max: usize) -> String {
     }
 }
 
-/// Extrai o primeiro array JSON de strings (robusto a texto à volta).
+/// Extrai os passos do rascunho. Tenta primeiro o array JSON de strings (robusto a texto à volta);
+/// se falhar (o modelo devolveu uma lista markdown ou prosa), cai numa análise de lista numerada/
+/// com marcadores. Assim evita-se o eco da pergunta quando o formato escorrega.
 fn parse_steps(text: &str) -> Vec<String> {
-    let (Some(a), Some(b)) = (text.find('['), text.rfind(']')) else {
-        return Vec::new();
-    };
-    if b < a {
-        return Vec::new();
+    if let (Some(a), Some(b)) = (text.find('['), text.rfind(']')) {
+        if b >= a {
+            if let Ok(v) = serde_json::from_str::<Vec<String>>(&text[a..=b]) {
+                let steps: Vec<String> = v
+                    .into_iter()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if !steps.is_empty() {
+                    return steps;
+                }
+            }
+        }
     }
-    serde_json::from_str::<Vec<String>>(&text[a..=b])
-        .unwrap_or_default()
-        .into_iter()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
+    parse_list_lines(text)
+}
+
+/// Fallback: extrai itens de uma lista numerada (`1.`/`1)`) ou com marcadores (`-`/`*`/`•`).
+/// Linhas sem marcador de lista são ignoradas (uma recusa em prosa não gera passos).
+fn parse_list_lines(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for raw in text.lines() {
+        let line = raw.trim();
+        let mut chars = line.chars().peekable();
+        let mut matched = false;
+        let mut num = 0usize;
+        while matches!(chars.peek(), Some(c) if c.is_ascii_digit()) {
+            chars.next();
+            num += 1;
+        }
+        if num > 0 {
+            if matches!(chars.peek(), Some('.') | Some(')')) {
+                chars.next();
+                matched = true;
+            }
+        } else if matches!(chars.peek(), Some('-') | Some('*') | Some('•')) {
+            chars.next();
+            matched = true;
+        }
+        if !matched {
+            continue;
+        }
+        let rest: String = chars.collect();
+        let item = rest
+            .trim()
+            .trim_matches(|c: char| c == '*' || c == '`' || c == '#' || c == ' ')
+            .trim()
+            .to_string();
+        if !item.is_empty() {
+            out.push(item);
+        }
+    }
+    out
 }
 
 /// Classificação leve: este plano precisa de informação atual/online para ser bem executado?
@@ -187,7 +230,10 @@ where
 passo um título curto e concreto do que vai produzir. NÃO repitas a pergunta como passo. Responde APENAS com \
 um array JSON de strings (os passos), nada mais."
     );
-    let plan_opts = GenOpts { num_predict: Some(1024), ..opts };
+    // Temperatura BAIXA no rascunho: é uma extração estruturada (array JSON), não escrita criativa.
+    // Com a temperatura criativa do utilizador, o modelo desvia-se do formato (ou inventa recusas
+    // tipo "[Erro] …") e o parse falha → caía no eco da pergunta.
+    let plan_opts = GenOpts { num_predict: Some(1024), temperature: Some(0.2), ..opts };
     let plan_msgs = with_instruction(messages, &plan_instruction);
     let dz = if use_api {
         claude_api::messages(&settings.claude_api_key, model, settings.claude_max_tokens, &plan_msgs, false).await?
@@ -344,5 +390,23 @@ mod tests {
         let steps = parse_steps(r#"texto à volta ["A", "B", "C"] fim"#);
         assert_eq!(steps.len(), 3);
         assert_eq!(steps[0], "A");
+    }
+
+    #[test]
+    fn parse_steps_falls_back_to_numbered_list() {
+        let steps = parse_steps("Aqui está o plano:\n1. Primeiro passo\n2. Segundo passo\n3) Terceiro");
+        assert_eq!(steps, vec!["Primeiro passo", "Segundo passo", "Terceiro"]);
+    }
+
+    #[test]
+    fn parse_steps_falls_back_to_bullets() {
+        let steps = parse_steps("- **Um**\n* Dois\n• Três");
+        assert_eq!(steps, vec!["Um", "Dois", "Três"]);
+    }
+
+    #[test]
+    fn parse_steps_ignores_prose_refusal() {
+        // Uma recusa em prosa (sem marcadores de lista) não deve gerar passos.
+        assert!(parse_steps("[Erro] A sua mensagem não contém instruções válidas.").is_empty());
     }
 }
