@@ -51,6 +51,13 @@ fn truncate(s: &str, max: usize) -> String {
 /// Para o RASCUNHO do plano: histórico enxuto. Os resultados de planos anteriores têm milhares de
 /// caracteres e, repetidos no contexto, afogam a instrução → o modelo pequeno degenera em ECO da
 /// pergunta. Limita cada mensagem antiga; a ÚLTIMA do utilizador (que leva a instrução) fica completa.
+/// Remove a mensagem de sistema (persona/honestidade/PDF nudge da rota normal). O Plan mode é um
+/// andaime com instruções próprias por fase; herdar o system prompt do chat fazia o modelo (a) sangrar
+/// o "clica em Export PDF" para dentro dos passos e (b) hedge a mais ("não posso fazer isto").
+fn strip_system(messages: &[ChatMessage]) -> Vec<ChatMessage> {
+    messages.iter().filter(|m| m.role != "system").cloned().collect()
+}
+
 pub(crate) fn lean_for_draft(messages: &[ChatMessage]) -> Vec<ChatMessage> {
     let last_user = messages.iter().rposition(|m| m.role == "user");
     messages
@@ -195,8 +202,9 @@ where
     let mut total_in = 0u64;
     let mut total_out = 0u64;
     let mut sources: Vec<(String, String)> = Vec::new();
-    // Conversa de trabalho: pode ganhar os esclarecimentos do utilizador antes de planear.
-    let mut conv: Vec<ChatMessage> = messages.to_vec();
+    // Conversa de trabalho SEM o system prompt da persona (o planner usa instruções próprias por
+    // fase). Pode ganhar os esclarecimentos do utilizador antes de planear.
+    let mut conv: Vec<ChatMessage> = strip_system(messages);
 
     // ── Fase 0: esclarecer (determinístico decide SE perguntar; o modelo gera as perguntas) ──
     if clarify_level != "off" && clarify::specificity(&task) == clarify::Specificity::Vague {
