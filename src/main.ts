@@ -66,7 +66,7 @@ interface Item {
   steps?: string[];
   thinking?: string;
   report?: boolean;
-  plan?: { steps: { title: string; status: "pending" | "executing" | "done" | "error" }[] };
+  plan?: { steps: { title: string; status: "pending" | "executing" | "searching" | "done" | "error" }[] };
 }
 
 const state: {
@@ -975,7 +975,15 @@ function renderMessagesInner() {
       box.className = "plan-steps";
       item.plan.steps.forEach((s, i) => {
         const mark =
-          s.status === "done" ? "✓" : s.status === "executing" ? "▶" : s.status === "error" ? "✗" : "○";
+          s.status === "done"
+            ? "✓"
+            : s.status === "searching"
+              ? "🔎"
+              : s.status === "executing"
+                ? "▶"
+                : s.status === "error"
+                  ? "✗"
+                  : "○";
         const line = document.createElement("div");
         line.className = `plan-step ${s.status}`;
         line.textContent = `${mark} ${i + 1}. ${s.title}`;
@@ -2170,7 +2178,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
         } else if (evt.kind === "PlanStep") {
           if (assistant.plan?.steps[evt.index]) {
             assistant.plan.steps[evt.index].status =
-              evt.status as "pending" | "executing" | "done" | "error";
+              evt.status as "pending" | "executing" | "searching" | "done" | "error";
             renderMessages();
             paintBubble();
           }

@@ -240,6 +240,7 @@ um array JSON de strings (os passos), nada mais."
         // Grounding leve (só excertos) quando o 🔎 está ligado.
         let mut evidence = String::new();
         if research {
+            on_step(i, "searching"); // marca o passo como "a pesquisar" na checklist
             on_tool("web_search", step);
             let results = web::web_search(&settings.web_search_provider, &settings.active_web_key(), step, 3)
                 .await
@@ -252,6 +253,7 @@ um array JSON de strings (os passos), nada mais."
             if !results.is_empty() {
                 evidence = format!("\n\nEvidências da web (usa SÓ estes URLs; não inventes outros):\n{}", truncate(&web::format_results(&results), 1200));
             }
+            on_step(i, "executing"); // pesquisa feita → volta a "a executar" (geração do passo)
         }
 
         // Os passos intermédios produzem só o seu conteúdo; só o ÚLTIMO pode concluir/fechar.

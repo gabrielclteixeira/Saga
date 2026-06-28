@@ -2236,7 +2236,8 @@ dialog::backdrop {
   color: var(--muted);
   line-height: 1.5;
 }
-.plan-step.executing {
+.plan-step.executing,
+.plan-step.searching {
   color: var(--accent);
   font-weight: 600;
 }
