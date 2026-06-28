@@ -139,16 +139,42 @@ fn nearest_centroid_vague(exemplars: &[(bool, Vec<f32>)], q: &[f32]) -> Option<b
     Some(ollama::cosine(q, &cv) > ollama::cosine(q, &cs))
 }
 
-/// L2 (embeddings): para os casos fronteira, a mensagem é vaga? Usa o `settings.embed_model` (os
-/// modelos de chat não embutem). Embute os exemplos (cache por modelo) e a `task`, e compara centróides.
-/// `None` se a L2 estiver desligada (sem embed_model) ou os embeddings falharem → chamador trata como vago.
+/// Resolve qual modelo usar para embeddings (cache de processo): o override `embed_model` se estiver
+/// instalado, senão **auto-deteta** um modelo de embeddings instalado (nome com "embed"/"bge"/"minilm"/
+/// "e5"/"gte"). `None` se não houver nenhum (os modelos de chat não embutem) → L2 dormente.
+async fn resolve_embed_model(settings: &Settings) -> Option<String> {
+    static RESOLVED: OnceLock<Mutex<Option<Option<String>>>> = OnceLock::new();
+    let cell = RESOLVED.get_or_init(|| Mutex::new(None));
+    let mut g = cell.lock().await;
+    if let Some(cached) = g.as_ref() {
+        return cached.clone(); // já resolvido (Some(model) ou None)
+    }
+    let installed = ollama::list_models(&settings.ollama_endpoint).await.unwrap_or_default();
+    let configured = settings.embed_model.trim();
+    let pick = if !configured.is_empty()
+        && installed
+            .iter()
+            .any(|m| m == configured || m.starts_with(&format!("{configured}:")))
+    {
+        Some(configured.to_string())
+    } else {
+        installed.into_iter().find(|m| {
+            let l = m.to_lowercase();
+            l.contains("embed") || l.contains("bge") || l.contains("minilm") || l.contains("e5") || l.contains("gte")
+        })
+    };
+    *g = Some(pick.clone());
+    pick
+}
+
+/// L2 (embeddings): para os casos fronteira, a mensagem é vaga? Usa um modelo de embeddings instalado
+/// (auto-detetado; os modelos de chat não embutem). Embute os exemplos (cache por modelo) e a `task`, e
+/// compara centróides. `None` se não houver modelo de embeddings ou se falharem → chamador trata como vago.
 /// Cache negativa: um modelo que falhe é marcado para não voltar a martelar o `/api/embed` (ex.: 501/404).
 pub async fn embedding_vague(settings: &Settings, task: &str) -> Option<bool> {
     let endpoint = &settings.ollama_endpoint;
-    let model = settings.embed_model.trim();
-    if model.is_empty() {
-        return None;
-    }
+    let model = resolve_embed_model(settings).await?;
+    let model = model.as_str();
     let exemplars = {
         let mut cache = exemplar_cache().lock().await;
         match cache.get(model) {

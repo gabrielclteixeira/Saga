@@ -60,8 +60,9 @@ pub struct Settings {
     pub confirm_mode: String,
     /// Fase de esclarecimento do Plan mode: "off" | "light" (deteção determinística + perguntas por slots).
     pub clarify_level: String,
-    /// Modelo de embeddings para a L2 do esclarecimento (ex.: "nomic-embed-text"). Os modelos de chat
-    /// (qwen3…) não fazem embeddings, por isso a L2 fica dormente até puxares um modelo dedicado. Vazio = L2 off.
+    /// Override do modelo de embeddings para a L2 (ex.: "nomic-embed-text"). Vazio = auto-deteta um
+    /// modelo de embeddings instalado (qualquer nome com "embed"/"bge"/…); os modelos de chat (qwen3…)
+    /// não embutem, por isso a L2 fica dormente até instalares um dedicado.
     pub embed_model: String,
     /// Viés de sensibilidade do esclarecimento, por modelo — aprende com responder/saltar os cartões
     /// (+ = perguntar menos; − = perguntar mais). Gerido pelo backend; preservado nos saves da UI.
@@ -119,7 +120,7 @@ impl Default for Settings {
                 .to_string(),
             confirm_mode: "off".into(),
             clarify_level: "light".into(),
-            embed_model: "nomic-embed-text".into(),
+            embed_model: String::new(), // vazio = auto-deteta um modelo de embeddings instalado
             clarify_bias: BTreeMap::new(),
             local_web_search: false,
             // DuckDuckGo: keyless, funciona logo (com limites de ritmo). Motores com chave
