@@ -2184,9 +2184,11 @@ dialog::backdrop {
 /* Plan mode: cartão de plano editável + checklist de execução */
 .plan-card {
   border-color: var(--accent);
-  /* Mais largo que o cartão de ação: % do ecrã (vw), com teto para a leitura não esticar demais. */
-  width: min(760px, 86vw);
-  max-width: 86vw;
+  /* Dinâmico: estica para preencher a largura da coluna (flex) e redimensiona com a janela,
+     em vez de uma caixa estreita fixa. Sobrepõe o align-self/max-width do .approval-card. */
+  align-self: stretch;
+  width: auto;
+  max-width: none;
 }
 .plan-hint {
   font-size: 11.5px;
