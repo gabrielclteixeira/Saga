@@ -207,25 +207,37 @@ where
     let mut conv: Vec<ChatMessage> = strip_system(messages);
 
     // ── Fase 0: esclarecer (determinístico decide SE perguntar; o modelo gera as perguntas) ──
-    if clarify_level != "off" && clarify::specificity(&task) == clarify::Specificity::Vague {
-        let qs = clarify::clarifying_questions(settings, use_api, model, &conv, opts, &mut total_in, &mut total_out).await;
-        log::info!("[clarify] vague=true perguntas={}", qs.len());
-        if !qs.is_empty() {
-            if let Some(answers) = ask(qs.clone()).await {
-                let qa = qs
-                    .iter()
-                    .zip(answers.iter())
-                    .filter(|(_, a)| !a.trim().is_empty())
-                    .map(|(q, a)| format!("- {q} {}", a.trim()))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if !qa.is_empty() {
-                    conv = with_instruction(&conv, &format!("Esclarecimentos que dei:\n{qa}"));
+    if clarify_level != "off" {
+        // Viés adaptativo por modelo (aprende com responder/saltar os cartões).
+        let bias = settings.clarify_bias.get(model).copied().unwrap_or(0);
+        // L1 determinística decide claros/vagos; a banda fronteira vai à L2 (embeddings, se ativa).
+        let spec = clarify::specificity(&task, bias);
+        let vague = match spec {
+            clarify::Specificity::Clear => false,
+            clarify::Specificity::Vague => true,
+            clarify::Specificity::Borderline => {
+                clarify::embedding_vague(settings, &task).await.unwrap_or(true)
+            }
+        };
+        log::info!("[clarify] spec={spec:?} bias={bias} vague={vague}");
+        if vague {
+            let qs = clarify::clarifying_questions(settings, use_api, model, &conv, opts, &mut total_in, &mut total_out).await;
+            log::info!("[clarify] perguntas={}", qs.len());
+            if !qs.is_empty() {
+                if let Some(answers) = ask(qs.clone()).await {
+                    let qa = qs
+                        .iter()
+                        .zip(answers.iter())
+                        .filter(|(_, a)| !a.trim().is_empty())
+                        .map(|(q, a)| format!("- {q} {}", a.trim()))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if !qa.is_empty() {
+                        conv = with_instruction(&conv, &format!("Esclarecimentos que dei:\n{qa}"));
+                    }
                 }
             }
         }
-    } else if clarify_level != "off" {
-        log::info!("[clarify] vague=false");
     }
 
     // Chamada one-shot (texto limpo) — local sem thinking, ou Claude.

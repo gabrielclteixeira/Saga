@@ -183,6 +183,65 @@ pub async fn chat_raw(
         .map_err(|e| anyhow!("resposta do Ollama inválida: {e}"))
 }
 
+/// Embeddings via `/api/embed`. Funciona com qualquer modelo (chat incluído) → zero-setup: usa-se o
+/// modelo ativo, sem instalar um modelo de embeddings dedicado. Devolve um vetor por `input`.
+pub async fn embed(endpoint: &str, model: &str, inputs: &[&str]) -> Result<Vec<Vec<f32>>> {
+    if inputs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let url = format!("{}/api/embed", endpoint.trim_end_matches('/'));
+    let body = serde_json::json!({ "model": model, "input": inputs, "keep_alive": KEEP_ALIVE });
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| anyhow!("falha a contactar o Ollama (embed) em {url}: {e}"))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("Ollama (embed) devolveu {status}: {text}"));
+    }
+    let v: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| anyhow!("resposta de embeddings inválida: {e}"))?;
+    let arr = v
+        .get("embeddings")
+        .and_then(|e| e.as_array())
+        .ok_or_else(|| anyhow!("resposta de embeddings sem campo 'embeddings'"))?;
+    let out: Vec<Vec<f32>> = arr
+        .iter()
+        .map(|row| {
+            row.as_array()
+                .map(|r| r.iter().filter_map(|x| x.as_f64().map(|f| f as f32)).collect())
+                .unwrap_or_default()
+        })
+        .collect();
+    if out.iter().any(|e| e.is_empty()) {
+        return Err(anyhow!("o modelo {model} não devolveu embeddings utilizáveis"));
+    }
+    Ok(out)
+}
+
+/// Similaridade do cosseno entre dois vetores (0 se dimensões diferentes ou norma nula).
+pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let (mut dot, mut na, mut nb) = (0.0f32, 0.0f32, 0.0f32);
+    for i in 0..a.len() {
+        dot += a[i] * b[i];
+        na += a[i] * a[i];
+        nb += b[i] * b[i];
+    }
+    if na == 0.0 || nb == 0.0 {
+        return 0.0;
+    }
+    dot / (na.sqrt() * nb.sqrt())
+}
+
 pub async fn chat(
     endpoint: &str,
     model: &str,

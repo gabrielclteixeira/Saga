@@ -9,6 +9,11 @@
 //! - `clarifying_questions` (slots, EXTRAÇÃO — tarefa fácil): só corre quando vago; o modelo diz o
 //!   que FALTA. Devolve `[]` quando já há o essencial, vetando os falsos positivos da L1.
 
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
+use tokio::sync::Mutex;
+
 use crate::planner::{clean_step, lean_for_draft, parse_steps, with_instruction};
 use crate::providers::ollama::{self, GenOpts};
 use crate::providers::{claude_api, ChatMessage};
@@ -21,9 +26,13 @@ const DEICTIC: &[&str] = &[
     "this", "that", "those", "these", "it",
 ];
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Specificity {
+    /// Constraints concretas suficientes → não perguntar.
     Clear,
+    /// Indefinido pelas features → deixar a L2 (embeddings) decidir.
+    Borderline,
+    /// Claramente vago → perguntar (a extração de slots ainda veta).
     Vague,
 }
 
@@ -31,7 +40,7 @@ pub enum Specificity {
 /// Soma sinais de especificidade (quantidades, dinheiro, comprimento) e penaliza deíticos sem
 /// referente. Calibrado para errar do lado de NÃO chatear nas mensagens claramente específicas;
 /// quando devolve `Vague`, é a extração de slots que decide se há mesmo algo a perguntar.
-pub fn specificity(task: &str) -> Specificity {
+pub fn specificity(task: &str, bias: i32) -> Specificity {
     let lower = task.to_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
     let n_words = words.len();
@@ -46,10 +55,6 @@ pub fn specificity(task: &str) -> Specificity {
         })
         .count();
 
-    // Mensagens muito curtas e sem quantidades → quase sempre vagas.
-    if n_words <= 6 && n_numbers == 0 {
-        return Specificity::Vague;
-    }
     let mut score: i32 = 0;
     if n_words >= 12 {
         score += 1;
@@ -62,12 +67,112 @@ pub fn specificity(task: &str) -> Specificity {
         score += 1;
     }
     score -= n_deictic.min(2) as i32;
+    // Viés adaptativo por modelo (+ = perguntar menos; − = perguntar mais). Mensagens curtas e vagas
+    // já marcam score ≤ 0 naturalmente → Vague, sem precisar de regra especial.
+    score += bias;
 
-    if score >= 2 {
+    // 3 vias: claros passam direto, vagos perguntam, e a banda do meio vai à L2 (embeddings).
+    if score >= 3 {
         Specificity::Clear
-    } else {
+    } else if score <= 0 {
         Specificity::Vague
+    } else {
+        Specificity::Borderline
     }
+}
+
+/// Exemplos curados (bilingue) para a L2: o centróide dos vagos vs dos específicos no espaço de
+/// embeddings classifica os casos fronteira. Não precisa de treino — só de cosseno.
+const EXEMPLARS: &[(&str, bool)] = &[
+    // (texto, is_vague)
+    ("quero uma máquina para LLMs locais", true),
+    ("ajuda-me com isto", true),
+    ("ajuda-me a decidir sobre o meu setup", true),
+    ("faz-me um site", true),
+    ("melhora isto", true),
+    ("I want a machine for local LLMs", true),
+    ("make me something cool with this", true),
+    ("máquina ~€2000 para correr Llama 70B Q4 em Portugal", false),
+    ("escreve um email formal de agradecimento ao cliente ACME em português", false),
+    ("implementa quicksort em Rust com testes unitários", false),
+    ("build a PC around €2500 to run 70B models locally in the EU", false),
+    ("compara RTX 4090 vs RX 7900 XTX para inferência de 13B em Q5", false),
+    ("resume este artigo em 5 bullet points em português", false),
+    ("corrige o bug de off-by-one nesta função de paginação", false),
+];
+
+#[allow(clippy::type_complexity)]
+static EXEMPLAR_CACHE: OnceLock<Mutex<HashMap<String, Vec<(bool, Vec<f32>)>>>> = OnceLock::new();
+fn exemplar_cache() -> &'static Mutex<HashMap<String, Vec<(bool, Vec<f32>)>>> {
+    EXEMPLAR_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Classifica `q` pelo centróide (média) mais próximo: vago vs específico. Puro → testável sem rede.
+fn nearest_centroid_vague(exemplars: &[(bool, Vec<f32>)], q: &[f32]) -> Option<bool> {
+    let centroid = |want_vague: bool| -> Vec<f32> {
+        let mut sum: Vec<f32> = Vec::new();
+        let mut n = 0u32;
+        for (is_vague, e) in exemplars.iter().filter(|(v, _)| *v == want_vague) {
+            let _ = is_vague;
+            if sum.is_empty() {
+                sum = vec![0.0; e.len()];
+            }
+            for (i, x) in e.iter().enumerate() {
+                if i < sum.len() {
+                    sum[i] += x;
+                }
+            }
+            n += 1;
+        }
+        if n > 0 {
+            for x in &mut sum {
+                *x /= n as f32;
+            }
+        }
+        sum
+    };
+    let cv = centroid(true);
+    let cs = centroid(false);
+    if cv.is_empty() || cs.is_empty() {
+        return None;
+    }
+    Some(ollama::cosine(q, &cv) > ollama::cosine(q, &cs))
+}
+
+/// L2 (embeddings): para os casos fronteira, a mensagem é vaga? Usa o `settings.embed_model` (os
+/// modelos de chat não embutem). Embute os exemplos (cache por modelo) e a `task`, e compara centróides.
+/// `None` se a L2 estiver desligada (sem embed_model) ou os embeddings falharem → chamador trata como vago.
+/// Cache negativa: um modelo que falhe é marcado para não voltar a martelar o `/api/embed` (ex.: 501/404).
+pub async fn embedding_vague(settings: &Settings, task: &str) -> Option<bool> {
+    let endpoint = &settings.ollama_endpoint;
+    let model = settings.embed_model.trim();
+    if model.is_empty() {
+        return None;
+    }
+    let exemplars = {
+        let mut cache = exemplar_cache().lock().await;
+        match cache.get(model) {
+            Some(e) if e.is_empty() => return None, // já falhou antes → não re-tenta
+            Some(e) => e.clone(),
+            None => {
+                let texts: Vec<&str> = EXEMPLARS.iter().map(|(t, _)| *t).collect();
+                match ollama::embed(endpoint, model, &texts).await {
+                    Ok(embs) if embs.len() == EXEMPLARS.len() => {
+                        let built: Vec<(bool, Vec<f32>)> =
+                            EXEMPLARS.iter().map(|(_, v)| *v).zip(embs).collect();
+                        cache.insert(model.to_string(), built.clone());
+                        built
+                    }
+                    _ => {
+                        cache.insert(model.to_string(), Vec::new()); // marca falha (cache negativa)
+                        return None;
+                    }
+                }
+            }
+        }
+    };
+    let q = ollama::embed(endpoint, model, &[task]).await.ok()?.into_iter().next()?;
+    nearest_centroid_vague(&exemplars, &q)
 }
 
 /// Gera 1-3 perguntas de esclarecimento por EXTRAÇÃO de slots em falta. Devolve vazio quando já há
@@ -120,30 +225,52 @@ mod tests {
 
     #[test]
     fn vague_short_prompts() {
-        assert_eq!(specificity("Quero uma máquina para LLMs locais"), Specificity::Vague);
-        assert_eq!(specificity("I want a machine for local LLMs"), Specificity::Vague);
-        assert_eq!(specificity("ajuda-me com isto"), Specificity::Vague);
-        assert_eq!(specificity("preços de GPUs?"), Specificity::Vague);
+        assert_eq!(specificity("Quero uma máquina para LLMs locais", 0), Specificity::Vague);
+        assert_eq!(specificity("I want a machine for local LLMs", 0), Specificity::Vague);
+        assert_eq!(specificity("ajuda-me com isto", 0), Specificity::Vague);
+        assert_eq!(specificity("preços de GPUs?", 0), Specificity::Vague);
     }
 
     #[test]
     fn clear_specific_prompts() {
         assert_eq!(
-            specificity("Máquina ~€2000, correr Llama 70B Q4 em Portugal"),
+            specificity("Máquina ~€2000, correr Llama 70B Q4 em Portugal", 0),
             Specificity::Clear
         );
         assert_eq!(
-            specificity("Build a PC around €2500 to run 70B models locally in the EU"),
+            specificity("Build a PC around €2500 to run 70B models locally in the EU", 0),
             Specificity::Clear
         );
     }
 
     #[test]
-    fn longish_but_vague_asks() {
-        // Sem orçamento, tamanho de modelo nem região → ainda vago (o utilizador quer ser perguntado).
+    fn longish_but_underspecified_is_borderline() {
+        // Sem orçamento, tamanho de modelo nem região → fronteira → vai à L2 (embeddings) decidir.
         assert_eq!(
-            specificity("Quero fazer uma máquina boa para hospedar LLMs locais, quais os preços e onde comprar"),
-            Specificity::Vague
+            specificity("Quero fazer uma máquina boa para hospedar LLMs locais, quais os preços e onde comprar", 0),
+            Specificity::Borderline
         );
+    }
+
+    #[test]
+    fn bias_shifts_the_band() {
+        // Viés positivo (utilizador salta muito) → pergunta menos; negativo → pergunta mais.
+        let q = "Quero fazer uma máquina boa para hospedar LLMs locais, quais os preços e onde comprar";
+        assert_eq!(specificity(q, 0), Specificity::Borderline);
+        assert_eq!(specificity(q, 2), Specificity::Clear); // 1 + 2 = 3 → Clear
+        assert_eq!(specificity(q, -1), Specificity::Vague); // 1 - 1 = 0 → Vague
+    }
+
+    #[test]
+    fn centroid_classifies_by_nearest() {
+        // Vetores sintéticos: vagos ≈ eixo X, específicos ≈ eixo Y.
+        let exemplars = vec![
+            (true, vec![1.0, 0.0]),
+            (true, vec![0.9, 0.1]),
+            (false, vec![0.0, 1.0]),
+            (false, vec![0.1, 0.9]),
+        ];
+        assert_eq!(nearest_centroid_vague(&exemplars, &[1.0, 0.05]), Some(true));
+        assert_eq!(nearest_centroid_vague(&exemplars, &[0.05, 1.0]), Some(false));
     }
 }

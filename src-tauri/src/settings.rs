@@ -60,6 +60,12 @@ pub struct Settings {
     pub confirm_mode: String,
     /// Fase de esclarecimento do Plan mode: "off" | "light" (deteção determinística + perguntas por slots).
     pub clarify_level: String,
+    /// Modelo de embeddings para a L2 do esclarecimento (ex.: "nomic-embed-text"). Os modelos de chat
+    /// (qwen3…) não fazem embeddings, por isso a L2 fica dormente até puxares um modelo dedicado. Vazio = L2 off.
+    pub embed_model: String,
+    /// Viés de sensibilidade do esclarecimento, por modelo — aprende com responder/saltar os cartões
+    /// (+ = perguntar menos; − = perguntar mais). Gerido pelo backend; preservado nos saves da UI.
+    pub clarify_bias: BTreeMap<String, i32>,
     /// Pesquisa web para o modelo local (Ollama tool-calling).
     pub local_web_search: bool,
     /// Motor de pesquisa: "duckduckgo" (sem chave) | "tavily" | "brave" | "serper" | "exa" | "jina".
@@ -113,6 +119,8 @@ impl Default for Settings {
                 .to_string(),
             confirm_mode: "off".into(),
             clarify_level: "light".into(),
+            embed_model: "nomic-embed-text".into(),
+            clarify_bias: BTreeMap::new(),
             local_web_search: false,
             // DuckDuckGo: keyless, funciona logo (com limites de ritmo). Motores com chave
             // (Tavily/Jina/…) ficam disponíveis para mais fiabilidade/volume.

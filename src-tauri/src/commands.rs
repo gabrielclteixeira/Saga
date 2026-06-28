@@ -58,8 +58,9 @@ pub struct AppState {
     /// Planos pendentes de aprovação (id → canal); `None` = rejeitado, `Some((steps, research))` =
     /// aprovado (passos editados + se executa fundamentado na web).
     pub pending_plans: tokio::sync::Mutex<HashMap<u64, oneshot::Sender<Option<(Vec<String>, bool)>>>>,
-    /// Esclarecimentos pendentes (id → canal); `None` = saltou, `Some(answers)` = respondeu (por pergunta).
-    pub pending_clarify: tokio::sync::Mutex<HashMap<u64, oneshot::Sender<Option<Vec<String>>>>>,
+    /// Esclarecimentos pendentes (id → (canal, modelo)); `None` = saltou, `Some(answers)` = respondeu.
+    /// O modelo é guardado para o `respond_clarify` afinar o viés adaptativo desse modelo.
+    pub pending_clarify: tokio::sync::Mutex<HashMap<u64, (oneshot::Sender<Option<Vec<String>>>, String)>>,
 }
 
 impl AppState {
@@ -173,7 +174,13 @@ pub fn get_settings(state: State<AppState>) -> Settings {
 }
 
 #[tauri::command]
-pub fn save_settings(state: State<AppState>, settings: Settings) -> Result<(), String> {
+pub fn save_settings(state: State<AppState>, mut settings: Settings) -> Result<(), String> {
+    // Campos geridos pelo backend (não vêm da UI) — preserva-os para um save da UI não os limpar.
+    {
+        let cur = state.settings.lock().unwrap();
+        settings.clarify_bias = cur.clarify_bias.clone();
+        settings.embed_model = cur.embed_model.clone();
+    }
     settings.save().map_err(|e| e.to_string())?;
     *state.settings.lock().unwrap() = settings;
     Ok(())
@@ -620,9 +627,16 @@ pub async fn respond_clarify(
     answered: bool,
     answers: Vec<String>,
 ) -> Result<(), String> {
-    if let Some(tx) = state.pending_clarify.lock().await.remove(&id) {
-        let _ = tx.send(if answered { Some(answers) } else { None });
-    }
+    let Some((tx, model)) = state.pending_clarify.lock().await.remove(&id) else {
+        return Ok(());
+    };
+    let _ = tx.send(if answered { Some(answers) } else { None });
+    // Viés adaptativo por modelo: saltar → +1 (pergunto demais); responder → −1 (foi útil). Clamp + persiste.
+    let delta = if answered { -1 } else { 1 };
+    let mut s = state.settings.lock().unwrap();
+    let b = s.clarify_bias.entry(model).or_insert(0);
+    *b = (*b + delta).clamp(-3, 3);
+    let _ = s.save();
     Ok(())
 }
 
@@ -1238,10 +1252,11 @@ pub async fn send_message_stream(
         };
         // Esclarecimento: emite as perguntas e bloqueia até a UI responder (respostas por pergunta).
         let tx_clarify = channel.clone();
+        let clarify_model = prepared.model.clone();
         let ask = move |questions: Vec<String>| async move {
             let id = st.approval_seq.fetch_add(1, Ordering::Relaxed) + 1;
             let (txo, rxo) = oneshot::channel();
-            st.pending_clarify.lock().await.insert(id, txo);
+            st.pending_clarify.lock().await.insert(id, (txo, clarify_model));
             let _ = tx_clarify.send(StreamEvent::Clarify { id, questions });
             rxo.await.unwrap_or(None)
         };
