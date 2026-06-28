@@ -352,12 +352,12 @@ app.innerHTML = `
             <textarea id="ws-content" rows="12" spellcheck="false" placeholder="${t("# Instruções…")}"></textarea>
           </label>
           <div class="ws-editor-bar">
-            <button type="button" class="ghost" id="ws-cancel">${t("Fechar editor")}</button>
+            <button type="button" class="ghost" id="ws-cancel">${t("Cancelar")}</button>
             <button type="button" class="primary" id="ws-save">${t("Guardar")}</button>
           </div>
         </div>
       </div>
-      <menu>
+      <menu id="ws-footer">
         <button type="button" class="ghost" id="ws-new">${t("+ Novo")}</button>
         <button type="button" class="ghost" id="ws-close">${t("Fechar")}</button>
       </menu>
@@ -3588,7 +3588,7 @@ function setWsKind(kind: WsKind) {
     .forEach((b) => b.classList.toggle("active", b.dataset.kind === kind));
   const help = document.querySelector("#ws-help");
   if (help) help.textContent = WS_HELP[kind] ?? "";
-  document.querySelector("#ws-editor")!.setAttribute("hidden", "");
+  wsEditorOpen(false);
   void renderWorkspaceList();
 }
 
@@ -3760,6 +3760,20 @@ function readEditorFields(): DocFields {
   };
 }
 
+/** Mostra/esconde o editor do Workspace e troca o rodapé: a editar → só [Cancelar][Guardar]; na lista →
+ * [+ Novo][Fechar]. Evita ter dois "Fechar" ao mesmo tempo e separa as ações do editor das do diálogo. */
+function wsEditorOpen(open: boolean) {
+  const ed = document.querySelector("#ws-editor");
+  const footer = document.querySelector("#ws-footer");
+  if (open) {
+    ed?.removeAttribute("hidden");
+    footer?.setAttribute("hidden", "");
+  } else {
+    ed?.setAttribute("hidden", "");
+    footer?.removeAttribute("hidden");
+  }
+}
+
 function newWsDoc() {
   const nameEl = wsq<HTMLInputElement>("#ws-name");
   nameEl.value = "";
@@ -3778,7 +3792,7 @@ function newWsDoc() {
   wsq<HTMLTextAreaElement>("#ws-gen-prompt").value = "";
   wsq("#ws-gen-status").textContent = "";
   applyDocKindFields();
-  wsq("#ws-editor").removeAttribute("hidden");
+  wsEditorOpen(true);
 }
 
 async function editWsDoc(name: string) {
@@ -3791,7 +3805,7 @@ async function editWsDoc(name: string) {
     wsq<HTMLTextAreaElement>("#ws-gen-prompt").value = "";
     wsq("#ws-gen-status").textContent = "";
     applyDocKindFields();
-    wsq("#ws-editor").removeAttribute("hidden");
+    wsEditorOpen(true);
   } catch (e) {
     alert(t("Falha a abrir: ") + e);
   }
@@ -3826,7 +3840,7 @@ async function saveWsDoc() {
   }
   try {
     await api.saveWorkspaceDoc(wsKind, f.name, assembleDoc(wsKind, f));
-    wsq("#ws-editor").setAttribute("hidden", "");
+    wsEditorOpen(false);
     await renderWorkspaceList();
   } catch (e) {
     alert(t("Falha a guardar: ") + e);
@@ -5010,9 +5024,7 @@ function wireWorkspaceUi() {
   document.querySelector("#ws-new")!.addEventListener("click", newWsDoc);
   document.querySelector("#ws-save")!.addEventListener("click", saveWsDoc);
   document.querySelector("#ws-gen-btn")!.addEventListener("click", genWsDoc);
-  document
-    .querySelector("#ws-cancel")!
-    .addEventListener("click", () => document.querySelector("#ws-editor")!.setAttribute("hidden", ""));
+  document.querySelector("#ws-cancel")!.addEventListener("click", () => wsEditorOpen(false));
   document.querySelector("#ws-close")!.addEventListener("click", () => showView(null));
 
   document.querySelector("#mcp-add")!.addEventListener("click", addOrUpdateMcp);
