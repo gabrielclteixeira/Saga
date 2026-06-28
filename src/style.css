@@ -37,6 +37,13 @@
   box-sizing: border-box;
 }
 
+/* O atributo `hidden` deve esconder SEMPRE — muitos elementos têm `display:` próprio (flex/grid) que de
+   outro modo se sobrepõe ao display:none do UA e o `hidden` deixa de funcionar (editor/listas/campos do
+   Workspace apareciam onde não deviam). Regra global evita remendar caso a caso. */
+[hidden] {
+  display: none !important;
+}
+
 /* Scrollbars temáticas (azulejo) */
 * {
   scrollbar-width: thin;
@@ -2482,12 +2489,6 @@ dialog::backdrop {
   flex-direction: column;
   gap: 8px;
   margin-top: 8px;
-}
-/* `display:flex` acima sobrepõe-se ao atributo [hidden] — é preciso repor display:none explicitamente,
-   senão o editor (e a lista, ao editar) nunca se escondem. */
-.ws-editor[hidden],
-.ws-list[hidden] {
-  display: none;
 }
 .ws-editor textarea,
 #mcp-args,
