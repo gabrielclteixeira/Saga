@@ -11,14 +11,30 @@ use std::path::{Path, PathBuf};
 pub struct DocMeta {
     pub name: String,
     pub description: String,
+    /// Item ligado/desligado (frontmatter `enabled:`; default true quando ausente).
+    pub enabled: bool,
 }
 
 #[derive(Serialize, Default, Clone)]
 pub struct WorkspaceIndex {
     pub skills: Vec<DocMeta>,
-    pub playbooks: Vec<String>,
+    pub playbooks: Vec<DocMeta>,
     pub workflows: Vec<DocMeta>,
     pub agents: Vec<DocMeta>,
+}
+
+impl WorkspaceIndex {
+    /// Só os itens ativos (para os consumidores: Dispatcher, manifesto, etc.). A UI usa o índice
+    /// completo (mostra os desativados a cinzento).
+    pub fn active(&self) -> WorkspaceIndex {
+        let keep = |v: &[DocMeta]| v.iter().filter(|d| d.enabled).cloned().collect();
+        WorkspaceIndex {
+            skills: keep(&self.skills),
+            playbooks: keep(&self.playbooks),
+            workflows: keep(&self.workflows),
+            agents: keep(&self.agents),
+        }
+    }
 }
 
 fn skills_dir(root: &str) -> PathBuf {
@@ -55,6 +71,23 @@ pub fn parse_frontmatter(content: &str) -> (Option<String>, Option<String>) {
 
 fn clean_value(v: &str) -> String {
     v.trim().trim_matches('"').trim_matches('\'').to_string()
+}
+
+/// Lê a flag `enabled:` do frontmatter. Default `true` (ausente = ativo); só `false` se for
+/// explicitamente false/0/no/não.
+pub fn parse_enabled(content: &str) -> bool {
+    let trimmed = content.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("---") {
+        if let Some(end) = rest.find("\n---") {
+            for line in rest[..end].lines() {
+                if let Some(v) = line.strip_prefix("enabled:") {
+                    let v = clean_value(v).to_lowercase();
+                    return !matches!(v.as_str(), "false" | "0" | "no" | "não" | "nao");
+                }
+            }
+        }
+    }
+    true
 }
 
 /// Devolve o corpo do markdown sem o bloco de frontmatter.
@@ -104,6 +137,9 @@ pub fn triggered_skills(root: &str, text: &str) -> Vec<(String, String)> {
         let Ok(content) = fs::read_to_string(e.path().join("SKILL.md")) else {
             continue;
         };
+        if !parse_enabled(&content) {
+            continue;
+        }
         let dir_name = e.file_name().to_string_lossy().to_string();
         let (n, d) = parse_frontmatter(&content);
         let desc = d.unwrap_or_default();
@@ -135,6 +171,7 @@ pub fn index(root: &str) -> WorkspaceIndex {
                 idx.skills.push(DocMeta {
                     name: n.unwrap_or(dir_name),
                     description: d.unwrap_or_default(),
+                    enabled: parse_enabled(&content),
                 });
             }
         }
@@ -143,11 +180,20 @@ pub fn index(root: &str) -> WorkspaceIndex {
     if let Ok(entries) = fs::read_dir(playbooks_dir(root)) {
         for e in entries.flatten() {
             let p = e.path();
-            if p.extension().and_then(|x| x.to_str()) == Some("md") {
-                if let Some(stem) = p.file_stem().and_then(|x| x.to_str()) {
-                    idx.playbooks.push(stem.to_string());
-                }
+            if p.extension().and_then(|x| x.to_str()) != Some("md") {
+                continue;
             }
+            let Some(stem) = p.file_stem().and_then(|x| x.to_str()).map(str::to_string) else {
+                continue;
+            };
+            // Playbooks normalmente não têm frontmatter; só lemos a flag `enabled` (e name/desc se existirem).
+            let content = fs::read_to_string(&p).unwrap_or_default();
+            let (n, d) = parse_frontmatter(&content);
+            idx.playbooks.push(DocMeta {
+                name: n.unwrap_or(stem),
+                description: d.unwrap_or_default(),
+                enabled: parse_enabled(&content),
+            });
         }
     }
 
@@ -167,6 +213,7 @@ pub fn index(root: &str) -> WorkspaceIndex {
                 idx.workflows.push(DocMeta {
                     name: n.unwrap_or(stem),
                     description: d.unwrap_or_default(),
+                    enabled: parse_enabled(&content),
                 });
             }
         }
@@ -188,13 +235,14 @@ pub fn index(root: &str) -> WorkspaceIndex {
                 idx.agents.push(DocMeta {
                     name: n.unwrap_or(stem),
                     description: d.unwrap_or_default(),
+                    enabled: parse_enabled(&content),
                 });
             }
         }
     }
 
     idx.skills.sort_by(|a, b| a.name.cmp(&b.name));
-    idx.playbooks.sort();
+    idx.playbooks.sort_by(|a, b| a.name.cmp(&b.name));
     idx.workflows.sort_by(|a, b| a.name.cmp(&b.name));
     idx.agents.sort_by(|a, b| a.name.cmp(&b.name));
     idx
@@ -206,10 +254,11 @@ pub fn read_skill(root: &str, name: &str) -> Option<String> {
     fs::read_to_string(p).ok().map(|c| strip_frontmatter(&c))
 }
 
-/// Conteúdo de um playbook, por nome (sem extensão).
+/// Conteúdo de um playbook, por nome (sem extensão). Remove o frontmatter (se existir) para que a
+/// flag `enabled:` não vaze para o texto injetado; playbooks sem frontmatter ficam intactos.
 pub fn read_playbook(root: &str, name: &str) -> Option<String> {
     let p = playbooks_dir(root).join(format!("{}.md", sanitize(name)));
-    fs::read_to_string(p).ok()
+    fs::read_to_string(p).ok().map(|c| strip_frontmatter(&c))
 }
 
 /// Corpo de um workflow (sem frontmatter), por nome (sem extensão).
@@ -245,6 +294,13 @@ fn doc_path(root: &str, kind: &str, name: &str) -> Option<PathBuf> {
 /// Lê o conteúdo cru (com frontmatter) de um documento, para edição.
 pub fn read_doc(root: &str, kind: &str, name: &str) -> Option<String> {
     fs::read_to_string(doc_path(root, kind, name)?).ok()
+}
+
+/// Documento ativo? (frontmatter `enabled:`; ausente = ativo; ficheiro inexistente = ativo).
+pub fn is_enabled(root: &str, kind: &str, name: &str) -> bool {
+    read_doc(root, kind, name)
+        .map(|c| parse_enabled(&c))
+        .unwrap_or(true)
 }
 
 /// Cria/atualiza um documento do workspace.

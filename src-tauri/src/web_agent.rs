@@ -88,7 +88,7 @@ where
         crate::workspace::index(workspace_dir)
             .skills
             .into_iter()
-            .filter(|sk| !applied.iter().any(|a| a == &sk.name))
+            .filter(|sk| sk.enabled && !applied.iter().any(|a| a == &sk.name))
             .collect()
     };
     if !skills.is_empty() {

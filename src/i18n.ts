@@ -127,6 +127,7 @@ const EN: Record<string, string> = {
   "Gerar": "Generate",
   "Descarregar": "Download",
   "Ativar": "Activate",
+  "Desativar": "Deactivate",
   "Repor": "Reset",
   "Puxar": "Pull",
   "Listar": "List",

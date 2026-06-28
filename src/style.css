@@ -2484,6 +2484,27 @@ dialog::backdrop {
   gap: 4px;
   flex-shrink: 0;
 }
+/* Toggle ativo/inativo por item + estado desativado (cinzento). */
+.ws-item-main {
+  flex: 1 1 auto;
+}
+.ws-item-toggle {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  margin: 0;
+}
+.ws-item-toggle input {
+  cursor: pointer;
+}
+.ws-item.disabled {
+  opacity: 0.55;
+}
+.ws-item.disabled .ws-item-main strong {
+  color: var(--muted);
+  font-weight: 500;
+}
 .ws-editor {
   display: flex;
   flex-direction: column;

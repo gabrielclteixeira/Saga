@@ -2760,7 +2760,7 @@ async function openAgentMenu() {
   document.querySelector("#agent-menu")?.remove();
   let agents: DocMeta[] = [];
   try {
-    agents = (await api.getWorkspaceIndex()).agents;
+    agents = (await api.getWorkspaceIndex()).agents.filter((a) => a.enabled);
   } catch {
     /* sem workspace */
   }
@@ -3608,7 +3608,7 @@ async function renderWorkspaceList() {
         ? idx.workflows
         : wsKind === "agent"
           ? idx.agents
-          : idx.playbooks.map((n) => ({ name: n, description: "" }));
+          : idx.playbooks;
   const addLabel =
     wsKind === "skill"
       ? t("Nova skill")
@@ -3618,17 +3618,20 @@ async function renderWorkspaceList() {
           ? t("Novo workflow")
           : t("Novo agente");
   const itemsHtml = items
-    .map(
-      (it) => `
-    <div class="ws-item">
+    .map((it) => {
+      const on = it.enabled;
+      const toggleTitle = on ? t("Desativar") : t("Ativar");
+      return `
+    <div class="ws-item${on ? "" : " disabled"}">
+      <label class="ws-item-toggle" title="${toggleTitle}" aria-label="${toggleTitle}"><input type="checkbox" data-toggle="${escapeHtml(it.name)}" ${on ? "checked" : ""} /></label>
       <div class="ws-item-main"><strong>${escapeHtml(it.name)}</strong><span>${escapeHtml(it.description)}</span></div>
       <div class="ws-item-actions">
-        ${wsKind === "workflow" ? `<button type="button" class="ghost" data-run="${escapeHtml(it.name)}">${icon("play")}<span>${t("Correr")}</span></button>` : ""}
+        ${wsKind === "workflow" && on ? `<button type="button" class="ghost" data-run="${escapeHtml(it.name)}">${icon("play")}<span>${t("Correr")}</span></button>` : ""}
         <button type="button" class="ghost" data-edit="${escapeHtml(it.name)}">${t("Editar")}</button>
         <button type="button" class="icon-x" data-del="${escapeHtml(it.name)}" title="${t("Apagar")}" aria-label="${t("Apagar")}">${icon("x")}</button>
       </div>
-    </div>`
-    )
+    </div>`;
+    })
     .join("");
   // Card "+" no fim da lista — substitui o antigo botão "+ Novo".
   const addCard = `<button type="button" class="ws-add-card" id="ws-add-card"><span class="ws-add-plus">+</span><span>${escapeHtml(addLabel)}</span></button>`;
@@ -3643,6 +3646,24 @@ async function renderWorkspaceList() {
   list
     .querySelectorAll<HTMLButtonElement>("[data-run]")
     .forEach((b) => b.addEventListener("click", () => runWorkflow(b.dataset.run!)));
+  list
+    .querySelectorAll<HTMLInputElement>("[data-toggle]")
+    .forEach((c) =>
+      c.addEventListener("change", () => toggleWsDoc(c.dataset.toggle!, c.checked))
+    );
+}
+
+/** Liga/desliga um item do Workspace (estado no frontmatter `enabled`). Reusa o pipeline do editor. */
+async function toggleWsDoc(name: string, enabled: boolean) {
+  try {
+    const raw = await api.readWorkspaceDoc(wsKind, name);
+    const f = parseDocFields(wsKind, raw);
+    f.enabled = enabled;
+    await api.saveWorkspaceDoc(wsKind, name, assembleDoc(wsKind, f));
+  } catch (e) {
+    await api.logFrontend("error", `toggleWsDoc ${name}: ${e}`);
+  }
+  renderWorkspaceList();
 }
 
 interface DocFields {
@@ -3651,6 +3672,7 @@ interface DocFields {
   triggers: string;
   arghint: string;
   body: string;
+  enabled: boolean;
   // Predefinições de agente (só para kind "agent").
   agentRoute?: "local" | "claude";
   agentTools?: boolean;
@@ -3715,6 +3737,8 @@ function parseDocFields(kind: WsKind, raw: string): DocFields {
     triggers,
     arghint: fm["argument-hint"] || "",
     body,
+    // Ausente = ativo (retrocompatível); só false desativa.
+    enabled: fm["enabled"] === undefined ? true : truthy(fm["enabled"]),
     agentRoute: fm["route"] === "claude" ? "claude" : "local",
     agentTools: truthy(fm["tools"]),
     agentResearch: truthy(fm["research"]),
@@ -3723,9 +3747,13 @@ function parseDocFields(kind: WsKind, raw: string): DocFields {
 }
 
 function assembleDoc(kind: WsKind, f: DocFields): string {
-  if (kind === "playbook") return f.body.trim() + "\n";
+  // Só se escreve `enabled: false` quando desativado — mantém os ficheiros limpos quando ativos.
+  const disabled = f.enabled === false;
+  if (kind === "playbook")
+    return (disabled ? "---\nenabled: false\n---\n\n" : "") + f.body.trim() + "\n";
   const esc = (s: string) => s.replace(/"/g, '\\"');
   const lines = ["---", `name: ${f.name}`];
+  if (disabled) lines.push("enabled: false");
   if (kind === "skill") {
     const d = f.triggers ? `${f.desc} Triggers: ${f.triggers}` : f.desc;
     lines.push(`description: "${esc(d)}"`);
@@ -3755,6 +3783,9 @@ function fillEditorFields(f: Partial<DocFields>) {
   wsq<HTMLInputElement>("#ws-agent-subagents").checked = !!f.agentSubagents;
 }
 
+// Estado ativo/inativo do doc em edição — preservado no save (o toggle vive na lista, não no editor).
+let wsEditingEnabled = true;
+
 function readEditorFields(): DocFields {
   return {
     name: wsq<HTMLInputElement>("#ws-name").value.trim(),
@@ -3762,6 +3793,7 @@ function readEditorFields(): DocFields {
     triggers: wsq<HTMLInputElement>("#ws-triggers").value.trim(),
     arghint: wsq<HTMLInputElement>("#ws-arghint").value.trim(),
     body: wsq<HTMLTextAreaElement>("#ws-content").value,
+    enabled: wsEditingEnabled,
     agentRoute: wsq<HTMLSelectElement>("#ws-agent-route").value === "claude" ? "claude" : "local",
     agentTools: wsq<HTMLInputElement>("#ws-agent-tools").checked,
     agentResearch: wsq<HTMLInputElement>("#ws-agent-research").checked,
@@ -3777,6 +3809,7 @@ function wsEditorOpen(open: boolean) {
 }
 
 function newWsDoc() {
+  wsEditingEnabled = true;
   const nameEl = wsq<HTMLInputElement>("#ws-name");
   nameEl.value = "";
   nameEl.readOnly = false;
@@ -3803,7 +3836,9 @@ async function editWsDoc(name: string) {
     const nameEl = wsq<HTMLInputElement>("#ws-name");
     nameEl.value = name;
     nameEl.readOnly = true;
-    fillEditorFields(parseDocFields(wsKind, content));
+    const f = parseDocFields(wsKind, content);
+    wsEditingEnabled = f.enabled;
+    fillEditorFields(f);
     wsq<HTMLTextAreaElement>("#ws-gen-prompt").value = "";
     wsq("#ws-gen-status").textContent = "";
     applyDocKindFields();

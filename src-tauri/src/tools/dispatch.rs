@@ -286,7 +286,7 @@ impl ToolHost for Dispatcher<'_> {
         if !ws.index.playbooks.is_empty() {
             s.push_str("\nPlaybooks disponíveis (chama read_playbook):\n");
             for p in &ws.index.playbooks {
-                s.push_str(&format!("- {p}\n"));
+                s.push_str(&format!("- {}\n", p.name));
             }
         }
         s.push_str(

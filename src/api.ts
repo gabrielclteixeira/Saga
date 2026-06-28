@@ -63,11 +63,12 @@ export interface Settings {
 export interface DocMeta {
   name: string;
   description: string;
+  enabled: boolean;
 }
 
 export interface WorkspaceIndex {
   skills: DocMeta[];
-  playbooks: string[];
+  playbooks: DocMeta[];
   workflows: DocMeta[];
   agents: DocMeta[];
 }

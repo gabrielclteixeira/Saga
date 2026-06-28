@@ -1162,6 +1162,8 @@ pub async fn send_message_stream(
     let mut workflow_system: Option<String> = None;
     if let Some(last_user) = messages.iter().rev().find(|m| m.role == "user") {
         if let Some((name, args)) = parse_slash_command(&last_user.content) {
+            // Workflow desativado → ignora o disparo (segue como mensagem normal).
+            if crate::workspace::is_enabled(&settings.workspace_dir, "workflow", &name) {
             if let Some(body) = crate::workspace::read_workflow(&settings.workspace_dir, &name) {
                 let proc = body.replace("$ARGUMENTS", &args);
                 workflow_system = Some(format!(
@@ -1169,6 +1171,7 @@ pub async fn send_message_stream(
                      ferramentas disponíveis, regista o progresso e termina com um resumo curto.\n\n{proc}"
                 ));
                 workflow_name = Some(name);
+            }
             }
         }
     }
@@ -1440,7 +1443,8 @@ pub async fn send_message_stream(
                 .mcp_servers
                 .iter()
                 .any(|s| s.enabled && !s.name.trim().is_empty());
-            let ws_index = crate::workspace::index(&settings.workspace_dir);
+            // Só os itens ativos chegam ao Dispatcher (manifesto + tools load_skill/read_playbook).
+            let ws_index = crate::workspace::index(&settings.workspace_dir).active();
             let has_ws = !ws_index.skills.is_empty() || !ws_index.playbooks.is_empty();
             let want_tools = use_api
                 && !prepared.has_images

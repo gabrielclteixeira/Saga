@@ -59,6 +59,18 @@ pub async fn run_schedule(app: &AppHandle, sched: &Schedule) -> (String, String)
     let state = app.state::<AppState>();
     let settings = state.settings.lock().unwrap().clone();
 
+    // Workflow desativado → não corre a automação.
+    if !workspace::is_enabled(&settings.workspace_dir, "workflow", &sched.workflow_name) {
+        log::warn!(
+            "agendamento '{}': workflow '{}' está desativado — saltado",
+            sched.name,
+            sched.workflow_name
+        );
+        return (
+            "SALTADO".into(),
+            format!("workflow '{}' está desativado", sched.workflow_name),
+        );
+    }
     let body = match workspace::read_workflow(&settings.workspace_dir, &sched.workflow_name) {
         Some(b) => b.replace("$ARGUMENTS", &sched.arguments),
         None => {
@@ -113,7 +125,7 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
         .mcp_servers
         .iter()
         .any(|s| s.enabled && !s.name.trim().is_empty());
-    let ws_index = workspace::index(&settings.workspace_dir);
+    let ws_index = workspace::index(&settings.workspace_dir).active();
 
     let mut browser_guard = state.browser.lock().await;
     if settings.enable_browser_tools && browser_guard.is_none() {
