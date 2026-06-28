@@ -245,8 +245,34 @@ um array JSON de strings (os passos), nada mais."
     // `clean_step` aqui também: o modelo pode vazar `<think>` no rascunho e estragar o parse.
     let mut draft = parse_steps(&clean_step(&dz.text));
     draft.truncate(MAX_STEPS);
+
+    // Um modelo generativo nunca é 100%: de vez em quando devolve prosa ou só repete a pergunta
+    // (1 passo = eco), mesmo a temperatura baixa. Detetar esse rascunho degenerado e tentar UMA vez
+    // com uma instrução mais imperativa (exemplo inline) corta a taxa de eco para ~p².
+    if draft.len() < 2 {
+        let retry_instr = format!(
+            "{plan_instruction}\n\nCRÍTICO: devolve SÓ o array JSON dos passos, por exemplo \
+[\"Primeiro passo\", \"Segundo passo\", \"Terceiro passo\"]. NÃO respondas à pergunta nem a repitas como passo."
+        );
+        let retry_msgs = with_instruction(&lean_for_draft(&conv), &retry_instr);
+        let retry_resp = if use_api {
+            claude_api::messages(&settings.claude_api_key, model, settings.claude_max_tokens, &retry_msgs, false).await.ok()
+        } else {
+            ollama::chat_stream(&settings.ollama_endpoint, model, &retry_msgs, plan_opts, false, |_| {}, |_| {}).await.ok()
+        };
+        if let Some(d) = retry_resp {
+            total_in += d.input_tokens;
+            total_out += d.output_tokens;
+            let mut retry = parse_steps(&clean_step(&d.text));
+            retry.truncate(MAX_STEPS);
+            if retry.len() >= 2 {
+                draft = retry;
+            }
+        }
+        log::info!("[plan] rascunho degenerado → retry; passos finais={}", draft.len());
+    }
     if draft.is_empty() {
-        draft = vec![task.clone()]; // fallback: um único passo
+        draft = vec![task.clone()]; // fallback final: um único passo
     }
 
     // Classificação leve (SIM/NAO) à parte: o plano precisa de dados atuais/online? Pôr este flag
