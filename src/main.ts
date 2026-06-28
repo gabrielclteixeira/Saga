@@ -2166,7 +2166,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
           showApproval(evt.id, evt.tool, evt.preview);
         } else if (evt.kind === "Plan") {
           stopWaitTicker(); // agora espera-se o utilizador (não o modelo)
-          showPlanCard(evt.id, evt.steps, assistant);
+          showPlanCard(evt.id, evt.steps, assistant, evt.needs_web, evt.research);
         } else if (evt.kind === "PlanStep") {
           if (assistant.plan?.steps[evt.index]) {
             assistant.plan.steps[evt.index].status =
@@ -3317,27 +3317,44 @@ function showApproval(id: number, tool: string, preview: string) {
   els.messages.scrollTop = els.messages.scrollHeight;
 }
 
-/** Cartão de plano editável (Plan mode): textarea com 1 passo por linha + Aprovar/Rejeitar. */
-function showPlanCard(id: number, steps: string[], assistant: Item) {
+/** Cartão de plano editável (Plan mode): textarea com 1 passo por linha + Aprovar/Rejeitar.
+ * Quando o modelo sinaliza que precisa de dados atuais (`needsWeb`) e o 🔎 está desligado,
+ * o cartão pede para escalar para pesquisa web (checkbox pré-marcada). */
+function showPlanCard(
+  id: number,
+  steps: string[],
+  assistant: Item,
+  needsWeb: boolean,
+  research: boolean,
+) {
   const card = document.createElement("div");
   card.className = "approval-card plan-card";
+  const askWeb = needsWeb && !research; // só pergunta se ainda não está fundamentado
+  const webRow = askWeb
+    ? `<label class="plan-web"><input type="checkbox" class="plan-web-cb" checked />
+         ${t("🔎 Pesquisar na web (este plano precisa de dados atuais)")}</label>`
+    : "";
   card.innerHTML = `
     <div class="approval-head">${t("Plano — revê, edita e aprova")}</div>
     <div class="plan-hint">${t("Um passo por linha. Edita/remove à vontade antes de executar.")}</div>
     <textarea class="plan-edit" rows="${Math.min(12, Math.max(3, steps.length))}"></textarea>
+    ${webRow}
     <div class="approval-bar">
       <button type="button" class="ghost" data-ok="0">${t("Rejeitar")}</button>
       <button type="button" class="primary" data-ok="1">${t("Aprovar e executar")}</button>
     </div>`;
   const ta = card.querySelector<HTMLTextAreaElement>(".plan-edit")!;
   ta.value = steps.join("\n");
+  const webCb = card.querySelector<HTMLInputElement>(".plan-web-cb");
   const done = (ok: boolean) => {
     const edited = ta.value.split("\n").map((s) => s.trim()).filter(Boolean);
+    // Executa fundamentado se o 🔎 já estava ligado, ou se o utilizador aceitou a escalada.
+    const useWeb = research || (askWeb && !!webCb?.checked);
     if (ok && edited.length) {
       // Guarda os passos na mensagem → render da checklist com estado durante a execução.
       assistant.plan = { steps: edited.map((title) => ({ title, status: "pending" })) };
     }
-    api.respondPlan(id, ok, edited).catch(() => {});
+    api.respondPlan(id, ok, edited, useWeb).catch(() => {});
     card.remove();
     renderMessages();
     scrollChatToBottom();

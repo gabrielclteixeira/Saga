@@ -55,8 +55,9 @@ pub struct AppState {
     /// Aprovações de ações pendentes (id → canal de resposta), para o modo "ask".
     pub pending: tokio::sync::Mutex<HashMap<u64, oneshot::Sender<bool>>>,
     pub approval_seq: AtomicU64,
-    /// Planos pendentes de aprovação (id → canal); `None` = rejeitado, `Some(steps)` = aprovado (editado).
-    pub pending_plans: tokio::sync::Mutex<HashMap<u64, oneshot::Sender<Option<Vec<String>>>>>,
+    /// Planos pendentes de aprovação (id → canal); `None` = rejeitado, `Some((steps, research))` =
+    /// aprovado (passos editados + se executa fundamentado na web).
+    pub pending_plans: tokio::sync::Mutex<HashMap<u64, oneshot::Sender<Option<(Vec<String>, bool)>>>>,
 }
 
 impl AppState {
@@ -125,6 +126,10 @@ pub enum StreamEvent {
     Plan {
         id: u64,
         steps: Vec<String>,
+        /// O modelo sinalizou que executar bem o plano precisa de dados atuais/online.
+        needs_web: bool,
+        /// Estado atual do 🔎 (pesquisa web) no momento do rascunho.
+        research: bool,
     },
     /// Estado de execução de um passo do plano: "executing" | "done" | "error".
     PlanStep {
@@ -590,9 +595,10 @@ pub async fn respond_plan(
     id: u64,
     approved: bool,
     steps: Vec<String>,
+    research: bool,
 ) -> Result<(), String> {
     if let Some(tx) = state.pending_plans.lock().await.remove(&id) {
-        let _ = tx.send(if approved { Some(steps) } else { None });
+        let _ = tx.send(if approved { Some((steps, research)) } else { None });
     }
     Ok(())
 }
@@ -1197,12 +1203,14 @@ pub async fn send_message_stream(
         };
         let tx_plan = channel.clone();
         let st = state.inner();
-        // Aprovação do plano: emite o evento Plan e bloqueia até a UI responder (com os passos editados).
-        let approve = move |steps: Vec<String>| async move {
+        // Aprovação do plano: emite o evento Plan (com needs_web + o estado atual do 🔎) e bloqueia
+        // até a UI responder com os passos editados e a decisão de fundamentar na web.
+        let research_now = research;
+        let approve = move |steps: Vec<String>, needs_web: bool| async move {
             let id = st.approval_seq.fetch_add(1, Ordering::Relaxed) + 1;
             let (txo, rxo) = oneshot::channel();
             st.pending_plans.lock().await.insert(id, txo);
-            let _ = tx_plan.send(StreamEvent::Plan { id, steps });
+            let _ = tx_plan.send(StreamEvent::Plan { id, steps, needs_web, research: research_now });
             rxo.await.unwrap_or(None)
         };
         let r = crate::planner::run(
@@ -1211,7 +1219,6 @@ pub async fn send_message_stream(
             &prepared.model,
             &prepared.full_messages,
             plan_gopts,
-            research,
             approve,
             on_step,
             on_delta,

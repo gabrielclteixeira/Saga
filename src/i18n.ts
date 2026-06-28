@@ -552,6 +552,8 @@ const EN: Record<string, string> = {
   "Um passo por linha. Edita/remove à vontade antes de executar.":
     "One step per line. Edit/remove freely before running.",
   "Aprovar e executar": "Approve & run",
+  "🔎 Pesquisar na web (este plano precisa de dados atuais)":
+    "🔎 Search the web (this plan needs current data)",
   "Rejeitar": "Reject",
   "a decompor a pergunta…": "breaking down the question…",
   "a verificar os factos…": "fact-checking…",

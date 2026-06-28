@@ -218,7 +218,7 @@ export type StreamEvent =
   | { kind: "Thinking"; text: string }
   | { kind: "ToolStep"; tool: string; detail: string }
   | { kind: "ApprovalRequest"; id: number; tool: string; preview: string }
-  | { kind: "Plan"; id: number; steps: string[] }
+  | { kind: "Plan"; id: number; steps: string[]; needs_web: boolean; research: boolean }
   | { kind: "PlanStep"; index: number; status: string }
   | {
       kind: "Done";
@@ -301,8 +301,8 @@ export const api = {
       plan: opts?.plan ?? false,
     });
   },
-  respondPlan: (id: number, approved: boolean, steps: string[]) =>
-    invoke<void>("respond_plan", { id, approved, steps }),
+  respondPlan: (id: number, approved: boolean, steps: string[], research: boolean) =>
+    invoke<void>("respond_plan", { id, approved, steps, research }),
   listConversations: () => invoke<ConversationMeta[]>("list_conversations"),
   getConversation: (id: number) => invoke<StoredMessage[]>("get_conversation", { id }),
   newConversation: (title?: string) =>

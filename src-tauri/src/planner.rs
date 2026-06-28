@@ -63,6 +63,74 @@ fn parse_steps(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Extrai o plano do rascunho: tenta primeiro o objeto `{ "steps": [...], "needs_web": bool }`
+/// (robusto a texto à volta); se falhar, cai no array simples com `needs_web = false`.
+fn parse_plan(text: &str) -> (Vec<String>, bool) {
+    #[derive(serde::Deserialize)]
+    struct Draft {
+        #[serde(default)]
+        steps: Vec<String>,
+        #[serde(default)]
+        needs_web: bool,
+    }
+    if let (Some(a), Some(b)) = (text.find('{'), text.rfind('}')) {
+        if b > a {
+            if let Ok(d) = serde_json::from_str::<Draft>(&text[a..=b]) {
+                let steps: Vec<String> = d
+                    .steps
+                    .into_iter()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if !steps.is_empty() {
+                    return (steps, d.needs_web);
+                }
+            }
+        }
+    }
+    (parse_steps(text), false)
+}
+
+/// Limpa a saída de um passo: remove blocos/tags `<think>…</think>` (vazamento de raciocínio) e
+/// desembrulha cercas de código que envolvam toda a resposta (`​```markdown … ​````), que de outro modo
+/// seriam extraídas como artefactos separados.
+fn clean_step(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    // Remove blocos <think>…</think> completos.
+    while let Some(open) = rest.to_lowercase().find("<think>") {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + "<think>".len()..];
+        match after.to_lowercase().find("</think>") {
+            Some(close) => rest = &after[close + "</think>".len()..],
+            None => {
+                rest = ""; // <think> sem fecho → descarta o resto do bloco de raciocínio
+                break;
+            }
+        }
+    }
+    out.push_str(rest);
+    // Remove tags soltas que tenham sobrado (ex.: um </think> órfão no início).
+    let mut cleaned = out.replace("</think>", "").replace("<think>", "");
+    cleaned = cleaned.trim().to_string();
+    // Desembrulha uma cerca de código que envolva toda a resposta.
+    if cleaned.starts_with("```") {
+        if let Some(first_nl) = cleaned.find('\n') {
+            let fence_lang = cleaned[3..first_nl].trim();
+            let body_and_close = &cleaned[first_nl + 1..];
+            if fence_lang.is_empty() || fence_lang.chars().all(|c| c.is_ascii_alphanumeric()) {
+                if let Some(close) = body_and_close.rfind("```") {
+                    // Só desembrulha se a cerca de fecho é mesmo o fim (toda a resposta era um bloco).
+                    if body_and_close[close + 3..].trim().is_empty() {
+                        cleaned = body_and_close[..close].trim().to_string();
+                    }
+                }
+            }
+        }
+    }
+    cleaned
+}
+
 /// Plan mode. `approve(draft)` emite o plano à UI e devolve `None` (rejeitado) ou os passos
 /// (possivelmente editados). `on_step(i, status)`, `on_delta(texto)`, `on_tool(nome, detalhe)`.
 #[allow(clippy::too_many_arguments)]
@@ -72,15 +140,14 @@ pub async fn run<A, F, S, D, T>(
     model: &str,
     messages: &[ChatMessage],
     opts: GenOpts,
-    research: bool,
     approve: A,
     mut on_step: S,
     mut on_delta: D,
     mut on_tool: T,
 ) -> Result<LlmResponse>
 where
-    A: FnOnce(Vec<String>) -> F,
-    F: std::future::Future<Output = Option<Vec<String>>>,
+    A: FnOnce(Vec<String>, bool) -> F,
+    F: std::future::Future<Output = Option<(Vec<String>, bool)>>,
     S: FnMut(usize, &str),
     D: FnMut(&str),
     T: FnMut(&str, &str),
@@ -97,8 +164,10 @@ where
     let plan_instruction = format!(
         "[MODO PLANO · hoje é {today}] Em vez de responderes diretamente, divide a minha ÚLTIMA mensagem \
 (interpretada no contexto desta conversa) num PLANO de 3 a 7 passos ACIONÁVEIS, distintos e ordenados — cada \
-passo um título curto e concreto do que vai produzir. NÃO repitas a pergunta como passo. Responde APENAS com \
-um array JSON de strings (os passos), nada mais."
+passo um título curto e concreto do que vai produzir. NÃO repitas a pergunta como passo. Avalia também se \
+executar bem este plano exige INFORMAÇÃO ATUAL/ONLINE (preços, produtos recentes, notícias, datas posteriores \
+ao teu treino): se sim, marca \"needs_web\": true. Responde APENAS com um objeto JSON \
+{{\"steps\": [\"…\"], \"needs_web\": true|false}}, nada mais."
     );
     let plan_opts = GenOpts { num_predict: Some(1024), ..opts };
     let plan_msgs = with_instruction(messages, &plan_instruction);
@@ -109,15 +178,15 @@ um array JSON de strings (os passos), nada mais."
     };
     total_in += dz.input_tokens;
     total_out += dz.output_tokens;
-    let mut draft = parse_steps(&dz.text);
+    let (mut draft, needs_web) = parse_plan(&dz.text);
     draft.truncate(MAX_STEPS);
     if draft.is_empty() {
         draft = vec![task.clone()]; // fallback: um único passo
     }
 
-    // ── Fase 2: aprovar / editar / rejeitar ─────────────────────────────────────────────────
-    let steps = match approve(draft).await {
-        Some(s) if !s.is_empty() => s,
+    // ── Fase 2: aprovar / editar / rejeitar (e, se needs_web, escalar o 🔎) ──────────────────
+    let (steps, research) = match approve(draft, needs_web).await {
+        Some((s, r)) if !s.is_empty() => (s, r),
         _ => {
             let txt = "Plano rejeitado.".to_string();
             on_delta(&txt);
@@ -137,6 +206,7 @@ um array JSON de strings (os passos), nada mais."
     let step_opts = GenOpts { num_ctx: opts.num_ctx.max(8192), num_predict: Some(2048), ..opts };
 
     for (i, step) in steps.iter().enumerate() {
+        let is_last = i + 1 == steps.len();
         on_step(i, "executing");
         let heading = format!("\n\n## {}. {step}\n", i + 1);
         on_delta(&heading);
@@ -155,35 +225,47 @@ um array JSON de strings (os passos), nada mais."
                 }
             }
             if !results.is_empty() {
-                evidence = format!("\n\nEvidências da web (usa-as; não inventes):\n{}", truncate(&web::format_results(&results), 1200));
+                evidence = format!("\n\nEvidências da web (usa SÓ estes URLs; não inventes outros):\n{}", truncate(&web::format_results(&results), 1200));
             }
         }
 
+        // Os passos intermédios produzem só o seu conteúdo; só o ÚLTIMO pode concluir/fechar.
+        let closing = if is_last {
+            "Este é o ÚLTIMO passo: podes fechar com uma conclusão breve que ligue os passos. Mesmo assim, não ofereças mais ações nem faças perguntas ao utilizador."
+        } else {
+            "Produz só o conteúdo deste passo. NÃO concluas, NÃO resumas, NÃO ofereças pesquisar/fazer mais, NÃO faças perguntas ao utilizador. Termina assim que o passo estiver coberto."
+        };
         let step_instruction = format!(
             "[MODO PLANO · passo {n}/{total} · hoje é {today}] Plano completo:\n{plan_list}\n\n\
 Já produzido (resumo):\n{prior_txt}\n\nExecuta AGORA, no contexto da conversa, SÓ o passo {n}: «{step}». \
 Produz o resultado em Markdown, conciso e concreto. NÃO repitas o plano, a pergunta nem os passos anteriores. \
-Se faltar um dado, di-lo numa linha.{evidence}",
+NUNCA inventes URLs, links, preços, IDs de produto ou citações: só inclui um link se tiveres a certeza de que \
+existe; na dúvida, refere a fonte pelo NOME (ex.: «PCDiga») sem inventar o endereço. {closing} \
+Se faltar um dado, di-lo numa linha. NÃO envolvas a resposta num bloco de código.{evidence}",
             n = i + 1,
             total = steps.len(),
             prior_txt = truncate(&prior, PRIOR_CAP)
         );
         let step_msgs = with_instruction(messages, &step_instruction);
+        // Bufferiza a saída do passo (sem stream ao vivo) para a poder limpar antes de a mostrar:
+        // remove vazamentos de <think> e cercas de código que partiriam a resposta em artefactos.
         let out = if use_api {
             match claude_api::messages(&settings.claude_api_key, model, settings.claude_max_tokens, &step_msgs, false).await {
-                Ok(resp) => { on_delta(&resp.text); resp }
+                Ok(resp) => resp,
                 Err(e) => { on_step(i, "error"); on_delta(&format!("(falha: {e})")); continue; }
             }
         } else {
-            match ollama::chat_stream(&settings.ollama_endpoint, model, &step_msgs, step_opts, false, |d| on_delta(d), |_| {}).await {
+            match ollama::chat_stream(&settings.ollama_endpoint, model, &step_msgs, step_opts, false, |_| {}, |_| {}).await {
                 Ok(resp) => resp,
                 Err(e) => { on_step(i, "error"); on_delta(&format!("(falha: {e})")); continue; }
             }
         };
         total_in += out.input_tokens;
         total_out += out.output_tokens;
-        final_text.push_str(&out.text);
-        prior.push_str(&format!("[{}] {}\n", i + 1, truncate(&out.text, 600)));
+        let cleaned = clean_step(&out.text);
+        on_delta(&cleaned);
+        final_text.push_str(&cleaned);
+        prior.push_str(&format!("[{}] {}\n", i + 1, truncate(&cleaned, 600)));
         on_step(i, "done");
     }
 
@@ -199,4 +281,49 @@ Se faltar um dado, di-lo numa linha.{evidence}",
     }
 
     Ok(LlmResponse { text: final_text, input_tokens: total_in, output_tokens: total_out, reported_cost_usd: 0.0, sources: Vec::new() })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clean_step_strips_think_block() {
+        let s = "<think>raciocínio interno</think>Resposta final.";
+        assert_eq!(clean_step(s), "Resposta final.");
+    }
+
+    #[test]
+    fn clean_step_strips_orphan_close_tag() {
+        let s = "</think>\nConteúdo do passo.";
+        assert_eq!(clean_step(s), "Conteúdo do passo.");
+    }
+
+    #[test]
+    fn clean_step_unwraps_full_code_fence() {
+        let s = "```markdown\n# Título\nTexto.\n```";
+        assert_eq!(clean_step(s), "# Título\nTexto.");
+    }
+
+    #[test]
+    fn clean_step_keeps_inline_code_fence() {
+        // Uma cerca que NÃO envolve toda a resposta deve manter-se intacta.
+        let s = "Antes\n```\ncode\n```\nDepois";
+        assert_eq!(clean_step(s), s);
+    }
+
+    #[test]
+    fn parse_plan_reads_object_with_needs_web() {
+        let (steps, needs_web) =
+            parse_plan(r#"qualquer coisa {"steps": ["A", "B"], "needs_web": true} fim"#);
+        assert_eq!(steps, vec!["A".to_string(), "B".to_string()]);
+        assert!(needs_web);
+    }
+
+    #[test]
+    fn parse_plan_falls_back_to_array() {
+        let (steps, needs_web) = parse_plan(r#"["A", "B", "C"]"#);
+        assert_eq!(steps.len(), 3);
+        assert!(!needs_web);
+    }
 }
