@@ -63,32 +63,52 @@ fn parse_steps(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Extrai o plano do rascunho: tenta primeiro o objeto `{ "steps": [...], "needs_web": bool }`
-/// (robusto a texto à volta); se falhar, cai no array simples com `needs_web = false`.
-fn parse_plan(text: &str) -> (Vec<String>, bool) {
-    #[derive(serde::Deserialize)]
-    struct Draft {
-        #[serde(default)]
-        steps: Vec<String>,
-        #[serde(default)]
-        needs_web: bool,
-    }
-    if let (Some(a), Some(b)) = (text.find('{'), text.rfind('}')) {
-        if b > a {
-            if let Ok(d) = serde_json::from_str::<Draft>(&text[a..=b]) {
-                let steps: Vec<String> = d
-                    .steps
-                    .into_iter()
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect();
-                if !steps.is_empty() {
-                    return (steps, d.needs_web);
-                }
-            }
-        }
-    }
-    (parse_steps(text), false)
+/// Classificação leve: este plano precisa de informação atual/online para ser bem executado?
+/// Uma chamada minúscula (SIM/NAO) sobre os passos já rascunhados — mais fiável do que pedir o flag
+/// dentro do JSON dos passos (que faz os modelos pequenos devolverem passos vazios).
+async fn needs_web_check(
+    settings: &Settings,
+    use_api: bool,
+    model: &str,
+    today: &str,
+    steps: &[String],
+    total_in: &mut u64,
+    total_out: &mut u64,
+) -> bool {
+    let list = steps
+        .iter()
+        .enumerate()
+        .map(|(i, s)| format!("{}. {s}", i + 1))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let prompt = format!(
+        "Plano:\n{list}\n\nPara executar bem este plano hoje ({today}), é preciso INFORMAÇÃO \
+ATUAL/ONLINE — preços, produtos/modelos recentes, notícias, ou dados posteriores ao teu treino? \
+Responde APENAS com uma palavra: SIM ou NAO."
+    );
+    let msgs = vec![msg("user", prompt)];
+    let opts = GenOpts { num_ctx: 4096, temperature: Some(0.0), num_predict: Some(8) };
+    let text = if use_api {
+        claude_api::messages(&settings.claude_api_key, model, 16, &msgs, false)
+            .await
+            .map(|r| {
+                *total_in += r.input_tokens;
+                *total_out += r.output_tokens;
+                r.text
+            })
+            .unwrap_or_default()
+    } else {
+        ollama::chat_stream(&settings.ollama_endpoint, model, &msgs, opts, false, |_| {}, |_| {})
+            .await
+            .map(|r| {
+                *total_in += r.input_tokens;
+                *total_out += r.output_tokens;
+                r.text
+            })
+            .unwrap_or_default()
+    };
+    let t = clean_step(&text).to_uppercase();
+    t.contains("SIM") || t.contains("YES")
 }
 
 /// Limpa a saída de um passo: remove blocos/tags `<think>…</think>` (vazamento de raciocínio) e
@@ -164,10 +184,8 @@ where
     let plan_instruction = format!(
         "[MODO PLANO · hoje é {today}] Em vez de responderes diretamente, divide a minha ÚLTIMA mensagem \
 (interpretada no contexto desta conversa) num PLANO de 3 a 7 passos ACIONÁVEIS, distintos e ordenados — cada \
-passo um título curto e concreto do que vai produzir. NÃO repitas a pergunta como passo. Avalia também se \
-executar bem este plano exige INFORMAÇÃO ATUAL/ONLINE (preços, produtos recentes, notícias, datas posteriores \
-ao teu treino): se sim, marca \"needs_web\": true. Responde APENAS com um objeto JSON \
-{{\"steps\": [\"…\"], \"needs_web\": true|false}}, nada mais."
+passo um título curto e concreto do que vai produzir. NÃO repitas a pergunta como passo. Responde APENAS com \
+um array JSON de strings (os passos), nada mais."
     );
     let plan_opts = GenOpts { num_predict: Some(1024), ..opts };
     let plan_msgs = with_instruction(messages, &plan_instruction);
@@ -178,11 +196,18 @@ ao teu treino): se sim, marca \"needs_web\": true. Responde APENAS com um objeto
     };
     total_in += dz.input_tokens;
     total_out += dz.output_tokens;
-    let (mut draft, needs_web) = parse_plan(&dz.text);
+    // `clean_step` aqui também: o modelo pode vazar `<think>` no rascunho e estragar o parse.
+    let mut draft = parse_steps(&clean_step(&dz.text));
     draft.truncate(MAX_STEPS);
     if draft.is_empty() {
         draft = vec![task.clone()]; // fallback: um único passo
     }
+
+    // Classificação leve (SIM/NAO) à parte: o plano precisa de dados atuais/online? Pôr este flag
+    // DENTRO do JSON dos passos faz os modelos pequenos colapsarem para um array vazio — por isso é
+    // uma chamada minúscula separada (num_predict curto), sobre os passos já rascunhados.
+    on_tool("plan", "classify");
+    let needs_web = needs_web_check(settings, use_api, model, &today, &draft, &mut total_in, &mut total_out).await;
 
     // ── Fase 2: aprovar / editar / rejeitar (e, se needs_web, escalar o 🔎) ──────────────────
     let (steps, research) = match approve(draft, needs_web).await {
@@ -313,17 +338,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_plan_reads_object_with_needs_web() {
-        let (steps, needs_web) =
-            parse_plan(r#"qualquer coisa {"steps": ["A", "B"], "needs_web": true} fim"#);
-        assert_eq!(steps, vec!["A".to_string(), "B".to_string()]);
-        assert!(needs_web);
-    }
-
-    #[test]
-    fn parse_plan_falls_back_to_array() {
-        let (steps, needs_web) = parse_plan(r#"["A", "B", "C"]"#);
+    fn parse_steps_reads_array() {
+        let steps = parse_steps(r#"texto à volta ["A", "B", "C"] fim"#);
         assert_eq!(steps.len(), 3);
-        assert!(!needs_web);
+        assert_eq!(steps[0], "A");
     }
 }
