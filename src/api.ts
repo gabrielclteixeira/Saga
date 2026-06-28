@@ -82,6 +82,8 @@ export interface Schedule {
   enabled: boolean;
   last_run_at: string;
   next_run_epoch: number;
+  last_status: string;
+  last_error: string;
 }
 
 export interface ActionLogEntry {

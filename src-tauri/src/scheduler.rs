@@ -54,8 +54,19 @@ async fn run_due(app: &AppHandle) {
 }
 
 /// Corre um agendamento já (usado pelo ciclo e pelo "Correr agora").
-/// Devolve (estado, resumo) para a notificação.
+/// Devolve (estado, resumo) para a notificação e regista o resultado no agendamento (visível na
+/// vista de Automações), incluindo falhas de pré-voo.
 pub async fn run_schedule(app: &AppHandle, sched: &Schedule) -> (String, String) {
+    let (status, summary) = run_schedule_inner(app, sched).await;
+    {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().unwrap();
+        let _ = store::set_schedule_result(&conn, sched.id, &status, &summary);
+    }
+    (status, summary)
+}
+
+async fn run_schedule_inner(app: &AppHandle, sched: &Schedule) -> (String, String) {
     let state = app.state::<AppState>();
     let settings = state.settings.lock().unwrap().clone();
 

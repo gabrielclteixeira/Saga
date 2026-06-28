@@ -4164,19 +4164,27 @@ async function renderSchedules() {
     list.innerHTML = `<div class="empty-sm">${t("Sem agendamentos. Cria um abaixo.")}</div>`;
     return;
   }
+  const statusCls = (st: string) =>
+    st === "OK" ? "ok" : st === "ERRO" ? "err" : "muted";
   list.innerHTML = rows
-    .map(
-      (s) => `
+    .map((s) => {
+      const last = s.last_status
+        ? `<div class="sched-last"><span class="sched-status ${statusCls(s.last_status)}">${escapeHtml(s.last_status)}</span>${s.last_error ? " " + escapeHtml(s.last_error) : ""}</div>`
+        : "";
+      return `
     <div class="mcp-item">
-      <label class="check"><input type="checkbox" data-toggle="${s.id}" ${s.enabled ? "checked" : ""} /> <strong>${escapeHtml(s.name)}</strong></label>
-      <code>${escapeHtml(s.workflow_name)} · ${escapeHtml(s.cron)} · ${t("próx:")} ${escapeHtml(fmtEpoch(s.next_run_epoch))}</code>
+      <div class="sched-main">
+        <label class="check"><input type="checkbox" data-toggle="${s.id}" ${s.enabled ? "checked" : ""} /> <strong>${escapeHtml(s.name)}</strong></label>
+        <code>${escapeHtml(s.workflow_name)} · ${escapeHtml(s.cron)} · ${t("próx:")} ${escapeHtml(fmtEpoch(s.next_run_epoch))}</code>
+        ${last}
+      </div>
       <div class="mcp-item-actions">
         <button type="button" class="ghost" data-run="${s.id}" title="${t("Correr agora")}" aria-label="${t("Correr agora")}">${icon("play")}</button>
         <button type="button" class="ghost" data-edit="${s.id}">${t("Editar")}</button>
         <button type="button" class="icon-x" data-del="${s.id}" title="${t("Apagar")}" aria-label="${t("Apagar")}">${icon("x")}</button>
       </div>
-    </div>`
-    )
+    </div>`;
+    })
     .join("");
   const byId = new Map(rows.map((s) => [s.id, s]));
   list.querySelectorAll<HTMLInputElement>("[data-toggle]").forEach((b) =>

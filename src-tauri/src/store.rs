@@ -126,6 +126,17 @@ fn init(conn: &Connection) -> Result<()> {
         [],
     )
     .ok();
+    // Migração: resultado da última execução de cada agendamento (estado + erro), para a vista de Automações.
+    conn.execute(
+        "ALTER TABLE schedules ADD COLUMN last_status TEXT NOT NULL DEFAULT ''",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "ALTER TABLE schedules ADD COLUMN last_error TEXT NOT NULL DEFAULT ''",
+        [],
+    )
+    .ok();
     // Backfill único do índice de pesquisa, se ainda estiver vazio.
     let fts_count: i64 = conn
         .query_row("SELECT count(*) FROM messages_fts", [], |r| r.get(0))
@@ -474,6 +485,10 @@ pub struct Schedule {
     pub enabled: bool,
     pub last_run_at: String,
     pub next_run_epoch: i64,
+    /// Resultado da última execução: "OK" | "ERRO" | "SALTADO" | "" (nunca correu).
+    pub last_status: String,
+    /// Mensagem/erro da última execução (resumo), para mostrar na vista de Automações.
+    pub last_error: String,
 }
 
 fn row_to_schedule(r: &rusqlite::Row) -> rusqlite::Result<Schedule> {
@@ -486,11 +501,13 @@ fn row_to_schedule(r: &rusqlite::Row) -> rusqlite::Result<Schedule> {
         enabled: r.get::<_, i64>(5)? != 0,
         last_run_at: r.get(6)?,
         next_run_epoch: r.get(7)?,
+        last_status: r.get(8)?,
+        last_error: r.get(9)?,
     })
 }
 
 const SCHED_COLS: &str =
-    "id, name, workflow_name, arguments, cron, enabled, last_run_at, next_run_epoch";
+    "id, name, workflow_name, arguments, cron, enabled, last_run_at, next_run_epoch, last_status, last_error";
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_schedule(
@@ -554,6 +571,15 @@ pub fn due_schedules(conn: &Connection, now_epoch: i64) -> Result<Vec<Schedule>>
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params![now_epoch], row_to_schedule)?;
     Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Regista o resultado da última execução (estado + mensagem/erro) de um agendamento.
+pub fn set_schedule_result(conn: &Connection, id: i64, status: &str, error: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE schedules SET last_status=?2, last_error=?3 WHERE id=?1",
+        params![id, status, error],
+    )?;
+    Ok(())
 }
 
 pub fn set_schedule_run(conn: &Connection, id: i64, last_run_at: &str, next_run_epoch: i64) -> Result<()> {

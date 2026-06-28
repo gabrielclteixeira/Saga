@@ -2543,6 +2543,32 @@ dialog::backdrop {
   color: var(--muted);
   font-weight: 500;
 }
+/* Resultado da última execução de um agendamento (vista Automações). */
+.sched-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.sched-last {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.sched-status {
+  font-weight: 600;
+  margin-right: 4px;
+}
+.sched-status.ok {
+  color: #4caf7e;
+}
+.sched-status.err {
+  color: #e0666f;
+}
+.sched-status.muted {
+  color: var(--muted);
+}
 .ws-editor {
   display: flex;
   flex-direction: column;
