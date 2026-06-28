@@ -421,25 +421,24 @@ dólares ($). Só inclui um link se tiveres a certeza de que existe; na dúvida,
             prior_txt = truncate(&prior, PRIOR_CAP)
         );
         let step_msgs = with_instruction(&conv, &step_instruction);
-        // Bufferiza a saída do passo (sem stream ao vivo) para a poder limpar antes de a mostrar:
-        // remove vazamentos de <think> e cercas de código que partiriam a resposta em artefactos.
+        // Stream ao vivo: com `think:false` o conteúdo já vem limpo (o raciocínio vai para um canal
+        // separado), por isso não é preciso bufferizar para limpar — os tokens vão direto ao chat.
+        // O caminho Claude é não-stream, por isso emite o texto de uma vez.
         let out = if use_api {
             match claude_api::messages(&settings.claude_api_key, model, settings.claude_max_tokens, &step_msgs, false).await {
-                Ok(resp) => resp,
+                Ok(resp) => { on_delta(&resp.text); resp }
                 Err(e) => { on_step(i, "error"); on_delta(&format!("(falha: {e})")); continue; }
             }
         } else {
-            match ollama::chat_stream(&settings.ollama_endpoint, model, &step_msgs, step_opts, false, |_| {}, |_| {}).await {
+            match ollama::chat_stream(&settings.ollama_endpoint, model, &step_msgs, step_opts, false, |d| on_delta(d), |_| {}).await {
                 Ok(resp) => resp,
                 Err(e) => { on_step(i, "error"); on_delta(&format!("(falha: {e})")); continue; }
             }
         };
         total_in += out.input_tokens;
         total_out += out.output_tokens;
-        let cleaned = clean_step(&out.text);
-        on_delta(&cleaned);
-        final_text.push_str(&cleaned);
-        prior.push_str(&format!("[{}] {}\n", i + 1, truncate(&cleaned, 600)));
+        final_text.push_str(&out.text);
+        prior.push_str(&format!("[{}] {}\n", i + 1, truncate(&out.text, 600)));
         on_step(i, "done");
     }
 
