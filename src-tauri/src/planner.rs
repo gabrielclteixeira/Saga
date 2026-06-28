@@ -73,9 +73,10 @@ pub(crate) fn lean_for_draft(messages: &[ChatMessage]) -> Vec<ChatMessage> {
         .collect()
 }
 
-/// Extrai os passos do rascunho. Tenta primeiro o array JSON de strings (robusto a texto à volta);
-/// se falhar (o modelo devolveu uma lista markdown ou prosa), cai numa análise de lista numerada/
-/// com marcadores. Assim evita-se o eco da pergunta quando o formato escorrega.
+/// Extrai os passos/perguntas. Tenta (1) array JSON de strings (robusto a texto à volta), (2) lista
+/// markdown numerada/com marcadores, (3) extração leniente das strings entre aspas dentro do `[...]`.
+/// O (3) recupera o formato torto que os modelos pequenos às vezes emitem — `[{"texto"}, …]` (objetos/
+/// JSON inválido) em vez de `["texto", …]` — que de outro modo daria 0 itens.
 pub(crate) fn parse_steps(text: &str) -> Vec<String> {
     if let (Some(a), Some(b)) = (text.find('['), text.rfind(']')) {
         if b >= a {
@@ -91,7 +92,49 @@ pub(crate) fn parse_steps(text: &str) -> Vec<String> {
             }
         }
     }
-    parse_list_lines(text)
+    let list = parse_list_lines(text);
+    if !list.is_empty() {
+        return list;
+    }
+    parse_quoted_in_array(text)
+}
+
+/// Fallback final: extrai as strings entre aspas do primeiro `[...]`. Recupera `[{"pergunta"}, …]` e
+/// variantes mal-formadas. Ignora strings com menos de 4 chars (ruído/keys curtas). Uma recusa em prosa
+/// ou um `[]` não têm aspas dentro → devolvem vazio (não disparam falsos itens).
+fn parse_quoted_in_array(text: &str) -> Vec<String> {
+    let (Some(a), Some(b)) = (text.find('['), text.rfind(']')) else {
+        return Vec::new();
+    };
+    if b <= a {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut in_str = false;
+    let mut escaped = false;
+    for ch in text[a..=b].chars() {
+        if in_str {
+            if escaped {
+                cur.push(ch);
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                let s = cur.trim().to_string();
+                if s.chars().count() >= 4 {
+                    out.push(s);
+                }
+                cur.clear();
+                in_str = false;
+            } else {
+                cur.push(ch);
+            }
+        } else if ch == '"' {
+            in_str = true;
+        }
+    }
+    out
 }
 
 /// Fallback: extrai itens de uma lista numerada (`1.`/`1)`) ou com marcadores (`-`/`*`/`•`).
@@ -466,5 +509,20 @@ mod tests {
     fn parse_steps_ignores_prose_refusal() {
         // Uma recusa em prosa (sem marcadores de lista) não deve gerar passos.
         assert!(parse_steps("[Erro] A sua mensagem não contém instruções válidas.").is_empty());
+    }
+
+    #[test]
+    fn parse_steps_recovers_object_wrapped_strings() {
+        // O 9B às vezes emite [{"pergunta"}, …] (objetos) em vez de ["…", …]; recuperamos as strings.
+        let s = r#"[{"qual é o orçamento aproximado?"}, {"em que país/região?"}]"#;
+        let out = parse_steps(s);
+        assert_eq!(out.len(), 2);
+        assert!(out[0].contains("orçamento"));
+        assert!(out[1].contains("região"));
+    }
+
+    #[test]
+    fn parse_steps_empty_array_yields_nothing() {
+        assert!(parse_steps("[]").is_empty());
     }
 }

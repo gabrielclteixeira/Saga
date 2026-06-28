@@ -240,8 +240,18 @@ tarefa. Responde APENAS com um array JSON de strings (as perguntas), nada mais."
             })
             .unwrap_or_default()
     };
-    let mut qs = parse_steps(&clean_step(&text));
+    let cleaned = clean_step(&text);
+    let mut qs = parse_steps(&cleaned);
     qs.truncate(3);
+    // A deteção (L1+L2) já disse "vago". Se o parse falhou por FORMATO (não um veto explícito "[]"),
+    // faz perguntas genéricas — a clarificação nunca fica muda quando o pedido é mesmo vago. A região
+    // entra aqui (resolve as fontes BR vs PT/UE pela resposta do utilizador, sem enviesar a pesquisa).
+    if qs.is_empty() && !cleaned.contains("[]") {
+        qs = vec![
+            "Qual é o objetivo concreto e em que país/região?".to_string(),
+            "Há restrições a ter em conta (ex.: orçamento, prazo, formato)?".to_string(),
+        ];
+    }
     qs
 }
 
