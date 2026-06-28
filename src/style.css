@@ -2199,12 +2199,13 @@ dialog::backdrop {
 }
 .plan-edit-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
 }
 .pe-num {
   flex: 0 0 auto;
   min-width: 18px;
+  padding-top: 8px;
   text-align: right;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -2213,6 +2214,7 @@ dialog::backdrop {
 .pe-input {
   flex: 1 1 auto;
   box-sizing: border-box;
+  display: block;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -2220,6 +2222,10 @@ dialog::backdrop {
   padding: 7px 10px;
   font: inherit;
   font-size: 13px;
+  line-height: 1.45;
+  resize: none;
+  overflow-y: auto;
+  max-height: 140px;
 }
 .pe-input:focus {
   outline: none;
@@ -2227,6 +2233,7 @@ dialog::backdrop {
 }
 .pe-del {
   flex: 0 0 auto;
+  margin-top: 3px;
   background: transparent;
   border: none;
   color: var(--muted);

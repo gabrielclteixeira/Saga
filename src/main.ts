@@ -3447,17 +3447,25 @@ function showPlanCard(
     rowEl.className = "plan-edit-row";
     const num = document.createElement("span");
     num.className = "pe-num";
-    const input = document.createElement("input");
-    input.type = "text";
+    const input = document.createElement("textarea");
     input.className = "pe-input";
+    input.rows = 1;
     input.value = value;
+    // Cresce para mostrar o passo inteiro; o CSS limita a altura (max-height → scroll).
+    const grow = () => {
+      input.style.height = "auto";
+      input.style.height = `${Math.min(input.scrollHeight, 140)}px`;
+    };
+    input.addEventListener("input", grow);
+    requestAnimationFrame(grow); // mede depois de estar no DOM
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
+      // Enter adiciona um passo a seguir; Shift+Enter insere uma quebra de linha.
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         const nr = makeRow("");
         rowEl.after(nr);
         renumber();
-        nr.querySelector<HTMLInputElement>(".pe-input")!.focus();
+        nr.querySelector<HTMLTextAreaElement>(".pe-input")!.focus();
       }
     });
     const del = document.createElement("button");
@@ -3479,11 +3487,11 @@ function showPlanCard(
     const nr = makeRow("");
     editor.appendChild(nr);
     renumber();
-    nr.querySelector<HTMLInputElement>(".pe-input")!.focus();
+    nr.querySelector<HTMLTextAreaElement>(".pe-input")!.focus();
   });
 
   const done = (ok: boolean) => {
-    const edited = Array.from(editor.querySelectorAll<HTMLInputElement>(".pe-input"))
+    const edited = Array.from(editor.querySelectorAll<HTMLTextAreaElement>(".pe-input"))
       .map((i) => i.value.trim())
       .filter(Boolean);
     // Executa fundamentado se o 🔎 já estava ligado, ou se o utilizador aceitou a escalada.
