@@ -307,6 +307,7 @@ export const api = {
     invoke<void>("respond_plan", { id, approved, steps, research }),
   respondClarify: (id: number, answered: boolean, answers: string[]) =>
     invoke<void>("respond_clarify", { id, answered, answers }),
+  detectEmbedModel: () => invoke<string | null>("detect_embed_model"),
   listConversations: () => invoke<ConversationMeta[]>("list_conversations"),
   getConversation: (id: number) => invoke<StoredMessage[]>("get_conversation", { id }),
   newConversation: (title?: string) =>

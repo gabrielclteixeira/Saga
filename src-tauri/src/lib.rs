@@ -163,6 +163,7 @@ pub fn run() {
             commands::approve_action,
             commands::respond_plan,
             commands::respond_clarify,
+            commands::detect_embed_model,
             commands::ensure_workspace_defaults,
             commands::get_workspace_index,
             commands::read_workspace_doc,

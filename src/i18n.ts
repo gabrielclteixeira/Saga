@@ -565,6 +565,9 @@ const EN: Record<string, string> = {
     "Plan mode: ask before planning when the request is vague",
   "Só dispara em mensagens vagas; faz 1-3 perguntas curtas e podes saltar.":
     "Only triggers on vague messages; asks 1-3 short questions and you can skip.",
+  "Clarificação semântica (L2) ativa via {m}.": "Semantic clarification (L2) active via {m}.",
+  "Para clarificação mais precisa, instala um modelo de embeddings (ex.: nomic-embed-text) no separador Modelos — sem ele, usa só heurística.":
+    "For sharper clarification, install an embeddings model (e.g. nomic-embed-text) in the Models tab — without one it uses heuristics only.",
   "a decompor a pergunta…": "breaking down the question…",
   "a verificar os factos…": "fact-checking…",
   "a escrever a resposta…": "writing the answer…",

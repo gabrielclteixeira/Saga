@@ -618,6 +618,27 @@ pub async fn respond_plan(
     Ok(())
 }
 
+/// Modelo de embeddings que a clarificação L2 vai usar (override `embed_model` se instalado, senão
+/// auto-deteção entre os instalados). `None` = nenhum → a L2 fica dormente (só heurística L1). Para a UI
+/// mostrar o estado em vez de ser uma feature escondida.
+#[tauri::command]
+pub async fn detect_embed_model(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let (endpoint, configured) = {
+        let s = state.settings.lock().unwrap();
+        (s.ollama_endpoint.clone(), s.embed_model.trim().to_string())
+    };
+    let models = crate::providers::ollama::list_models(&endpoint).await.unwrap_or_default();
+    if !configured.is_empty() {
+        if let Some(m) = models
+            .iter()
+            .find(|m| **m == configured || m.starts_with(&format!("{configured}:")))
+        {
+            return Ok(Some(m.clone()));
+        }
+    }
+    Ok(models.into_iter().find(|m| crate::clarify::is_embed_model_name(m)))
+}
+
 /// Resposta às perguntas de esclarecimento (Plan mode): `answered=false` → saltou; caso contrário
 /// entrega as respostas (uma por pergunta, alinhadas por índice; podem vir vazias).
 #[tauri::command]

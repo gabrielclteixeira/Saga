@@ -158,13 +158,16 @@ async fn resolve_embed_model(settings: &Settings) -> Option<String> {
     {
         Some(configured.to_string())
     } else {
-        installed.into_iter().find(|m| {
-            let l = m.to_lowercase();
-            l.contains("embed") || l.contains("bge") || l.contains("minilm") || l.contains("e5") || l.contains("gte")
-        })
+        installed.into_iter().find(|m| is_embed_model_name(m))
     };
     *g = Some(pick.clone());
     pick
+}
+
+/// Heurística por nome: parece um modelo de embeddings (vs. um modelo de chat)?
+pub(crate) fn is_embed_model_name(name: &str) -> bool {
+    let l = name.to_lowercase();
+    l.contains("embed") || l.contains("bge") || l.contains("minilm") || l.contains("e5") || l.contains("gte")
 }
 
 /// L2 (embeddings): para os casos fronteira, a mensagem é vaga? Usa um modelo de embeddings instalado

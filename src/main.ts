@@ -548,6 +548,7 @@ app.innerHTML = `
           <p class="wiz-hint">${t("Auto deixa cada modelo usar a amostragem afinada do seu Modelfile (melhor por modelo). Desliga para forçar um valor.")}</p>
           <label class="ws-check"><input type="checkbox" id="hub-clarify" /> ${t("Plan mode: perguntar antes de planear quando o pedido é vago")}</label>
           <p class="wiz-hint">${t("Só dispara em mensagens vagas; faz 1-3 perguntas curtas e podes saltar.")}</p>
+          <p class="wiz-hint" id="hub-clarify-l2"></p>
         </fieldset>
 
         <fieldset>
@@ -4393,6 +4394,17 @@ function hubLoad(s: Settings) {
   hubIn("#hub-research-rounds").value = String(s.research_max_rounds);
   hubIn("#hub-local-web").checked = s.local_web_search;
   hubIn("#hub-clarify").checked = s.clarify_level !== "off";
+  // Estado da clarificação semântica (L2): mostra o modelo de embeddings detetado, ou como ativá-la.
+  api
+    .detectEmbedModel()
+    .then((m) => {
+      const el = document.querySelector("#hub-clarify-l2");
+      if (el)
+        el.textContent = m
+          ? t("Clarificação semântica (L2) ativa via {m}.", { m })
+          : t("Para clarificação mais precisa, instala um modelo de embeddings (ex.: nomic-embed-text) no separador Modelos — sem ele, usa só heurística.");
+    })
+    .catch(() => {});
   hubSel("#hub-web-provider").value = s.web_search_provider;
   applyWebProviderUi(true);
   hubIn("#hub-num-ctx").value = String(s.ollama_num_ctx);
