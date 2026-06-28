@@ -69,6 +69,57 @@ fn strip_frontmatter(content: &str) -> String {
     content.to_string()
 }
 
+/// Extrai os triggers de uma descrição de skill (ex.: "... Triggers: pdf, criar pdf, exportar pdf").
+/// Devolve cada termo em minúsculas, sem espaços nas pontas, sem vazios.
+pub fn parse_triggers(description: &str) -> Vec<String> {
+    let lower = description.to_lowercase();
+    let Some(pos) = lower.find("triggers:") else {
+        return Vec::new();
+    };
+    description[pos + "triggers:".len()..]
+        .split(',')
+        .map(|t| t.trim().to_lowercase())
+        .filter(|t| !t.is_empty())
+        .collect()
+}
+
+/// Skills cujos triggers batem no texto do utilizador → (nome, corpo das instruções).
+/// Determinístico (sem modelo): suporte às skills na rota local. Limita a 2 skills e trunca
+/// o corpo (~6 KB) para conter os tokens injetados no system prompt.
+pub fn triggered_skills(root: &str, text: &str) -> Vec<(String, String)> {
+    const MAX_SKILLS: usize = 2;
+    const MAX_BODY: usize = 6000;
+    let hay = text.to_lowercase();
+    let mut out: Vec<(String, String)> = Vec::new();
+    let Ok(entries) = fs::read_dir(skills_dir(root)) else {
+        return out;
+    };
+    for e in entries.flatten() {
+        if out.len() >= MAX_SKILLS {
+            break;
+        }
+        if !e.path().is_dir() {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(e.path().join("SKILL.md")) else {
+            continue;
+        };
+        let dir_name = e.file_name().to_string_lossy().to_string();
+        let (n, d) = parse_frontmatter(&content);
+        let desc = d.unwrap_or_default();
+        let triggers = parse_triggers(&desc);
+        if triggers.iter().any(|t| hay.contains(t.as_str())) {
+            let mut body = strip_frontmatter(&content);
+            if body.len() > MAX_BODY {
+                body.truncate(MAX_BODY);
+                body.push_str("\n…");
+            }
+            out.push((n.unwrap_or(dir_name), body));
+        }
+    }
+    out
+}
+
 /// Varre o workspace e devolve o índice (nomes + descrições).
 pub fn index(root: &str) -> WorkspaceIndex {
     let mut idx = WorkspaceIndex::default();

@@ -18,9 +18,9 @@ base nos resultados da pesquisa; se não encontrares, di-lo claramente. NUNCA in
 números nem factos. Se te pedirem um PDF/documento, NÃO procures um PDF na web — escreve o documento \
 num bloco ```markdown (aparece como artefacto) e diz ao utilizador para clicar em 'Export PDF'. Sê conciso.";
 
-fn tools_schema() -> Value {
-    json!([
-        {
+fn tools_schema(with_skill: bool) -> Value {
+    let mut arr = vec![
+        json!({
             "type": "function",
             "function": {
                 "name": "web_search",
@@ -31,8 +31,8 @@ fn tools_schema() -> Value {
                     "required": ["query"]
                 }
             }
-        },
-        {
+        }),
+        json!({
             "type": "function",
             "function": {
                 "name": "web_fetch",
@@ -43,17 +43,35 @@ fn tools_schema() -> Value {
                     "required": ["url"]
                 }
             }
-        }
-    ])
+        }),
+    ];
+    if with_skill {
+        arr.push(json!({
+            "type": "function",
+            "function": {
+                "name": "load_skill",
+                "description": "Carrega as instruções completas de uma skill do workspace pelo nome, quando a tarefa encaixar.",
+                "parameters": {
+                    "type": "object",
+                    "properties": { "name": { "type": "string" } },
+                    "required": ["name"]
+                }
+            }
+        }));
+    }
+    Value::Array(arr)
 }
 
 /// `on_delta` recebe o texto final; `on_tool` recebe (nome, detalhe) de cada pesquisa.
+#[allow(clippy::too_many_arguments)]
 pub async fn run<D, T>(
     endpoint: &str,
     model: &str,
     provider: &str,
     api_key: &str,
     full_messages: &[ChatMessage],
+    workspace_dir: &str,
+    applied: &[String],
     opts: GenOpts,
     mut on_delta: D,
     mut on_tool: T,
@@ -62,7 +80,25 @@ where
     D: FnMut(&str),
     T: FnMut(&str, &str),
 {
-    let sys = format!("Hoje é {}. {SYSTEM}", chrono::Local::now().format("%Y-%m-%d"));
+    let mut sys = format!("Hoje é {}. {SYSTEM}", chrono::Local::now().format("%Y-%m-%d"));
+    // Manifesto das skills ainda NÃO injetadas por trigger (deixa o modelo carregá-las via load_skill).
+    let skills: Vec<_> = if workspace_dir.trim().is_empty() {
+        Vec::new()
+    } else {
+        crate::workspace::index(workspace_dir)
+            .skills
+            .into_iter()
+            .filter(|sk| !applied.iter().any(|a| a == &sk.name))
+            .collect()
+    };
+    if !skills.is_empty() {
+        sys.push_str(
+            "\n\nSkills disponíveis (chama load_skill para carregar as instruções quando a tarefa encaixar):\n",
+        );
+        for sk in &skills {
+            sys.push_str(&format!("- {}: {}\n", sk.name, sk.description));
+        }
+    }
     let mut messages: Vec<Value> = vec![json!({ "role": "system", "content": sys })];
     messages.extend(full_messages.iter().map(|m| {
         // Preserva imagens anexadas (Ollama: campo `images` por mensagem) para modelos com visão.
@@ -78,7 +114,7 @@ where
             json!({ "role": m.role, "content": m.content, "images": imgs })
         }
     }));
-    let tools = tools_schema();
+    let tools = tools_schema(!skills.is_empty());
 
     let mut total_in = 0u64;
     let mut total_out = 0u64;
@@ -163,6 +199,12 @@ do motor em Modelos → Avançado. Não inventes resultados."
                         }
                     );
                     r.unwrap_or_else(|e| format!("erro: {e}"))
+                }
+                "load_skill" => {
+                    let n = args.get("name").and_then(|x| x.as_str()).unwrap_or("");
+                    on_tool("skill", n);
+                    crate::workspace::read_skill(workspace_dir, n)
+                        .unwrap_or_else(|| format!("skill '{n}' não encontrada"))
                 }
                 other => format!("ferramenta desconhecida: {other}"),
             };

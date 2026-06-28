@@ -1144,6 +1144,8 @@ function formatToolStep(tool: string, detail: string): string {
       return `${t("a abrir")}: ${detail}`;
     case "create_pdf":
       return t("a criar PDF");
+    case "skill":
+      return `${t("Skill aplicada")}: ${detail}`;
     case "plan":
       return t("a planear…");
     case "research":

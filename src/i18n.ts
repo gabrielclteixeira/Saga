@@ -632,6 +632,7 @@ const EN: Record<string, string> = {
   "a pesquisar": "searching",
   "a abrir": "opening",
   "a criar PDF": "creating PDF",
+  "Skill aplicada": "Skill applied",
   // Estados de espera
   "A pesquisar na net…": "Searching the web…",
   "A coordenar subagentes…": "Coordinating subagents…",

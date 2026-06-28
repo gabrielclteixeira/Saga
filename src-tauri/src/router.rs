@@ -155,13 +155,23 @@ URLs, números ou nomes. Se a pergunta precisar de informação atual/externa ou
 diz-o claramente — sugere ligar o 🔎 (pesquisa) ou escalar para o Claude. Não dês passos inventados.";
 
 /// Mensagens para a rota local: instrução de honestidade + memória (crua, é grátis).
-fn with_system_local(context: &str, messages: &[ChatMessage]) -> Vec<ChatMessage> {
+fn with_system_local(
+    context: &str,
+    skills: &[(String, String)],
+    messages: &[ChatMessage],
+) -> Vec<ChatMessage> {
     let mut sys = format!(
         "Hoje é {}. Usa informação atual e não assumas anos antigos.\n\n{LOCAL_HONESTY}{PDF_NUDGE}",
         today()
     );
     if !context.trim().is_empty() {
         sys.push_str(&format!("\n\nContexto/memória relevante:\n{context}"));
+    }
+    // Skills acionadas por trigger (rota local): instruções completas injetadas no system prompt.
+    for (name, body) in skills {
+        sys.push_str(&format!(
+            "\n\n# Skill ativa: {name}\nO utilizador acionou esta skill. Segue estas instruções:\n{body}"
+        ));
     }
     let mut out = Vec::with_capacity(messages.len() + 1);
     out.push(ChatMessage {
@@ -182,6 +192,9 @@ pub struct Prepared {
     pub reason: String,
     /// Há imagens anexadas → exige API (Claude) ou modelo de visão (local).
     pub has_images: bool,
+    /// Skills acionadas por trigger nesta rota local (nomes) — para mostrar no chat e deduplicar
+    /// o manifesto do `web_agent`. Vazio na rota Claude.
+    pub skills_applied: Vec<String>,
 }
 
 /// Decide a rota, carrega memória e monta as mensagens finais (com compressão se escalar).
@@ -234,14 +247,28 @@ pub async fn prepare(
                     settings.ollama_model.clone()
                 }
             });
+            // Skills acionadas por trigger na última mensagem do utilizador (rota local).
+            let skills = if settings.workspace_dir.trim().is_empty() {
+                Vec::new()
+            } else {
+                let last_user = messages
+                    .iter()
+                    .rev()
+                    .find(|m| m.role == "user")
+                    .map(|m| m.content.as_str())
+                    .unwrap_or("");
+                crate::workspace::triggered_skills(&settings.workspace_dir, last_user)
+            };
+            let skills_applied = skills.iter().map(|(n, _)| n.clone()).collect();
             Ok(Prepared {
                 route: Route::Local,
                 model,
                 // Honestidade + memória crua (local é grátis, sem compressão).
-                full_messages: with_system_local(&raw_memory, messages),
+                full_messages: with_system_local(&raw_memory, &skills, messages),
                 tokens_saved: 0,
                 reason,
                 has_images,
+                skills_applied,
             })
         }
         Route::Claude => {
@@ -258,6 +285,7 @@ pub async fn prepare(
                 tokens_saved: saved,
                 reason,
                 has_images,
+                skills_applied: Vec::new(),
             })
         }
     }

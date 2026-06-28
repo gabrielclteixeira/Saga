@@ -1311,6 +1311,13 @@ pub async fn send_message_stream(
         }
         r
     } else {
+    // Skills acionadas por trigger (rota local): mostra "Skill aplicada: X" no chat antes de responder.
+    for name in &prepared.skills_applied {
+        let _ = channel.send(StreamEvent::ToolStep {
+            tool: "skill".to_string(),
+            detail: name.clone(),
+        });
+    }
     match prepared.route {
         router::Route::Local if local_openai => {
             providers::openai_compat::chat_stream(
@@ -1373,6 +1380,8 @@ pub async fn send_message_stream(
                         &settings.web_search_provider,
                         &settings.active_web_key(),
                         &prepared.full_messages,
+                        &settings.workspace_dir,
+                        &prepared.skills_applied,
                         gopts,
                         on_delta,
                         on_tool,
