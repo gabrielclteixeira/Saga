@@ -207,6 +207,7 @@ export interface StoredMessage {
   cost_usd: number;
   tokens_saved: number;
   gen_ms: number;
+  steps_json: string;
 }
 
 export type PullEvent =
@@ -225,6 +226,7 @@ export type StreamEvent =
   | { kind: "PlanStep"; index: number; status: string }
   | {
       kind: "Done";
+      message_id: number;
       input_tokens: number;
       output_tokens: number;
       tokens_saved: number;
@@ -308,6 +310,8 @@ export const api = {
     invoke<void>("respond_plan", { id, approved, steps, research }),
   respondClarify: (id: number, answered: boolean, answers: string[]) =>
     invoke<void>("respond_clarify", { id, answered, answers }),
+  setMessageSteps: (messageId: number, steps: string[]) =>
+    invoke<void>("set_message_steps", { messageId, steps }),
   detectEmbedModel: () => invoke<string | null>("detect_embed_model"),
   listConversations: () => invoke<ConversationMeta[]>("list_conversations"),
   getConversation: (id: number) => invoke<StoredMessage[]>("get_conversation", { id }),

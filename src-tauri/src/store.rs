@@ -29,6 +29,8 @@ pub struct StoredMessage {
     pub tokens_saved: i64,
     /// Tempo de geração da resposta (ms). 0 = desconhecido (ex.: mensagens do utilizador).
     pub gen_ms: i64,
+    /// Passos de ferramenta (breadcrumbs "usou skill X", "pesquisou Y") em JSON `["…"]`. '[]' = nenhum.
+    pub steps_json: String,
 }
 
 /// Abre (ou cria) a base de dados em `<config>/saga/saga.db` e garante o schema.
@@ -118,6 +120,12 @@ fn init(conn: &Connection) -> Result<()> {
         [],
     )
     .ok();
+    // Migração: breadcrumbs de ferramentas por mensagem (persistem entre reinícios).
+    conn.execute(
+        "ALTER TABLE messages ADD COLUMN steps_json TEXT NOT NULL DEFAULT '[]'",
+        [],
+    )
+    .ok();
     // Backfill único do índice de pesquisa, se ainda estiver vazio.
     let fts_count: i64 = conn
         .query_row("SELECT count(*) FROM messages_fts", [], |r| r.get(0))
@@ -194,7 +202,7 @@ pub fn list_conversations(conn: &Connection) -> Result<Vec<ConversationMeta>> {
 
 pub fn get_messages(conn: &Connection, conversation_id: i64) -> Result<Vec<StoredMessage>> {
     let mut stmt = conn.prepare(
-        "SELECT id, role, content, attachments_json, route, model, input_tokens, output_tokens, cost_usd, tokens_saved, gen_ms
+        "SELECT id, role, content, attachments_json, route, model, input_tokens, output_tokens, cost_usd, tokens_saved, gen_ms, steps_json
          FROM messages WHERE conversation_id = ?1 ORDER BY id ASC",
     )?;
     let rows = stmt.query_map(params![conversation_id], |r| {
@@ -210,6 +218,7 @@ pub fn get_messages(conn: &Connection, conversation_id: i64) -> Result<Vec<Store
             cost_usd: r.get(8)?,
             tokens_saved: r.get(9)?,
             gen_ms: r.get(10)?,
+            steps_json: r.get(11)?,
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -258,6 +267,15 @@ pub fn set_message_gen_ms(conn: &Connection, message_id: i64, gen_ms: i64) -> Re
     conn.execute(
         "UPDATE messages SET gen_ms = ?1 WHERE id = ?2",
         params![gen_ms, message_id],
+    )?;
+    Ok(())
+}
+
+/// Guarda os breadcrumbs de ferramentas (JSON `["…"]`) de uma mensagem já inserida.
+pub fn set_message_steps(conn: &Connection, message_id: i64, steps_json: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE messages SET steps_json = ?1 WHERE id = ?2",
+        params![steps_json, message_id],
     )?;
     Ok(())
 }

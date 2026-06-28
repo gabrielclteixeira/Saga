@@ -1899,11 +1899,21 @@ function storedToItem(m: StoredMessage): Item {
     }
   }
   if (m.role === "assistant" && m.route) {
+    let steps: string[] | undefined;
+    if (m.steps_json && m.steps_json !== "[]") {
+      try {
+        const arr = JSON.parse(m.steps_json);
+        if (Array.isArray(arr) && arr.length) steps = arr as string[];
+      } catch {
+        /* ignora JSON inválido */
+      }
+    }
     return {
       id: m.id,
       role: "assistant",
       content: m.content,
       attachments,
+      steps,
       meta: {
         text: m.content,
         route: (m.route as "local" | "claude") || "local",
@@ -2271,6 +2281,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
             paintBubble();
           }
         } else if (evt.kind === "Done") {
+          assistant.id = evt.message_id || assistant.id;
           assistant.meta = {
             text: assistant.content,
             route: start?.route ?? "local",
@@ -2283,6 +2294,12 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
             gen_ms: evt.gen_ms,
             accounting: evt.accounting,
           };
+          // Persiste os breadcrumbs de ferramentas para sobreviverem a reinícios.
+          if (evt.message_id && assistant.steps?.length) {
+            void api
+              .setMessageSteps(evt.message_id, assistant.steps)
+              .catch((e) => api.logFrontend("warn", `setMessageSteps: ${e}`));
+          }
         }
       },
       sendOpts

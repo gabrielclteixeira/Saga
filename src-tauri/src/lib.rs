@@ -150,6 +150,7 @@ pub fn run() {
             commands::send_message_stream,
             commands::list_conversations,
             commands::get_conversation,
+            commands::set_message_steps,
             commands::new_conversation,
             commands::rename_conversation,
             commands::delete_conversation,

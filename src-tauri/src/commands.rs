@@ -146,6 +146,8 @@ pub enum StreamEvent {
         status: String,
     },
     Done {
+        /// Id da mensagem do assistente gravada (para persistir os breadcrumbs de ferramentas). 0 = falhou.
+        message_id: i64,
         input_tokens: u64,
         output_tokens: u64,
         tokens_saved: u64,
@@ -279,6 +281,22 @@ pub fn list_conversations(state: State<AppState>) -> Result<Vec<ConversationMeta
 pub fn get_conversation(state: State<AppState>, id: i64) -> Result<Vec<StoredMessage>, String> {
     let conn = state.db.lock().unwrap();
     store::get_messages(&conn, id).map_err(|e| e.to_string())
+}
+
+/// Guarda os breadcrumbs de ferramentas (já formatados pela UI) na mensagem do assistente, para que
+/// persistam entre reinícios da app.
+#[tauri::command]
+pub fn set_message_steps(
+    state: State<AppState>,
+    message_id: i64,
+    steps: Vec<String>,
+) -> Result<(), String> {
+    if message_id <= 0 {
+        return Ok(());
+    }
+    let json = serde_json::to_string(&steps).unwrap_or_else(|_| "[]".into());
+    let conn = state.db.lock().unwrap();
+    store::set_message_steps(&conn, message_id, &json).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1665,6 +1683,7 @@ pub async fn send_message_stream(
     };
 
     // Persistir a resposta do assistente (+ tempo de geração).
+    let mut assistant_mid: i64 = 0;
     {
         let conn = state.db.lock().unwrap();
         if let Ok(mid) = store::append_message(
@@ -1681,10 +1700,12 @@ pub async fn send_message_stream(
             prepared.tokens_saved as i64,
         ) {
             let _ = store::set_message_gen_ms(&conn, mid, gen_ms);
+            assistant_mid = mid;
         }
     }
 
     let _ = channel.send(StreamEvent::Done {
+        message_id: assistant_mid,
         input_tokens: response.input_tokens,
         output_tokens: response.output_tokens,
         tokens_saved: prepared.tokens_saved,
