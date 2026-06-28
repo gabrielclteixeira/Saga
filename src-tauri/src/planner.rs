@@ -26,6 +26,19 @@ fn msg(role: &str, content: String) -> ChatMessage {
     ChatMessage { role: role.into(), content, attachments: Vec::new() }
 }
 
+/// Acrescenta uma instrução à ÚLTIMA mensagem do utilizador, preservando todo o histórico e a
+/// alternância de papéis. Assim o modelo planeia/executa COM o contexto da conversa (e não sobre
+/// uma linha solta como "dá-me exemplos", que sozinha não tem significado).
+fn with_instruction(messages: &[ChatMessage], instruction: &str) -> Vec<ChatMessage> {
+    let mut m = messages.to_vec();
+    if let Some(last) = m.iter_mut().rev().find(|x| x.role == "user") {
+        last.content = format!("{}\n\n{instruction}", last.content);
+    } else {
+        m.push(msg("user", instruction.to_string()));
+    }
+    m
+}
+
 fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
@@ -79,26 +92,21 @@ where
     let mut sources: Vec<(String, String)> = Vec::new();
 
     // Chamada one-shot (texto limpo) — local sem thinking, ou Claude.
-    let one_shot = |sys: String, user: String, opts: GenOpts| async move {
-        if use_api {
-            claude_api::messages(&settings.claude_api_key, model, settings.claude_max_tokens,
-                &[msg("system", sys), msg("user", user)], false).await
-        } else {
-            ollama::chat_stream(&settings.ollama_endpoint, model, &[msg("system", sys), msg("user", user)],
-                opts, false, |_| {}, |_| {}).await
-        }
-    };
-
-    // ── Fase 1: planear ───────────────────────────────────────────────────────────────────
+    // ── Fase 1: planear (COM o contexto da conversa) ────────────────────────────────────────
     on_tool("plan", "draft");
-    let plan_sys = format!(
-        "Hoje é {today}. És um planeador. Divide a tarefa do utilizador num PLANO de 3 a 7 passos \
-ACIONÁVEIS e ordenados — cada passo um título curto e claro do que vai produzir/fazer. Pensa nas \
-dependências (passos cedo preparam os tardios). Responde APENAS com um array JSON de strings (os passos), \
-nada mais."
+    let plan_instruction = format!(
+        "[MODO PLANO · hoje é {today}] Em vez de responderes diretamente, divide a minha ÚLTIMA mensagem \
+(interpretada no contexto desta conversa) num PLANO de 3 a 7 passos ACIONÁVEIS, distintos e ordenados — cada \
+passo um título curto e concreto do que vai produzir. NÃO repitas a pergunta como passo. Responde APENAS com \
+um array JSON de strings (os passos), nada mais."
     );
     let plan_opts = GenOpts { num_predict: Some(1024), ..opts };
-    let dz = one_shot(plan_sys, task.clone(), plan_opts).await?;
+    let plan_msgs = with_instruction(messages, &plan_instruction);
+    let dz = if use_api {
+        claude_api::messages(&settings.claude_api_key, model, settings.claude_max_tokens, &plan_msgs, false).await?
+    } else {
+        ollama::chat_stream(&settings.ollama_endpoint, model, &plan_msgs, plan_opts, false, |_| {}, |_| {}).await?
+    };
     total_in += dz.input_tokens;
     total_out += dz.output_tokens;
     let mut draft = parse_steps(&dz.text);
@@ -151,26 +159,23 @@ nada mais."
             }
         }
 
-        let step_sys = format!(
-            "Hoje é {today}. Estás a EXECUTAR um plano para a tarefa:\n{task}\n\nPlano completo:\n{plan_list}\n\n\
-Já produziste (resumo):\n{}\n\nExecuta AGORA só o passo {}: «{step}». Produz o resultado em Markdown, conciso \
-e concreto. NÃO repitas o plano nem os passos anteriores. Se algo precisar de dados que não tens, di-lo numa \
-linha.{evidence}",
-            truncate(&prior, PRIOR_CAP),
-            i + 1
+        let step_instruction = format!(
+            "[MODO PLANO · passo {n}/{total} · hoje é {today}] Plano completo:\n{plan_list}\n\n\
+Já produzido (resumo):\n{prior_txt}\n\nExecuta AGORA, no contexto da conversa, SÓ o passo {n}: «{step}». \
+Produz o resultado em Markdown, conciso e concreto. NÃO repitas o plano, a pergunta nem os passos anteriores. \
+Se faltar um dado, di-lo numa linha.{evidence}",
+            n = i + 1,
+            total = steps.len(),
+            prior_txt = truncate(&prior, PRIOR_CAP)
         );
+        let step_msgs = with_instruction(messages, &step_instruction);
         let out = if use_api {
-            let r = claude_api::messages(&settings.claude_api_key, model, settings.claude_max_tokens,
-                &[msg("system", step_sys), msg("user", format!("Passo {}.", i + 1))], false).await;
-            match r {
+            match claude_api::messages(&settings.claude_api_key, model, settings.claude_max_tokens, &step_msgs, false).await {
                 Ok(resp) => { on_delta(&resp.text); resp }
                 Err(e) => { on_step(i, "error"); on_delta(&format!("(falha: {e})")); continue; }
             }
         } else {
-            let r = ollama::chat_stream(&settings.ollama_endpoint, model,
-                &[msg("system", step_sys), msg("user", format!("Passo {}.", i + 1))],
-                step_opts, false, |d| on_delta(d), |_| {}).await;
-            match r {
+            match ollama::chat_stream(&settings.ollama_endpoint, model, &step_msgs, step_opts, false, |d| on_delta(d), |_| {}).await {
                 Ok(resp) => resp,
                 Err(e) => { on_step(i, "error"); on_delta(&format!("(falha: {e})")); continue; }
             }
