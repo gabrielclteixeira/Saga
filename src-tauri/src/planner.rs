@@ -254,6 +254,7 @@ um array JSON de strings (os passos), nada mais."
     // uma chamada minúscula separada (num_predict curto), sobre os passos já rascunhados.
     on_tool("plan", "classify");
     let needs_web = needs_web_check(settings, use_api, model, &today, &draft, &mut total_in, &mut total_out).await;
+    log::info!("[plan] {} passos rascunhados, needs_web={needs_web}", draft.len());
 
     // ── Fase 2: aprovar / editar / rejeitar (e, se needs_web, escalar o 🔎) ──────────────────
     let (steps, research) = match approve(draft, needs_web).await {
@@ -264,6 +265,8 @@ um array JSON de strings (os passos), nada mais."
             return Ok(LlmResponse { text: txt, input_tokens: total_in, output_tokens: total_out, reported_cost_usd: 0.0, sources: Vec::new() });
         }
     };
+
+    log::info!("[plan] aprovado: {} passos, research(web)={research}", steps.len());
 
     // ── Fase 3: executar passo a passo ──────────────────────────────────────────────────────
     let plan_list = steps
