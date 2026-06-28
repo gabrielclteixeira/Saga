@@ -345,8 +345,8 @@ export const api = {
     invoke<string>("read_workspace_doc", { kind, name }),
   saveWorkspaceDoc: (kind: string, name: string, content: string) =>
     invoke<void>("save_workspace_doc", { kind, name, content }),
-  generateDoc: (kind: string, instruction: string) =>
-    invoke<string>("generate_doc", { kind, instruction }),
+  generateDoc: (kind: string, instruction: string, useCloud = false) =>
+    invoke<string>("generate_doc", { kind, instruction, useCloud }),
   deleteWorkspaceDoc: (kind: string, name: string) =>
     invoke<void>("delete_workspace_doc", { kind, name }),
   // Atividade + aprovações

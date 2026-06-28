@@ -307,6 +307,10 @@ const EN: Record<string, string> = {
   "Falha a abrir: ": "Failed to open: ",
   "Descreve o que queres.": "Describe what you want.",
   "A gerar…": "Generating…",
+  "A gerar (Claude)…": "Generating (Claude)…",
+  "Usar Claude": "Use Claude",
+  "Gerar com o Claude (cloud) em vez do modelo local":
+    "Generate with Claude (cloud) instead of the local model",
   "✓ Gerado — revê e guarda": "✓ Generated — review and save",
   "Indica um nome (sem espaços).": "Enter a name (no spaces).",
   "Falha a guardar: ": "Failed to save: ",

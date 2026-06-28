@@ -440,6 +440,7 @@ pub async fn generate_doc(
     state: State<'_, AppState>,
     kind: String,
     instruction: String,
+    use_cloud: bool,
 ) -> Result<String, String> {
     let settings = state.settings.lock().unwrap().clone();
     let sys = match kind.as_str() {
@@ -453,8 +454,11 @@ pub async fn generate_doc(
         ChatMessage { role: "user".into(), content: instruction, attachments: Vec::new() },
     ];
     let max = settings.claude_max_tokens.max(2048);
-    // Tenta o cloud configurado; se falhar (ou não houver), cai para o modelo local.
-    let cloud = if settings.cloud_provider == "openai" && !settings.openai_cloud_key.trim().is_empty() {
+    // Local-first: por defeito gera no modelo local. Só tenta o cloud se o utilizador pedir
+    // explicitamente (use_cloud) — e mesmo aí cai para o local se o cloud falhar.
+    let cloud = if !use_cloud {
+        None
+    } else if settings.cloud_provider == "openai" && !settings.openai_cloud_key.trim().is_empty() {
         Some(providers::openai_compat::chat(&settings.openai_cloud_endpoint, &settings.openai_cloud_key, &settings.openai_cloud_model, &messages, max).await)
     } else if settings.cloud_provider == "claude" && settings.claude_mode == "api" && !settings.claude_api_key.trim().is_empty() {
         Some(providers::claude_api::messages(&settings.claude_api_key, &settings.claude_model, max, &messages, false).await)

@@ -2617,6 +2617,16 @@ dialog::backdrop {
   align-self: flex-start;
   margin-top: 0;
 }
+.ws-gen-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ws-gen-cloud {
+  font-size: 13px;
+  white-space: nowrap;
+}
 .act-row {
   display: grid;
   grid-template-columns: 96px 140px 1fr auto;

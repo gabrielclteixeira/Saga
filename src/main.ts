@@ -332,8 +332,11 @@ app.innerHTML = `
             <label>${icon("sparkles")} ${t("Gerar com IA — descreve o que queres")}
               <textarea id="ws-gen-prompt" rows="2" placeholder="${t("ex.: uma skill que resume páginas web")}"></textarea>
             </label>
-            <button type="button" class="ghost" id="ws-gen-btn">${t("Gerar")}</button>
-            <span class="pull-status" id="ws-gen-status"></span>
+            <div class="ws-gen-row">
+              <button type="button" class="ghost" id="ws-gen-btn">${t("Gerar")}</button>
+              <label class="check ws-gen-cloud" id="ws-gen-cloud-wrap" hidden title="${t("Gerar com o Claude (cloud) em vez do modelo local")}"><input type="checkbox" id="ws-gen-cloud" /> ${t("Usar Claude")}</label>
+              <span class="pull-status" id="ws-gen-status"></span>
+            </div>
           </div>
           <label>${t("Nome")} <input id="ws-name" type="text" placeholder="${t("nome-sem-espacos")}" /></label>
           <label>${t("Descrição")} <input id="ws-desc" type="text" placeholder="${t("o que é / quando usar")}" /></label>
@@ -3823,6 +3826,10 @@ function readEditorFields(): DocFields {
 function wsEditorOpen(open: boolean) {
   document.querySelector("#ws-editor")?.toggleAttribute("hidden", !open);
   document.querySelector("#ws-list")?.toggleAttribute("hidden", open);
+  // A opção "Usar Claude" só aparece se o cloud estiver configurado (senão é sempre local).
+  if (open) {
+    document.querySelector("#ws-gen-cloud-wrap")?.toggleAttribute("hidden", !cloudEnabled());
+  }
 }
 
 function newWsDoc() {
@@ -3872,9 +3879,10 @@ async function genWsDoc() {
     status.textContent = t("Descreve o que queres.");
     return;
   }
-  status.textContent = t("A gerar…");
+  const useCloud = wsq<HTMLInputElement>("#ws-gen-cloud").checked;
+  status.textContent = useCloud ? t("A gerar (Claude)…") : t("A gerar…");
   try {
-    const md = await api.generateDoc(wsKind, prompt);
+    const md = await api.generateDoc(wsKind, prompt, useCloud);
     const f = parseDocFields(wsKind, md);
     const nameEl = wsq<HTMLInputElement>("#ws-name");
     if (f.name && !nameEl.value.trim()) nameEl.value = f.name;
