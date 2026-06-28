@@ -246,30 +246,34 @@ um array JSON de strings (os passos), nada mais."
     let mut draft = parse_steps(&clean_step(&dz.text));
     draft.truncate(MAX_STEPS);
 
-    // Um modelo generativo nunca é 100%: de vez em quando devolve prosa ou só repete a pergunta
-    // (1 passo = eco), mesmo a temperatura baixa. Detetar esse rascunho degenerado e tentar UMA vez
-    // com uma instrução mais imperativa (exemplo inline) corta a taxa de eco para ~p².
+    // Eco: o rascunho veio com 0-1 passos (repete a pergunta). A temperatura baixa é quase-greedy,
+    // por isso repetir a MESMA chamada cai no MESMO eco (falhas correlacionadas). A regeneração SOBE
+    // a temperatura (escapa ao "poço") e usa uma instrução imperativa com exemplo inline.
     if draft.len() < 2 {
         let retry_instr = format!(
             "{plan_instruction}\n\nCRÍTICO: devolve SÓ o array JSON dos passos, por exemplo \
 [\"Primeiro passo\", \"Segundo passo\", \"Terceiro passo\"]. NÃO respondas à pergunta nem a repitas como passo."
         );
-        let retry_msgs = with_instruction(&lean_for_draft(&conv), &retry_instr);
-        let retry_resp = if use_api {
-            claude_api::messages(&settings.claude_api_key, model, settings.claude_max_tokens, &retry_msgs, false).await.ok()
-        } else {
-            ollama::chat_stream(&settings.ollama_endpoint, model, &retry_msgs, plan_opts, false, |_| {}, |_| {}).await.ok()
-        };
-        if let Some(d) = retry_resp {
-            total_in += d.input_tokens;
-            total_out += d.output_tokens;
-            let mut retry = parse_steps(&clean_step(&d.text));
-            retry.truncate(MAX_STEPS);
-            if retry.len() >= 2 {
-                draft = retry;
+        for &temp in &[0.5_f32, 0.85_f32] {
+            let retry_opts = GenOpts { temperature: Some(temp), ..plan_opts };
+            let retry_msgs = with_instruction(&lean_for_draft(&conv), &retry_instr);
+            let resp = if use_api {
+                claude_api::messages(&settings.claude_api_key, model, settings.claude_max_tokens, &retry_msgs, false).await.ok()
+            } else {
+                ollama::chat_stream(&settings.ollama_endpoint, model, &retry_msgs, retry_opts, false, |_| {}, |_| {}).await.ok()
+            };
+            if let Some(d) = resp {
+                total_in += d.input_tokens;
+                total_out += d.output_tokens;
+                let mut retry = parse_steps(&clean_step(&d.text));
+                retry.truncate(MAX_STEPS);
+                if retry.len() >= 2 {
+                    draft = retry;
+                    break;
+                }
             }
         }
-        log::info!("[plan] rascunho degenerado → retry; passos finais={}", draft.len());
+        log::info!("[plan] eco detetado → regeneração (temp crescente); passos finais={}", draft.len());
     }
     if draft.is_empty() {
         draft = vec![task.clone()]; // fallback final: um único passo
