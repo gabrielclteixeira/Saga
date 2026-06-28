@@ -4127,7 +4127,7 @@ async function renderActivity() {
   list.innerHTML = rows
     .map(
       (r) => `
-    <div class="act-row status-${escapeHtml(r.status.toLowerCase())}">
+    <div class="act-row status-${escapeHtml(r.status.toLowerCase())}" title="${t("Clicar para expandir")}">
       <span class="act-status">${escapeHtml(r.status)}</span>
       <span class="act-tool">${escapeHtml(r.tool)}</span>
       <span class="act-detail">${escapeHtml(r.error || r.detail || r.params_json)}</span>
@@ -4135,6 +4135,9 @@ async function renderActivity() {
     </div>`
     )
     .join("");
+  list
+    .querySelectorAll<HTMLElement>(".act-row")
+    .forEach((r) => r.addEventListener("click", () => r.classList.toggle("expanded")));
 }
 
 // ---- Automações agendadas ----

@@ -310,6 +310,7 @@ const EN: Record<string, string> = {
   "A gerar (Claude)…": "Generating (Claude)…",
   "Usar Claude": "Use Claude",
   "Correr em": "Run on",
+  "Clicar para expandir": "Click to expand",
   "As automações registam-se na Saga “Automações”.":
     "Automations are logged in the “Automations” Saga.",
   "Claude só se precisar de browser/ferramentas avançadas; senão corre local.":

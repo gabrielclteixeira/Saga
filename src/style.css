@@ -2637,6 +2637,16 @@ dialog::backdrop {
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 12px;
+  cursor: pointer;
+}
+.act-row.expanded {
+  align-items: start;
+}
+.act-row.expanded .act-detail {
+  white-space: pre-wrap;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
 }
 .act-status {
   font-weight: 700;
