@@ -2483,6 +2483,12 @@ dialog::backdrop {
   gap: 8px;
   margin-top: 8px;
 }
+/* `display:flex` acima sobrepõe-se ao atributo [hidden] — é preciso repor display:none explicitamente,
+   senão o editor (e a lista, ao editar) nunca se escondem. */
+.ws-editor[hidden],
+.ws-list[hidden] {
+  display: none;
+}
 .ws-editor textarea,
 #mcp-args,
 #mcp-env {
