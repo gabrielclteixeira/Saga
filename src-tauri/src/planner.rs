@@ -217,6 +217,56 @@ pub(crate) fn clean_step(text: &str) -> String {
 
 /// Plan mode. `approve(draft)` emite o plano à UI e devolve `None` (rejeitado) ou os passos
 /// (possivelmente editados). `on_step(i, status)`, `on_delta(texto)`, `on_tool(nome, detalhe)`.
+/// Gera uma query de pesquisa curta (palavras-chave) por passo, numa SÓ chamada. Os títulos dos passos
+/// são rótulos de processo ("Cálculo do custo…") — maus como queries; isto produz entidades + a
+/// região/orçamento que o utilizador esclareceu (vê-os via `conv`). Vazio em falha → o chamador cai no
+/// título do passo. Reusa o parse leniente (lida com `[{"…"}]`).
+#[allow(clippy::too_many_arguments)]
+async fn step_queries(
+    settings: &Settings,
+    use_api: bool,
+    model: &str,
+    conv: &[ChatMessage],
+    plan_list: &str,
+    n: usize,
+    opts: GenOpts,
+    total_in: &mut u64,
+    total_out: &mut u64,
+) -> Vec<String> {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let instruction = format!(
+        "[QUERIES · hoje é {today}] Para CADA passo do plano, escreve UMA query de pesquisa web curta \
+(3-7 palavras-chave, entidades concretas — modelos, marcas, preço, lojas; inclui o país/região se for \
+relevante para preços ou lojas, usando o contexto que dei). NÃO uses verbos de planeamento ('definir', \
+'selecionar', 'calcular', 'pesquisar'); escreve como pesquisarias no Google. Plano:\n{plan_list}\n\n\
+Responde APENAS com um array JSON de {n} strings (uma query por passo, pela ordem), nada mais."
+    );
+    let msgs = with_instruction(&lean_for_draft(conv), &instruction);
+    let qopts = GenOpts { num_predict: Some(256), temperature: Some(0.2), ..opts };
+    let text = if use_api {
+        claude_api::messages(&settings.claude_api_key, model, settings.claude_max_tokens, &msgs, false)
+            .await
+            .map(|r| {
+                *total_in += r.input_tokens;
+                *total_out += r.output_tokens;
+                r.text
+            })
+            .unwrap_or_default()
+    } else {
+        ollama::chat_stream(&settings.ollama_endpoint, model, &msgs, qopts, false, |_| {}, |_| {})
+            .await
+            .map(|r| {
+                *total_in += r.input_tokens;
+                *total_out += r.output_tokens;
+                r.text
+            })
+            .unwrap_or_default()
+    };
+    let mut qs = parse_steps(&clean_step(&text));
+    qs.truncate(n);
+    qs
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn run<A, B, F, G, S, D, T>(
     settings: &Settings,
@@ -374,6 +424,16 @@ um array JSON de strings (os passos), nada mais."
     let mut prior = String::new();
     let step_opts = GenOpts { num_ctx: opts.num_ctx.max(8192), num_predict: Some(2048), ..opts };
 
+    // Queries de pesquisa focadas (uma só chamada) — só quando há grounding. Os títulos dos passos são
+    // rótulos de processo; isto dá palavras-chave/entidades + região esclarecida. Fallback ao título.
+    let queries: Vec<String> = if research {
+        let q = step_queries(settings, use_api, model, &conv, &plan_list, steps.len(), opts, &mut total_in, &mut total_out).await;
+        log::info!("[plan] queries: {q:?}");
+        q
+    } else {
+        Vec::new()
+    };
+
     for (i, step) in steps.iter().enumerate() {
         let is_last = i + 1 == steps.len();
         on_step(i, "executing");
@@ -384,9 +444,15 @@ um array JSON de strings (os passos), nada mais."
         // Grounding leve (só excertos) quando o 🔎 está ligado.
         let mut evidence = String::new();
         if research {
+            // Query focada do passo (fallback ao título se faltar/vazia/parse falhou).
+            let q = queries
+                .get(i)
+                .map(String::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or(step.as_str());
             on_step(i, "searching"); // marca o passo como "a pesquisar" na checklist
-            on_tool("web_search", step);
-            let results = web::web_search(&settings.web_search_provider, &settings.active_web_key(), step, 3)
+            on_tool("web_search", q);
+            let results = web::web_search(&settings.web_search_provider, &settings.active_web_key(), q, 3)
                 .await
                 .unwrap_or_default();
             for r in &results {
