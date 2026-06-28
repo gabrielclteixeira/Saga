@@ -199,7 +199,10 @@ the model works) · **per-message generation time** · **vision model picker** (
 installed vision models; warns when none of the installed models can see) · **Claude CLI vision** (the CLI reads
 image attachments; the prompt is piped via stdin so long conversations don't hit the command-line length limit) ·
 **one-click Ollama optimize** (flash attention + q8_0 KV cache env vars, Windows) · **DuckDuckGo rate limiter**
-(global request pacing + cooldown to avoid the keyless anti-bot blocks).
+(global request pacing + cooldown to avoid the keyless anti-bot blocks) ·
+**Plan mode** (the model drafts an actionable step-by-step plan you **approve / edit / reject**, then executes it
+step by step with a live status checklist; each step is reasoned/written, or grounded via the 🔎 toggle;
+local-first on Ollama or on Claude — the planning sibling of grounded deep-research).
 
 **Next:**
 
@@ -208,12 +211,9 @@ image attachments; the prompt is piped via stdin so long conversations don't hit
   install. Goal: double-click the installer and it just works.
 - **Code-sign & notarize installers** — the updater is signed and auto-update is live; still pending is OS-level
   **code-signing + notarization** (Apple Developer ID / Windows Authenticode) to drop the "unknown publisher" warnings.
-- **Plan mode (tackle complex problems)** — a dedicated planning step where, for a hard/multi-step request, the
-  model first drafts an explicit step-by-step **plan** (goal, steps, files/tools it'll touch), shows it for the
-  user to review/approve or tweak, and only then executes — tracking progress step by step. Works on the **local**
-  model (a planning system prompt + a structured plan the UI renders), not just Claude; today's only decomposition
-  is the Claude-only subagents planner (`orchestrator.rs`), hidden and non-interactive. Goal: turn "do this big
-  thing" into review-then-execute instead of one opaque shot. Reuses the agentic tool loop for execution.
+- **Agentic Plan execution (v2)** — today Plan mode *generates* each step (reasoning/writing, optionally web-grounded);
+  a v2 would let approved steps take **real actions** via the agentic tool loop (browser, workspace, MCP, files) on
+  the Claude route, with per-step approval for risky ones.
 
 ### Browser tool setup
 
