@@ -58,9 +58,6 @@ const EN: Record<string, string> = {
   "Auto": "Auto",
   "Local": "Local",
   "Claude": "Claude",
-  "🧩 Subagentes": "🧩 Subagents",
-  "🔎 Pesquisar": "🔎 Search",
-  "🧠 Think": "🧠 Think",
   "Subagentes": "Subagents",
   "Pesquisar": "Search",
   "Think": "Think",
@@ -91,7 +88,6 @@ const EN: Record<string, string> = {
   "Faz uma pergunta. Corre no teu modelo local; escala para o Claude quando quiseres.":
     "Ask anything. It runs on your local model; escalate to Claude whenever you want.",
   "Regenerar a resposta": "Regenerate the answer",
-  "⤴ Perguntar ao Claude": "⤴ Ask Claude",
   "Escalar esta resposta para o Claude": "Escalate this answer to Claude",
   "Deep research (Claude)": "Deep research (Claude)",
   "O Saga corre no teu modelo local. O Claude (CLI/subscrição) é opcional — liga-o para escalar tarefas mais pesadas quando quiseres. Podes mudar tudo depois nas Definições.":
@@ -112,7 +108,6 @@ const EN: Record<string, string> = {
   "Entendido — tenho o contexto anterior.": "Understood — I have the earlier context.",
   "▲ {n} mensagens compactadas — resumidas, fora do contexto enviado":
     "▲ {n} messages compacted — summarized, outside the sent context",
-  "🔎 Fontes ({n})": "🔎 Sources ({n})",
   "A compactar…": "Compacting…",
   "Falha a compactar: ": "Failed to compact: ",
   "Apagar todas as mensagens desta Saga?": "Delete all messages in this Saga?",
@@ -149,7 +144,6 @@ const EN: Record<string, string> = {
   "Sem artefactos nesta Saga.": "No artifacts in this Saga.",
   "Erro a desenhar o diagrama: ": "Error drawing the diagram: ",
   "Falha a exportar: ": "Failed to export: ",
-  "📄 Relatório": "📄 Report",
   // Settings — Modelo local
   "Modelo local": "Local model",
   "Provider": "Provider",
@@ -187,10 +181,10 @@ const EN: Record<string, string> = {
   "Rondas de pesquisa (deep research)": "Research rounds (deep research)",
   // Settings — Pesquisa web
   "Pesquisa web (modelo local)": "Web search (local model)",
-  "Dar pesquisa web ao modelo local (🔎 corre no Ollama)":
-    "Give web search to the local model (🔎 runs on Ollama)",
-  "Precisa de um modelo Ollama com suporte a ferramentas (ex.: llama3.1, qwen2.5). Com isto desligado, o 🔎 força o Claude.":
-    "Requires an Ollama model with tool support (e.g. llama3.1, qwen2.5). With this off, 🔎 forces Claude.",
+  "Dar pesquisa web ao modelo local (corre no Ollama)":
+    "Give web search to the local model (runs on Ollama)",
+  "Precisa de um modelo Ollama com suporte a ferramentas (ex.: llama3.1, qwen2.5). Com isto desligado, a pesquisa força o Claude.":
+    "Requires an Ollama model with tool support (e.g. llama3.1, qwen2.5). With this off, search forces Claude.",
   "Motor": "Engine",
   "DuckDuckGo (sem chave)": "DuckDuckGo (no key)",
   "Tavily (chave — melhor qualidade)": "Tavily (key — better quality)",
@@ -198,8 +192,8 @@ const EN: Record<string, string> = {
   "DuckDuckGo (sem chave — recomendado)": "DuckDuckGo (no key — recommended)",
   "DuckDuckGo não precisa de chave e funciona logo; tem limites de ritmo (pode falhar em rajadas). Para mais fiabilidade/volume, escolhe um motor com chave.":
     "DuckDuckGo needs no key and works out of the box; it has rate limits (may fail in bursts). For more reliability/volume, choose a keyed engine.",
-  "🔎 sem chave {p} → usa o DuckDuckGo (keyless, funciona com limites). Adiciona a chave {p} para mais fiabilidade/volume.":
-    "🔎 no {p} key → using DuckDuckGo (keyless, works with limits). Add a {p} key for more reliability/volume.",
+  "Sem chave {p} — usa o DuckDuckGo (keyless, funciona com limites). Adiciona a chave {p} para mais fiabilidade/volume.":
+    "No {p} key — using DuckDuckGo (keyless, works with limits). Add a {p} key for more reliability/volume.",
   "Tavily (chave grátis — recomendado)": "Tavily (free key — recommended)",
   "Tavily (recomendado)": "Tavily (recommended)",
   "Jina (recomendado)": "Jina (recommended)",
@@ -285,7 +279,6 @@ const EN: Record<string, string> = {
   "Nome": "Name",
   "Descrição": "Description",
   "Fechar editor": "Close editor",
-  "✨ Gerar com IA — descreve o que queres": "✨ Generate with AI — describe what you want",
   "ex.: uma skill que resume páginas web": "e.g. a skill that summarizes web pages",
   "nome-sem-espacos": "name-without-spaces",
   "o que é / quando usar": "what it is / when to use",
@@ -296,7 +289,6 @@ const EN: Record<string, string> = {
   "Corpo (markdown)": "Body (markdown)",
   "# Instruções…": "# Instructions…",
   "Nada ainda. Cria o primeiro com “+ Novo”.": "Nothing yet. Create the first one with “+ New”.",
-  "▶ Correr": "▶ Run",
   "Procedimento (markdown)": "Procedure (markdown)",
   "Passos (markdown — usa $ARGUMENTS)": "Steps (markdown — use $ARGUMENTS)",
   "Instruções (markdown)": "Instructions (markdown)",
@@ -317,7 +309,7 @@ const EN: Record<string, string> = {
     "Claude only if it needs the browser/advanced tools; otherwise runs local.",
   "Gerar com o Claude (cloud) em vez do modelo local":
     "Generate with Claude (cloud) instead of the local model",
-  "✓ Gerado — revê e guarda": "✓ Generated — review and save",
+  "Gerado — revê e guarda": "Generated — review and save",
   "Indica um nome (sem espaços).": "Enter a name (no spaces).",
   "Falha a guardar: ": "Failed to save: ",
   "Apagar “{name}”?": "Delete “{name}”?",
@@ -340,7 +332,7 @@ const EN: Record<string, string> = {
   "Remover este servidor?": "Remove this server?",
   "Indica o comando.": "Enter the command.",
   "A ligar…": "Connecting…",
-  "✓ {n} ferramentas: {list}": "✓ {n} tools: {list}",
+  "{n} ferramentas: {list}": "{n} tools: {list}",
   "(nenhuma)": "(none)",
   "Falha: ": "Error: ",
   // Atividade
@@ -420,8 +412,8 @@ const EN: Record<string, string> = {
   "ver quota no motor": "check engine quota",
   "Contagem local (o que a Saga gastou); a quota real está no painel do motor.":
     "Local count (what Saga used); the real quota is in the engine's dashboard.",
-  "🔎 falta a chave {p}: adiciona-a em Modelos → Avançado para pesquisa fiável (sem chave usa o DuckDuckGo, pouco fiável).":
-    "🔎 missing {p} key: add it in Models → Advanced for reliable search (without a key it uses DuckDuckGo, unreliable).",
+  "Falta a chave {p}: adiciona-a em Modelos → Avançado para pesquisa fiável (sem chave usa o DuckDuckGo, pouco fiável).":
+    "Missing {p} key: add it in Models → Advanced for reliable search (without a key it uses DuckDuckGo, unreliable).",
   "A carregar…": "Loading…",
   "Sem variantes.": "No variants.",
   "Não foi possível obter as variantes.": "Couldn't load variants.",
@@ -457,45 +449,42 @@ const EN: Record<string, string> = {
   "mais capaz (ou qwen3:32b)": "more capable (or qwen3:32b)",
   "multimodal: lê imagens, ferramentas e raciocínio": "multimodal: reads images, tools and reasoning",
   "MoE rápido e multimodal (ou qwen3:32b)": "fast MoE, multimodal (or qwen3:32b)",
-  "🛠 faz pesquisa web · 🧠 raciocínio (não pesquisa) · 👁 lê imagens. Para o 🔎 funcionar, escolhe um modelo 🛠.":
-    "🛠 does web search · 🧠 reasoning (no search) · 👁 reads images. For 🔎 to work, pick a 🛠 model.",
   "não consegui ler a RAM — sugestão equilibrada": "couldn't read the RAM — balanced suggestion",
   "RAM limitada — modelo pequeno e rápido": "limited RAM — small, fast model",
   "RAM média — 7-8B com ferramentas é confortável": "medium RAM — 7-8B with tools is comfortable",
   "boa RAM — 14B é viável": "good RAM — 14B is viable",
   "muita RAM — podes ir além (ex.: 32B)": "plenty of RAM — you can go bigger (e.g. 32B)",
-  "✓ Guardado": "✓ Saved",
-  "⚠ '{m}' é pequeno — respostas e pesquisa web podem falhar; experimenta llama3.1 ou qwen2.5.":
-    "⚠ '{m}' is small — answers and web search may fail; try llama3.1 or qwen2.5.",
+  "Guardado": "Saved",
+  "'{m}' é pequeno — respostas e pesquisa web podem falhar; experimenta llama3.1 ou qwen2.5.":
+    "'{m}' is small — answers and web search may fail; try llama3.1 or qwen2.5.",
   "Ollama ligado · {n} modelos": "Ollama connected · {n} models",
   "Ollama não acessível — instala em ollama.com e confirma o endpoint":
     "Ollama not reachable — install from ollama.com and check the endpoint",
   "Sem modelos. Puxa um abaixo.": "No models. Pull one below.",
   'Apagar o modelo "{name}"?': 'Delete the model "{name}"?',
   "Catálogo — clica para descarregar": "Catalog — click to download",
-  "🛠 ferramentas/web · 👁 visão · 🧠 raciocínio": "🛠 tools/web · 👁 vision · 🧠 reasoning",
   "Ferramentas / pesquisa web": "Tools / web search",
   "Visão (imagens)": "Vision (images)",
-  "⚠ '{m}' não chama ferramentas — a pesquisa web não funciona; usa um modelo com ferramentas (ex.: qwen3, llama3.1).":
-    "⚠ '{m}' can't call tools — web search won't work; use a tool-capable model (e.g. qwen3, llama3.1).",
-  "🔎 não vai pesquisar: ativa a Pesquisa web (Modelos → Avançado) para o modelo local pesquisar.":
-    "🔎 won't search: enable Web search (Models → Advanced) so the local model can search.",
-  "🔎 vai usar o Claude. Para pesquisar com o modelo local, ativa a Pesquisa web em Modelos → Avançado.":
-    "🔎 will use Claude. To search with the local model, enable Web search in Models → Advanced.",
-  "🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1.":
-    "🔎 may not search: '{m}' can't call tools — use qwen3/llama3.1.",
-  "🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3 ou llama3.1.":
-    "🔎 may not search: '{m}' can't call tools — use qwen3 or llama3.1.",
-  "🔎 o Gemma chama ferramentas de forma inconsistente — pode responder sem pesquisar. Para pesquisa fiável, usa qwen3 ou llama3.1.":
-    "🔎 Gemma calls tools inconsistently — it may answer without searching. For reliable search, use qwen3 or llama3.1.",
-  "🔎 sem fontes: o modelo respondeu sem pesquisar (modelos médios nem sempre chamam ferramentas). Para pesquisa fiável, usa qwen3/llama3.1 ou adiciona uma chave de motor.":
-    "🔎 no sources: the model answered without searching (mid-size models don't always call tools). For reliable search, use qwen3/llama3.1 or add an engine key.",
-  "🔎 não pesquisa com o LM Studio — usa o Ollama ou ativa o Claude.":
-    "🔎 can't search with LM Studio — use Ollama or enable Claude.",
-  "🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1/gemma4.":
-    "🔎 may not search: '{m}' can't call tools — use qwen3/llama3.1/gemma4.",
-  "🔎 sem chave: configura um motor de pesquisa (Tavily/Brave/…) em Modelos → Avançado para resultados fiáveis.":
-    "🔎 no key: set a search engine (Tavily/Brave/…) in Models → Advanced for reliable results.",
+  "'{m}' não chama ferramentas — a pesquisa web não funciona; usa um modelo com ferramentas (ex.: qwen3, llama3.1).":
+    "'{m}' can't call tools — web search won't work; use a tool-capable model (e.g. qwen3, llama3.1).",
+  "Não vai pesquisar: ativa a Pesquisa web (Modelos → Avançado) para o modelo local pesquisar.":
+    "Won't search: enable Web search (Models → Advanced) so the local model can search.",
+  "Vai usar o Claude. Para pesquisar com o modelo local, ativa a Pesquisa web em Modelos → Avançado.":
+    "Will use Claude. To search with the local model, enable Web search in Models → Advanced.",
+  "Pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1.":
+    "May not search: '{m}' can't call tools — use qwen3/llama3.1.",
+  "Pode não pesquisar: '{m}' não chama ferramentas — usa qwen3 ou llama3.1.":
+    "May not search: '{m}' can't call tools — use qwen3 or llama3.1.",
+  "O Gemma chama ferramentas de forma inconsistente — pode responder sem pesquisar. Para pesquisa fiável, usa qwen3 ou llama3.1.":
+    "Gemma calls tools inconsistently — it may answer without searching. For reliable search, use qwen3 or llama3.1.",
+  "Sem fontes: o modelo respondeu sem pesquisar (modelos médios nem sempre chamam ferramentas). Para pesquisa fiável, usa qwen3/llama3.1 ou adiciona uma chave de motor.":
+    "No sources: the model answered without searching (mid-size models don't always call tools). For reliable search, use qwen3/llama3.1 or add an engine key.",
+  "Sem pesquisa com o LM Studio — usa o Ollama ou ativa o Claude.":
+    "No search with LM Studio — use Ollama or enable Claude.",
+  "Pode não pesquisar: '{m}' não chama ferramentas — usa qwen3/llama3.1/gemma4.":
+    "May not search: '{m}' can't call tools — use qwen3/llama3.1/gemma4.",
+  "Sem chave: configura um motor de pesquisa (Tavily/Brave/…) em Modelos → Avançado para resultados fiáveis.":
+    "No key: set a search engine (Tavily/Brave/…) in Models → Advanced for reliable results.",
   "Geral + ferramentas/web": "General + tools/web",
   "Pequenos / rápidos": "Small / fast",
   "Raciocínio": "Reasoning",
@@ -503,13 +492,13 @@ const EN: Record<string, string> = {
   "ferramentas/web": "tools/web",
   "Indica um modelo (ex.: llama3.2)": "Enter a model (e.g. llama3.2)",
   "A iniciar descarga…": "Starting download…",
-  "✓ Descarregado": "✓ Downloaded",
+  "Descarregado": "Downloaded",
   "Falha a listar modelos do Ollama: ": "Failed to list Ollama models: ",
   // Download toast
   "A descarregar": "Downloading",
   "descarregado": "downloaded",
   // Wizard
-  "Bem-vindo ao Saga ⛵": "Welcome to Saga ⛵",
+  "Bem-vindo ao Saga": "Welcome to Saga",
   "O Saga corre um modelo local para tarefas leves e escala para o Claude quando compensa. Vamos configurar o que precisas — podes mudar tudo depois nas Definições.":
     "Saga runs a local model for light tasks and escalates to Claude when it's worth it. Let's set up what you need — you can change everything later in Settings.",
   "Modelo local (Ollama)": "Local model (Ollama)",
@@ -615,22 +604,18 @@ const EN: Record<string, string> = {
   "Percebi": "Got it",
   "Aqui ficam os Modelos, Workspace e Automações.":
     "Models, Workspace and Automations live here.",
-  "Escreve a tua pergunta aqui. Boa viagem! ⛵":
-    "Type your question here. Bon voyage! ⛵",
+  "Escreve a tua pergunta aqui. Boa viagem!":
+    "Type your question here. Bon voyage!",
   "Resume este artigo: <cola um link>": "Summarize this article: <paste a link>",
   "Escreve um e-mail breve a recusar uma reunião":
     "Write a short email declining a meeting",
   "Explica o que faz este código": "Explain what this code does",
-  "✓ Ollama ligado — {n} modelo(s)": "✓ Ollama connected — {n} model(s)",
+  "Ollama ligado — {n} modelo(s)": "Ollama connected — {n} model(s)",
   " · modelo configurado não encontrado": " · configured model not found",
-  "✗ Ollama não detetado neste endpoint": "✗ Ollama not detected at this endpoint",
+  "Ollama não detetado neste endpoint": "Ollama not detected at this endpoint",
   // Mensagens / ações dinâmicas
-  "🧠 raciocínio": "🧠 reasoning",
-  "✎ Editar": "✎ Edit",
   "Editar e reenviar": "Edit and resend",
-  "↻ Regenerar": "↻ Regenerate",
   "Regenerar com a mesma rota": "Regenerate with the same route",
-  "⤴ Claude": "⤴ Claude",
   "Escalar para o Claude": "Escalate to Claude",
   "Modelo ▾": "Model ▾",
   "Tentar local": "Try local",
@@ -674,9 +659,9 @@ const EN: Record<string, string> = {
   "Rota: Auto": "Route: Auto",
   "Rota: Local": "Route: Local",
   "Rota: Claude": "Route: Claude",
-  "Toggle: 🧠 Think": "Toggle: 🧠 Think",
-  "Toggle: 🔎 Pesquisar": "Toggle: 🔎 Search",
-  "Toggle: 🧩 Subagentes": "Toggle: 🧩 Subagents",
+  "Toggle: Think": "Toggle: Think",
+  "Toggle: Pesquisar": "Toggle: Search",
+  "Toggle: Subagentes": "Toggle: Subagents",
   "Abrir Modelos": "Open Models",
   "Abrir Definições": "Open Settings",
   "Correr workflow: {w}": "Run workflow: {w}",

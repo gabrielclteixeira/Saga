@@ -106,7 +106,7 @@ async fn run_schedule_inner(app: &AppHandle, sched: &Schedule) -> (String, Strin
             &conn,
             id,
             "user",
-            &format!("▶ {} {}", sched.name, sched.arguments),
+            &format!("{} {}", sched.name, sched.arguments),
             "[]",
             "",
             "",

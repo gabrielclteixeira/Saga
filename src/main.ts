@@ -121,6 +121,8 @@ const ICON_PATHS: Record<string, string> = {
   export: `<path d="M12 15V3"/><polyline points="7 8 12 3 17 8"/><path d="M5 21h14a2 2 0 0 0 2-2v-4"/><path d="M3 15v4a2 2 0 0 0 2 2"/>`,
   book: `<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 17H6a2 2 0 0 0-2 2"/>`,
   chevron: `<polyline points="9 6 15 12 9 18"/>`,
+  check: `<polyline points="20 6 9 17 4 12"/>`,
+  circle: `<circle cx="12" cy="12" r="8"/>`,
   info: `<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>`,
   list: `<line x1="10" y1="6" x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="10" y1="18" x2="20" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/>`,
   x: `<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>`,
@@ -531,8 +533,8 @@ app.innerHTML = `
 
         <fieldset>
           <legend>${t("Pesquisa web (modelo local)")}</legend>
-          <label class="check"><input id="hub-local-web" type="checkbox" /> ${t("Dar pesquisa web ao modelo local (🔎 corre no Ollama)")}</label>
-          <p class="wiz-hint">${t("Precisa de um modelo Ollama com suporte a ferramentas (ex.: llama3.1, qwen2.5). Com isto desligado, o 🔎 força o Claude.")}</p>
+          <label class="check"><input id="hub-local-web" type="checkbox" /> ${t("Dar pesquisa web ao modelo local (corre no Ollama)")}</label>
+          <p class="wiz-hint">${t("Precisa de um modelo Ollama com suporte a ferramentas (ex.: llama3.1, qwen2.5). Com isto desligado, a pesquisa força o Claude.")}</p>
           <label><span class="label-with-help">${t("Motor")} <span class="help-ic" title="${t("O DuckDuckGo é gratuito e sem chave, mas limita pesquisas em rajada — pode ficar lento ou bloquear temporariamente (a app espaça os pedidos para minimizar). Para pesquisa rápida e fiável, escolhe um motor com chave: Tavily e Brave têm tier gratuito.")}">${icon("info")}</span></span>
             <select id="hub-web-provider">
               <option value="duckduckgo">${t("DuckDuckGo (sem chave — recomendado)")}</option>
@@ -612,7 +614,7 @@ app.innerHTML = `
       <section class="wiz-step" data-step="0">
         <div class="wiz-hero">
           <img class="wiz-logo" src="/caravel-panel.svg" alt="Saga" />
-          <h2>${t("Bem-vindo ao Saga ⛵")}</h2>
+          <h2>${t("Bem-vindo ao Saga")}</h2>
           <p class="wiz-intro">${t("Um assistente que corre no teu próprio computador. Sem contas, sem subscrição obrigatória — as tuas conversas ficam contigo.")}</p>
         </div>
         <ul class="wiz-points">
@@ -1245,15 +1247,15 @@ function splitPlanSections(body: string, n: number): string[] {
 function planStatusMark(status: string): string {
   switch (status) {
     case "done":
-      return "✓";
+      return icon("check");
     case "searching":
       return icon("search");
     case "executing":
-      return "▶";
+      return icon("play");
     case "error":
-      return "✗";
+      return icon("x");
     default:
-      return "○";
+      return icon("circle");
   }
 }
 
@@ -2353,7 +2355,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     parseSources(assistant.content).sources.length === 0
   ) {
     showHint(
-      t("🔎 sem fontes: o modelo respondeu sem pesquisar (modelos médios nem sempre chamam ferramentas). Para pesquisa fiável, usa qwen3/llama3.1 ou adiciona uma chave de motor.")
+      t("Sem fontes: o modelo respondeu sem pesquisar (modelos médios nem sempre chamam ferramentas). Para pesquisa fiável, usa qwen3/llama3.1 ou adiciona uma chave de motor.")
     );
   }
 }
@@ -2418,7 +2420,7 @@ function slashCommands(): SlashCmd[] {
     { cmd: "skill", label: t("Criar skill com IA — /skill <descrição>"), kind: "create" },
     { cmd: "playbook", label: t("Criar playbook com IA — /playbook <descrição>"), kind: "create" },
     { cmd: "workflow", label: t("Criar workflow com IA — /workflow <descrição>"), kind: "create" },
-    { cmd: t("pesquisar"), label: t("Toggle: 🔎 Pesquisar"), kind: "setting", run: () => toggleComposerFlag("research") },
+    { cmd: t("pesquisar"), label: t("Toggle: Pesquisar"), kind: "setting", run: () => toggleComposerFlag("research") },
     { cmd: t("modelos"), label: t("Abrir Modelos"), kind: "setting", run: () => openModels() },
     { cmd: t("definicoes"), label: t("Abrir Definições"), kind: "setting", run: openSettingsDialog },
   ];
@@ -2427,8 +2429,8 @@ function slashCommands(): SlashCmd[] {
     cmds.push(
       { cmd: "local", label: t("Rota: Local"), kind: "setting", run: () => setRouteMode("local") },
       { cmd: "claude", label: t("Rota: Claude"), kind: "setting", run: () => setRouteMode("claude") },
-      { cmd: "think", label: t("Toggle: 🧠 Think"), kind: "setting", run: () => toggleComposerFlag("thinking") },
-      { cmd: t("subagentes"), label: t("Toggle: 🧩 Subagentes"), kind: "setting", run: () => toggleComposerFlag("subagents") }
+      { cmd: "think", label: t("Toggle: Think"), kind: "setting", run: () => toggleComposerFlag("thinking") },
+      { cmd: t("subagentes"), label: t("Toggle: Subagentes"), kind: "setting", run: () => toggleComposerFlag("subagents") }
     );
   }
   for (const w of slashWorkflows) cmds.push({ cmd: w, label: t("Correr workflow: {w}", { w }), kind: "workflow" });
@@ -2511,9 +2513,9 @@ async function createDocFromChat(kind: "skill" | "playbook" | "workflow", desc: 
     const name = f.name && /^[\w-]+$/.test(f.name) ? f.name : slugify(desc);
     await api.saveWorkspaceDoc(kind, name, md);
     refreshSlashWorkflows();
-    note.content = `✓ ${kind} **${name}** criada no Workspace. Abre o Workspace (rail) para rever/editar.`;
+    note.content = `${kind} **${name}** criada no Workspace. Abre o Workspace (rail) para rever/editar.`;
   } catch (e) {
-    note.content = `✗ Falha a criar ${kind}: ${e}`;
+    note.content = `Falha a criar ${kind}: ${e}`;
     note.error = true;
   }
   renderMessages();
@@ -2858,17 +2860,17 @@ function maybeWarnSearch() {
   if (state.routeMode === "claude" && cloudEnabled()) return;
   // O 🔎 local só funciona no Ollama (o LM Studio não corre o loop de ferramentas).
   if (s.local_provider !== "ollama") {
-    showHint(t("🔎 não pesquisa com o LM Studio — usa o Ollama ou ativa o Claude."));
+    showHint(t("Sem pesquisa com o LM Studio — usa o Ollama ou ativa o Claude."));
     return;
   }
   if (!modelHasTools(s.ollama_model)) {
-    showHint(t("🔎 pode não pesquisar: '{m}' não chama ferramentas — usa qwen3 ou llama3.1.", { m: s.ollama_model }));
+    showHint(t("Pode não pesquisar: '{m}' não chama ferramentas — usa qwen3 ou llama3.1.", { m: s.ollama_model }));
     return;
   }
   // Gemma tem "tools" mas chama-as de forma inconsistente no Ollama (costuma responder de
   // memória). Avisa proativamente — os mais fiáveis a pesquisar são o qwen3 e o llama3.1.
   if (/gemma/.test(s.ollama_model.toLowerCase())) {
-    showHint(t("🔎 o Gemma chama ferramentas de forma inconsistente — pode responder sem pesquisar. Para pesquisa fiável, usa qwen3 ou llama3.1."));
+    showHint(t("O Gemma chama ferramentas de forma inconsistente — pode responder sem pesquisar. Para pesquisa fiável, usa qwen3 ou llama3.1."));
     return;
   }
   // DuckDuckGo é keyless e funciona (com limites de ritmo) → sem aviso.
@@ -2877,7 +2879,7 @@ function maybeWarnSearch() {
   const hasKey = !!s.web_search_keys?.[p];
   if (p !== "duckduckgo" && !hasKey) {
     const label = WEB_PROVIDER_META[p]?.label ?? p;
-    showHint(t("🔎 sem chave {p} → usa o DuckDuckGo (keyless, funciona com limites). Adiciona a chave {p} para mais fiabilidade/volume.", { p: label }));
+    showHint(t("Sem chave {p} — usa o DuckDuckGo (keyless, funciona com limites). Adiciona a chave {p} para mais fiabilidade/volume.", { p: label }));
   }
 }
 
@@ -3230,18 +3232,18 @@ function renderDiagnostics(d: Diagnostics) {
   if (d.ollama_ok) {
     o.className = "wiz-status ok";
     o.textContent =
-      t("✓ Ollama ligado — {n} modelo(s)", { n: d.ollama_models.length }) +
+      t("Ollama ligado — {n} modelo(s)", { n: d.ollama_models.length }) +
       (d.ollama_model_present ? "" : t(" · modelo configurado não encontrado"));
     els.modelsList.innerHTML = d.ollama_models
       .map((m) => `<option value="${escapeHtml(m)}"></option>`)
       .join("");
   } else {
     o.className = "wiz-status bad";
-    o.textContent = t("✗ Ollama não detetado neste endpoint");
+    o.textContent = t("Ollama não detetado neste endpoint");
   }
   const c = document.querySelector("#wiz-claude-status")!;
   c.className = "wiz-status " + (d.claude_ready ? "ok" : "bad");
-  c.textContent = (d.claude_ready ? "✓ " : "✗ ") + d.claude_detail;
+  c.textContent = d.claude_detail;
 }
 
 const WIZ_STEPS = 3;
@@ -3355,7 +3357,7 @@ function maybeMiniTour() {
     });
   void (async () => {
     await tip("#rail", t("Aqui ficam os Modelos, Workspace e Automações."), "right");
-    await tip("#composer", t("Escreve a tua pergunta aqui. Boa viagem! ⛵"), "top");
+    await tip("#composer", t("Escreve a tua pergunta aqui. Boa viagem!"), "top");
   })();
 }
 
@@ -3905,9 +3907,9 @@ async function genWsDoc() {
     if (f.name && !nameEl.value.trim()) nameEl.value = f.name;
     fillEditorFields(f);
     applyDocKindFields();
-    status.textContent = t("✓ Gerado — revê e guarda");
+    status.textContent = t("Gerado — revê e guarda");
   } catch (e) {
-    status.textContent = "✗ " + e;
+    status.textContent = "" +e;
   }
 }
 
@@ -4093,12 +4095,12 @@ async function testMcp() {
   status.textContent = t("A ligar…");
   try {
     const tools = await api.testMcpServer(cfg);
-    status.textContent = t("✓ {n} ferramentas: {list}", {
+    status.textContent = t("{n} ferramentas: {list}", {
       n: tools.length,
       list: tools.join(", ") || t("(nenhuma)"),
     });
   } catch (e) {
-    status.textContent = "✗ " + e;
+    status.textContent = "" +e;
   }
 }
 
@@ -4627,7 +4629,7 @@ async function hubSave() {
       browser_node_path: hubIn("#hub-browser-node").value,
       browser_user_data_dir: hubIn("#hub-browser-data").value,
     });
-    document.querySelector("#hub-status")!.textContent = t("✓ Guardado");
+    document.querySelector("#hub-status")!.textContent = t("Guardado");
     void renderHubStatus();
   } catch (e) {
     alert(t("Falha a guardar: ") + e);
@@ -4644,13 +4646,13 @@ async function renderHubStatus() {
     // Pesquisa web ligada mas o modelo não chama ferramentas → nunca vai pesquisar.
     warn =
       " " +
-      t("⚠ '{m}' não chama ferramentas — a pesquisa web não funciona; usa um modelo com ferramentas (ex.: qwen3, llama3.1).", {
+      t("'{m}' não chama ferramentas — a pesquisa web não funciona; usa um modelo com ferramentas (ex.: qwen3, llama3.1).", {
         m: active,
       });
   } else if (isOllama && isWeakModel(active)) {
     warn =
       " " +
-      t("⚠ '{m}' é pequeno — respostas e pesquisa web podem falhar; experimenta llama3.1 ou qwen2.5.", {
+      t("'{m}' é pequeno — respostas e pesquisa web podem falhar; experimenta llama3.1 ou qwen2.5.", {
         m: active,
       });
   }
@@ -4919,7 +4921,7 @@ async function renderLmInstalled() {
     .forEach((b) => b.addEventListener("click", () => setActiveLmModel(b.dataset.use!)));
 }
 
-/** Badges de capacidade (🛠 tools · 👁 visão · 🧠 raciocínio) com tooltip. */
+/** Badges de capacidade (tools · visão · raciocínio) com tooltip. */
 function capBadges(name: string): string {
   const c = modelCapabilities(name);
   const parts: string[] = [];
@@ -5059,19 +5061,19 @@ async function pullModelUi(name: string, sizeStr?: string) {
         label.textContent = `${name}: ${ev.status}${ev.percent >= 0 ? ` — ${ev.percent.toFixed(0)}%` : ""}`;
       } else if (ev.kind === "Done") {
         bar.style.width = "100%";
-        label.textContent = `✓ ${name} ${t("descarregado")}`;
+        label.textContent = `${name} ${t("descarregado")}`;
         void renderInstalled();
         void renderHubStatus();
         // Acabou de instalar: se for o modelo ativo, aquece-o já (1.ª conversa sem cold-start).
         if (name === state.settings?.ollama_model) warmLocalModel(name, true);
         hideSoon(2500);
       } else {
-        label.textContent = "✗ " + ev.message;
+        label.textContent = "" +ev.message;
         hideSoon(5000);
       }
     });
   } catch (e) {
-    label.textContent = "✗ " + e;
+    label.textContent = "" +e;
     hideSoon(5000);
   }
 }
