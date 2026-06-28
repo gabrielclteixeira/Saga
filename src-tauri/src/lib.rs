@@ -8,6 +8,7 @@ mod mcp;
 mod memory;
 mod ollama_registry;
 mod orchestrator;
+mod planner;
 mod providers;
 mod router;
 mod scheduler;
@@ -159,6 +160,7 @@ pub fn run() {
             commands::compact_conversation,
             commands::get_action_log,
             commands::approve_action,
+            commands::respond_plan,
             commands::ensure_workspace_defaults,
             commands::get_workspace_index,
             commands::read_workspace_doc,

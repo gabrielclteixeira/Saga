@@ -55,6 +55,8 @@ pub struct AppState {
     /// Aprovações de ações pendentes (id → canal de resposta), para o modo "ask".
     pub pending: tokio::sync::Mutex<HashMap<u64, oneshot::Sender<bool>>>,
     pub approval_seq: AtomicU64,
+    /// Planos pendentes de aprovação (id → canal); `None` = rejeitado, `Some(steps)` = aprovado (editado).
+    pub pending_plans: tokio::sync::Mutex<HashMap<u64, oneshot::Sender<Option<Vec<String>>>>>,
 }
 
 impl AppState {
@@ -68,6 +70,7 @@ impl AppState {
             mcp: tokio::sync::Mutex::new(McpManager::default()),
             pending: tokio::sync::Mutex::new(HashMap::new()),
             approval_seq: AtomicU64::new(0),
+            pending_plans: tokio::sync::Mutex::new(HashMap::new()),
         }
     }
 }
@@ -117,6 +120,16 @@ pub enum StreamEvent {
         id: u64,
         tool: String,
         preview: String,
+    },
+    /// Plano rascunhado, à espera de aprovação/edição do utilizador (Plan mode).
+    Plan {
+        id: u64,
+        steps: Vec<String>,
+    },
+    /// Estado de execução de um passo do plano: "executing" | "done" | "error".
+    PlanStep {
+        index: u32,
+        status: String,
     },
     Done {
         input_tokens: u64,
@@ -565,6 +578,21 @@ pub async fn approve_action(
 ) -> Result<(), String> {
     if let Some(tx) = state.pending.lock().await.remove(&id) {
         let _ = tx.send(approved);
+    }
+    Ok(())
+}
+
+/// Resposta à aprovação de um plano (Plan mode): `approved=false` → rejeitado;
+/// caso contrário entrega os passos (possivelmente editados pelo utilizador).
+#[tauri::command]
+pub async fn respond_plan(
+    state: State<'_, AppState>,
+    id: u64,
+    approved: bool,
+    steps: Vec<String>,
+) -> Result<(), String> {
+    if let Some(tx) = state.pending_plans.lock().await.remove(&id) {
+        let _ = tx.send(if approved { Some(steps) } else { None });
     }
     Ok(())
 }
@@ -1036,6 +1064,7 @@ pub async fn send_message_stream(
     thinking: bool,
     research: bool,
     subagents: bool,
+    plan: bool,
 ) -> Result<(), String> {
     let settings = state.settings.lock().unwrap().clone();
 
@@ -1139,7 +1168,73 @@ pub async fn send_message_stream(
     };
 
     let gen_start = std::time::Instant::now();
-    let response = match prepared.route {
+    let response = if plan {
+        // Plan mode: planeia → aprova/edita → executa passo a passo (planner orquestra; 🔎 fundamenta).
+        let use_api = prepared.route == router::Route::Claude;
+        let plan_gopts = providers::ollama::GenOpts {
+            num_ctx: effective_num_ctx(settings.ollama_num_ctx, &prepared.full_messages),
+            temperature: settings.ollama_temp_opt(),
+            num_predict: None,
+        };
+        let tx_step = channel.clone();
+        let on_step = move |i: usize, status: &str| {
+            let _ = tx_step.send(StreamEvent::PlanStep {
+                index: i as u32,
+                status: status.to_string(),
+            });
+        };
+        let searches = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let sc = searches.clone();
+        let tx_tool = channel.clone();
+        let on_tool = move |tool: &str, detail: &str| {
+            if tool == "web_search" {
+                sc.fetch_add(1, Ordering::Relaxed);
+            }
+            let _ = tx_tool.send(StreamEvent::ToolStep {
+                tool: tool.to_string(),
+                detail: detail.to_string(),
+            });
+        };
+        let tx_plan = channel.clone();
+        let st = state.inner();
+        // Aprovação do plano: emite o evento Plan e bloqueia até a UI responder (com os passos editados).
+        let approve = move |steps: Vec<String>| async move {
+            let id = st.approval_seq.fetch_add(1, Ordering::Relaxed) + 1;
+            let (txo, rxo) = oneshot::channel();
+            st.pending_plans.lock().await.insert(id, txo);
+            let _ = tx_plan.send(StreamEvent::Plan { id, steps });
+            rxo.await.unwrap_or(None)
+        };
+        let r = crate::planner::run(
+            &settings,
+            use_api,
+            &prepared.model,
+            &prepared.full_messages,
+            plan_gopts,
+            research,
+            approve,
+            on_step,
+            on_delta,
+            on_tool,
+        )
+        .await;
+        // Contabiliza as pesquisas dos passos fundamentados (medidor de uso mensal).
+        let n = searches.load(Ordering::Relaxed);
+        if n > 0 {
+            let eff = if settings.web_search_provider != "duckduckgo"
+                && settings.active_web_key().trim().is_empty()
+            {
+                "duckduckgo"
+            } else {
+                settings.web_search_provider.as_str()
+            };
+            let ym = chrono::Local::now().format("%Y-%m").to_string();
+            let conn = state.db.lock().unwrap();
+            let _ = store::add_search_usage(&conn, &ym, eff, n);
+        }
+        r
+    } else {
+    match prepared.route {
         router::Route::Local if local_openai => {
             providers::openai_compat::chat_stream(
                 &settings.openai_local_endpoint,
@@ -1421,6 +1516,7 @@ pub async fn send_message_stream(
                 r
             }
         }
+    }
     }
     .map_err(|e| e.to_string())?;
     let gen_ms = gen_start.elapsed().as_millis() as i64;

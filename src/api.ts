@@ -218,6 +218,8 @@ export type StreamEvent =
   | { kind: "Thinking"; text: string }
   | { kind: "ToolStep"; tool: string; detail: string }
   | { kind: "ApprovalRequest"; id: number; tool: string; preview: string }
+  | { kind: "Plan"; id: number; steps: string[] }
+  | { kind: "PlanStep"; index: number; status: string }
   | {
       kind: "Done";
       input_tokens: number;
@@ -281,6 +283,7 @@ export const api = {
       thinking?: boolean;
       research?: boolean;
       subagents?: boolean;
+      plan?: boolean;
     }
   ): Promise<void> => {
     const channel = new Channel<StreamEvent>();
@@ -295,8 +298,11 @@ export const api = {
       thinking: opts?.thinking ?? false,
       research: opts?.research ?? false,
       subagents: opts?.subagents ?? false,
+      plan: opts?.plan ?? false,
     });
   },
+  respondPlan: (id: number, approved: boolean, steps: string[]) =>
+    invoke<void>("respond_plan", { id, approved, steps }),
   listConversations: () => invoke<ConversationMeta[]>("list_conversations"),
   getConversation: (id: number) => invoke<StoredMessage[]>("get_conversation", { id }),
   newConversation: (title?: string) =>

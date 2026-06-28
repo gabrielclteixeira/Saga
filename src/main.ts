@@ -66,6 +66,7 @@ interface Item {
   steps?: string[];
   thinking?: string;
   report?: boolean;
+  plan?: { steps: { title: string; status: "pending" | "executing" | "done" | "error" }[] };
 }
 
 const state: {
@@ -79,6 +80,7 @@ const state: {
   thinking: boolean;
   research: boolean;
   subagents: boolean;
+  plan: boolean;
   compactedSummary: string;
   compactedUpto: number; // id da última mensagem compactada (0 = sem compactação)
   activeAgent: { name: string; system: string } | null;
@@ -93,6 +95,7 @@ const state: {
   thinking: false,
   research: false,
   subagents: false,
+  plan: false,
   compactedSummary: "",
   compactedUpto: 0,
   activeAgent: null,
@@ -119,6 +122,7 @@ const ICON_PATHS: Record<string, string> = {
   book: `<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 17H6a2 2 0 0 0-2 2"/>`,
   chevron: `<polyline points="9 6 15 12 9 18"/>`,
   info: `<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>`,
+  list: `<line x1="10" y1="6" x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="10" y1="18" x2="20" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/>`,
   x: `<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>`,
 };
 function icon(name: string): string {
@@ -184,6 +188,7 @@ app.innerHTML = `
         </span>
         <span class="composer-toggles">
           <button type="button" id="btn-agent" class="chip-toggle" title="${t("Escolher um agente (persona)")}">${icon("sparkles")}<span id="btn-agent-label">${t("Agente")}</span></button>
+          <button type="button" id="btn-plan" class="chip-toggle" title="${t("Plan mode: rascunha um plano de passos, aprovas/editas, e executa passo a passo")}">${icon("list")}<span>${t("Plano")}</span></button>
           <button type="button" id="btn-subagents" class="chip-toggle" title="${t("Subagentes (API: orquestra em paralelo · CLI: ferramenta Task)")}">${icon("nodes")}<span>${t("Subagentes")}</span></button>
           <button type="button" id="btn-research" class="chip-toggle" title="${t("Pesquisa web (API: web_search · CLI: WebSearch)")}">${icon("search")}<span>${t("Pesquisar")}</span></button>
           <button type="button" id="btn-think" class="chip-toggle" title="${t("Extended thinking (raciocínio) — só Claude API")}">${icon("brain")}<span>${t("Think")}</span></button>
@@ -964,6 +969,21 @@ function renderMessagesInner() {
       row.appendChild(steps);
     }
 
+    // Checklist do plano (Plan mode): passos com estado pendente/▶/✓/✗.
+    if (item.plan && item.plan.steps.length) {
+      const box = document.createElement("div");
+      box.className = "plan-steps";
+      item.plan.steps.forEach((s, i) => {
+        const mark =
+          s.status === "done" ? "✓" : s.status === "executing" ? "▶" : s.status === "error" ? "✗" : "○";
+        const line = document.createElement("div");
+        line.className = `plan-step ${s.status}`;
+        line.textContent = `${mark} ${i + 1}. ${s.title}`;
+        box.appendChild(line);
+      });
+      row.appendChild(box);
+    }
+
     if (item.thinking) {
       const live = index === state.items.length - 1 && state.busy;
       const det = document.createElement("details");
@@ -1109,6 +1129,8 @@ function formatToolStep(tool: string, detail: string): string {
       return `${t("a abrir")}: ${detail}`;
     case "create_pdf":
       return t("a criar PDF");
+    case "plan":
+      return t("a planear…");
     case "research":
       // Fases da pesquisa fundamentada (deep_research): chaves estáveis → traduzidas aqui.
       return detail === "decompose"
@@ -1899,6 +1921,7 @@ type SendOpts = {
   thinking?: boolean;
   research?: boolean;
   subagents?: boolean;
+  plan?: boolean;
 };
 
 /** Item já compactado (resumido e fora do contexto enviado ao modelo)? */
@@ -1961,7 +1984,7 @@ function cloudEnabled(): boolean {
 
 /** Empurra uma bolha de assistente e preenche-a com o streaming. */
 /** Estado de espera (antes do 1.º token): o quê + desde quando, para dar feedback vivo. */
-type WaitKind = "research" | "subagents" | "doc" | "think" | "normal";
+type WaitKind = "plan" | "research" | "subagents" | "doc" | "think" | "normal";
 let waitKind: WaitKind = "normal";
 let waitStart = 0;
 let waitTicker: number | undefined;
@@ -1969,6 +1992,8 @@ let waitTicker: number | undefined;
 /** Mensagem de espera; para documentos avança por fases conforme o tempo passa. */
 function waitMessage(kind: WaitKind, ms: number): string {
   switch (kind) {
+    case "plan":
+      return t("A planear…");
     case "research":
       return t("A pesquisar na net…");
     case "subagents":
@@ -2049,6 +2074,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     thinking: opts.thinking ?? state.thinking,
     research: opts.research ?? state.research,
     subagents: opts.subagents ?? state.subagents,
+    plan: opts.plan ?? state.plan,
   };
   // A pesquisa (🔎) corre localmente no Ollama (loop de ferramentas web_search/web_fetch);
   // subagentes são só Claude. Só escala para o Claude se ele estiver mesmo utilizável e o
@@ -2066,15 +2092,17 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   // O documento (prefill de um prompt grande) é a maior causa de espera antes do 1.º token.
   const lastUser = [...payload].reverse().find((m) => m.role === "user");
   const hasDoc = !!lastUser?.attachments?.some((a) => a.kind === "document");
-  waitKind = sendOpts.research
-    ? "research"
-    : sendOpts.subagents
-      ? "subagents"
-      : hasDoc
-        ? "doc"
-        : sendOpts.thinking || localReasons
-          ? "think"
-          : "normal";
+  waitKind = sendOpts.plan
+    ? "plan"
+    : sendOpts.research
+      ? "research"
+      : sendOpts.subagents
+        ? "subagents"
+        : hasDoc
+          ? "doc"
+          : sendOpts.thinking || localReasons
+            ? "think"
+            : "normal";
   waitStart = Date.now();
   const assistant: Item = { role: "assistant", content: "", report: sendOpts.research };
   state.items.push(assistant);
@@ -2136,6 +2164,16 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
           paintBubble();
         } else if (evt.kind === "ApprovalRequest") {
           showApproval(evt.id, evt.tool, evt.preview);
+        } else if (evt.kind === "Plan") {
+          stopWaitTicker(); // agora espera-se o utilizador (não o modelo)
+          showPlanCard(evt.id, evt.steps, assistant);
+        } else if (evt.kind === "PlanStep") {
+          if (assistant.plan?.steps[evt.index]) {
+            assistant.plan.steps[evt.index].status =
+              evt.status as "pending" | "executing" | "done" | "error";
+            renderMessages();
+            paintBubble();
+          }
         } else if (evt.kind === "Done") {
           assistant.meta = {
             text: assistant.content,
@@ -2576,6 +2614,8 @@ function applyComposerToggles() {
   document.querySelector("#btn-research")?.toggleAttribute("hidden", !canSearch);
   document.querySelector("#btn-subagents")?.toggleAttribute("hidden", !cloud);
   document.querySelector("#btn-think")?.toggleAttribute("hidden", !cloud);
+  // Plan mode corre no modelo local (Ollama) ou no Claude.
+  document.querySelector("#btn-plan")?.toggleAttribute("hidden", !(s?.local_provider === "ollama" || cloud));
   // O picker de agente está sempre disponível (funciona em local puro), por isso a barra e o
   // contentor de toggles ficam sempre visíveis.
   els.routeModeBar.querySelector(".composer-toggles")!.removeAttribute("hidden");
@@ -3270,6 +3310,37 @@ function showApproval(id: number, tool: string, preview: string) {
   const done = (ok: boolean) => {
     api.approveAction(id, ok).catch(() => {});
     card.remove();
+  };
+  card.querySelector('[data-ok="1"]')!.addEventListener("click", () => done(true));
+  card.querySelector('[data-ok="0"]')!.addEventListener("click", () => done(false));
+  els.messages.appendChild(card);
+  els.messages.scrollTop = els.messages.scrollHeight;
+}
+
+/** Cartão de plano editável (Plan mode): textarea com 1 passo por linha + Aprovar/Rejeitar. */
+function showPlanCard(id: number, steps: string[], assistant: Item) {
+  const card = document.createElement("div");
+  card.className = "approval-card plan-card";
+  card.innerHTML = `
+    <div class="approval-head">${t("Plano — revê, edita e aprova")}</div>
+    <div class="plan-hint">${t("Um passo por linha. Edita/remove à vontade antes de executar.")}</div>
+    <textarea class="plan-edit" rows="${Math.min(12, Math.max(3, steps.length))}"></textarea>
+    <div class="approval-bar">
+      <button type="button" class="ghost" data-ok="0">${t("Rejeitar")}</button>
+      <button type="button" class="primary" data-ok="1">${t("Aprovar e executar")}</button>
+    </div>`;
+  const ta = card.querySelector<HTMLTextAreaElement>(".plan-edit")!;
+  ta.value = steps.join("\n");
+  const done = (ok: boolean) => {
+    const edited = ta.value.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (ok && edited.length) {
+      // Guarda os passos na mensagem → render da checklist com estado durante a execução.
+      assistant.plan = { steps: edited.map((title) => ({ title, status: "pending" })) };
+    }
+    api.respondPlan(id, ok, edited).catch(() => {});
+    card.remove();
+    renderMessages();
+    scrollChatToBottom();
   };
   card.querySelector('[data-ok="1"]')!.addEventListener("click", () => done(true));
   card.querySelector('[data-ok="0"]')!.addEventListener("click", () => done(false));
@@ -4904,6 +4975,10 @@ async function init() {
   document.querySelector("#btn-subagents")!.addEventListener("click", (e) => {
     state.subagents = !state.subagents;
     (e.currentTarget as HTMLElement).classList.toggle("active", state.subagents);
+  });
+  document.querySelector("#btn-plan")!.addEventListener("click", (e) => {
+    state.plan = !state.plan;
+    (e.currentTarget as HTMLElement).classList.toggle("active", state.plan);
   });
   document.querySelector("#btn-agent")!.addEventListener("click", () => void openAgentMenu());
   els.artifactClose.addEventListener("click", closeArtifact);
