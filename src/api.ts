@@ -53,7 +53,7 @@ export interface Settings {
   mcp_servers: McpServerConfig[];
   workspace_dir: string;
   confirm_mode: "off" | "dry_run" | "ask";
-  clarify_level: "off" | "light";
+  clarify_level: "off" | "light" | "medium" | "high";
   local_web_search: boolean;
   web_search_provider: "duckduckgo" | "tavily" | "brave" | "serper" | "exa" | "jina";
   web_search_keys: Record<string, string>;

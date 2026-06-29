@@ -1276,6 +1276,9 @@ pub async fn send_message_stream(
     };
 
     let gen_start = std::time::Instant::now();
+    // Tokens do gate de clarificação do chat (B), somados ao turno depois (0 no Plan mode).
+    let mut clarify_in = 0u64;
+    let mut clarify_out = 0u64;
     let response = if plan {
         // Plan mode: planeia → aprova/edita → executa passo a passo (planner orquestra; 🔎 fundamenta).
         let use_api = prepared.route == router::Route::Claude;
@@ -1361,6 +1364,56 @@ pub async fn send_message_stream(
             tool: "skill".to_string(),
             detail: name.clone(),
         });
+    }
+    // Clarificação no chat (cascata A→B por `clarify_level`). Não corre em regenerar, workflow forçado,
+    // turno com imagem, ou nível off. As perguntas vão pelo MESMO cartão/evento do Plan mode.
+    let latest_user_has_image = messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map(|m| m.attachments.iter().any(|a| a.kind == "image"))
+        .unwrap_or(false);
+    if !regenerate && !forced_workflow && settings.clarify_level != "off" && !latest_user_has_image {
+        let is_followup = messages.iter().any(|m| m.role == "assistant");
+        let use_api = prepared.route == router::Route::Claude;
+        let gate_opts = providers::ollama::GenOpts {
+            num_ctx: effective_num_ctx(settings.ollama_num_ctx, &prepared.full_messages),
+            temperature: settings.ollama_temp_opt(),
+            num_predict: Some(256),
+        };
+        let qs = crate::clarify::gate(
+            &settings,
+            use_api,
+            &prepared.model,
+            &prepared.full_messages,
+            &settings.clarify_level,
+            is_followup,
+            gate_opts,
+            &mut clarify_in,
+            &mut clarify_out,
+        )
+        .await;
+        if !qs.is_empty() {
+            let id = state.approval_seq.fetch_add(1, Ordering::Relaxed) + 1;
+            let (txo, rxo) = oneshot::channel();
+            state.pending_clarify.lock().await.insert(id, (txo, prepared.model.clone()));
+            let _ = channel.send(StreamEvent::Clarify { id, questions: qs.clone() });
+            if let Some(answers) = rxo.await.unwrap_or(None) {
+                let qa = qs
+                    .iter()
+                    .zip(answers.iter())
+                    .filter(|(_, a)| !a.trim().is_empty())
+                    .map(|(q, a)| format!("- {q} {}", a.trim()))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if !qa.is_empty() {
+                    prepared.full_messages = crate::planner::with_instruction(
+                        &prepared.full_messages,
+                        &format!("Esclarecimentos que dei:\n{qa}"),
+                    );
+                }
+            }
+        }
     }
     match prepared.route {
         router::Route::Local if local_openai => {
@@ -1665,6 +1718,10 @@ pub async fn send_message_stream(
         });
         response.text.push_str(&fontes);
     }
+
+    // Soma os tokens do gate de clarificação (B) ao turno (0 fora do chat / Plan mode).
+    response.input_tokens += clarify_in;
+    response.output_tokens += clarify_out;
 
     let snapshot = {
         let mut acc = state.accounting.lock().unwrap();

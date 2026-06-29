@@ -556,8 +556,15 @@ app.innerHTML = `
           <label class="ws-check"><input type="checkbox" id="hub-temp-auto" /> ${t("Temperatura automática (recomendada do modelo)")}</label>
           <label id="hub-temp-wrap">${t("Temperatura")} <input id="hub-temp" type="number" min="0" max="1.5" step="0.1" /></label>
           <p class="wiz-hint">${t("Auto deixa cada modelo usar a amostragem afinada do seu Modelfile (melhor por modelo). Desliga para forçar um valor.")}</p>
-          <label class="ws-check"><input type="checkbox" id="hub-clarify" /> ${t("Plan mode: perguntar antes de planear quando o pedido é vago")}</label>
-          <p class="wiz-hint">${t("Só dispara em mensagens vagas; faz 1-3 perguntas curtas e podes saltar.")}</p>
+          <label>${t("Clarificação (perguntar quando o pedido é vago)")}
+            <select id="hub-clarify-level">
+              <option value="off">${t("Desligado")}</option>
+              <option value="light">${t("Leve")}</option>
+              <option value="medium">${t("Médio")}</option>
+              <option value="high">${t("Alto")}</option>
+            </select>
+          </label>
+          <p class="wiz-hint">${t("Off: nunca. Leve: só pedidos claramente vagos (no início). Médio: o modelo decide e pergunta o que falta. Alto: pergunta mais cedo. Aplica-se ao chat e ao Plan mode.")}</p>
           <p class="wiz-hint" id="hub-clarify-l2"></p>
         </fieldset>
 
@@ -3498,7 +3505,7 @@ function showClarifyCard(id: number, questions: string[]) {
   const card = document.createElement("div");
   card.className = "approval-card plan-card";
   card.innerHTML = `
-    <div class="approval-head">${t("Antes de planear — esclarece")}</div>
+    <div class="approval-head">${t("Antes de continuar — esclarece")}</div>
     <div class="plan-hint">${t("Responde ao que souberes; salta o resto.")}</div>
     <div class="clarify-list"></div>
     <div class="approval-bar">
@@ -4552,7 +4559,7 @@ function hubLoad(s: Settings) {
   // Avançado
   hubIn("#hub-research-rounds").value = String(s.research_max_rounds);
   hubIn("#hub-local-web").checked = s.local_web_search;
-  hubIn("#hub-clarify").checked = s.clarify_level !== "off";
+  hubSel("#hub-clarify-level").value = s.clarify_level || "light";
   // Estado da clarificação semântica (L2): mostra o modelo de embeddings detetado, ou como ativá-la.
   api
     .detectEmbedModel()
@@ -4667,7 +4674,7 @@ async function hubSave() {
       // Avançado
       research_max_rounds: Math.min(5, Math.max(1, parseInt(hubIn("#hub-research-rounds").value) || 3)),
       local_web_search: hubIn("#hub-local-web").checked,
-      clarify_level: hubIn("#hub-clarify").checked ? "light" : "off",
+      clarify_level: hubSel("#hub-clarify-level").value as Settings["clarify_level"],
       web_search_provider: hubSel("#hub-web-provider").value as Settings["web_search_provider"],
       web_search_keys: webSearchKeysPatch(),
       ollama_num_ctx: Math.max(2048, parseInt(hubIn("#hub-num-ctx").value) || 8192),

@@ -314,7 +314,7 @@ where
         };
         log::info!("[clarify] spec={spec:?} bias={bias} vague={vague}");
         if vague {
-            let qs = clarify::clarifying_questions(settings, use_api, model, &conv, opts, &mut total_in, &mut total_out).await;
+            let qs = clarify::clarifying_questions(settings, use_api, model, &conv, opts, &mut total_in, &mut total_out, true).await;
             log::info!("[clarify] perguntas={}", qs.len());
             if !qs.is_empty() {
                 if let Some(answers) = ask(qs.clone()).await {

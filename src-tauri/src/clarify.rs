@@ -214,11 +214,12 @@ pub async fn clarifying_questions(
     base_opts: GenOpts,
     total_in: &mut u64,
     total_out: &mut u64,
+    force_fallback: bool,
 ) -> Vec<String> {
-    let instruction = "[ESCLARECER] Antes de planear, vê se a minha ÚLTIMA mensagem (no contexto desta \
-conversa) já tem o ESSENCIAL para um bom plano: objetivo, escala/dimensão, restrições/orçamento, \
+    let instruction = "[ESCLARECER] Antes de responder, vê se a minha ÚLTIMA mensagem (no contexto desta \
+conversa) já tem o ESSENCIAL para uma boa resposta: objetivo, escala/dimensão, restrições/orçamento, \
 contexto/região e formato. Se já tem o essencial, responde APENAS com []. Caso contrário, faz 1 a 3 \
-perguntas CURTAS e concretas sobre o que FALTA (uma por elemento em falta). NÃO planeies nem respondas à \
+perguntas CURTAS e concretas sobre o que FALTA (uma por elemento em falta). NÃO respondas à \
 tarefa. Responde APENAS com um array JSON de strings (as perguntas), nada mais.";
     // Contexto enxuto + instrução na última mensagem (mesmo padrão do rascunho do plano).
     let msgs = with_instruction(&lean_for_draft(messages), instruction);
@@ -249,13 +250,74 @@ tarefa. Responde APENAS com um array JSON de strings (as perguntas), nada mais."
     // A deteção (L1+L2) já disse "vago". Se o parse falhou por FORMATO (não um veto explícito "[]"),
     // faz perguntas genéricas — a clarificação nunca fica muda quando o pedido é mesmo vago. A região
     // entra aqui (resolve as fontes BR vs PT/UE pela resposta do utilizador, sem enviesar a pesquisa).
-    if qs.is_empty() && !cleaned.contains("[]") {
-        qs = vec![
-            "Qual é o objetivo concreto e em que país/região?".to_string(),
-            "Há restrições a ter em conta (ex.: orçamento, prazo, formato)?".to_string(),
-        ];
+    if force_fallback && qs.is_empty() && !cleaned.contains("[]") {
+        qs = default_questions();
     }
     qs
+}
+
+/// Perguntas-template genéricas (sem chamar o modelo) — usadas pelo nível `light` e como fallback do
+/// `clarifying_questions` quando a deteção já disse "vago" mas o parse das perguntas do modelo falhou.
+pub fn default_questions() -> Vec<String> {
+    vec![
+        "Qual é o objetivo concreto e em que país/região?".to_string(),
+        "Há restrições a ter em conta (ex.: orçamento, prazo, formato)?".to_string(),
+    ]
+}
+
+/// Cascata de clarificação para o CHAT, conforme o nível (`off|light|medium|high`). Vazio = não perguntar.
+/// A (gate determinístico, `specificity`) filtra barato; B (modelo, `clarifying_questions`) gera/veta nos
+/// níveis medium/high. O planner mantém o seu próprio caminho (A-force) — isto é só do chat.
+#[allow(clippy::too_many_arguments)]
+pub async fn gate(
+    settings: &Settings,
+    use_api: bool,
+    model: &str,
+    messages: &[ChatMessage],
+    level: &str,
+    is_followup: bool,
+    opts: GenOpts,
+    total_in: &mut u64,
+    total_out: &mut u64,
+) -> Vec<String> {
+    if level == "off" {
+        return Vec::new();
+    }
+    // Texto da última mensagem do utilizador (sem texto — ex.: só imagem — não perguntar).
+    let task = messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map(|m| m.content.trim().to_string())
+        .unwrap_or_default();
+    if task.is_empty() {
+        return Vec::new();
+    }
+    let bias = settings.clarify_bias.get(model).copied().unwrap_or(0);
+    let level_bias = if level == "high" { -1 } else { 0 }; // high pergunta mais cedo
+    let spec = specificity(&task, bias + level_bias);
+
+    if level == "light" {
+        // A só: vago de alta confiança e só a iniciar a conversa; perguntas-template (sem modelo).
+        if is_followup || spec != Specificity::Vague {
+            return Vec::new();
+        }
+        log::info!("[clarify] chat light spec={spec:?} → template");
+        return default_questions();
+    }
+
+    // medium / high: A→B. Borderline confirma-se pela L2 (ou, sem L2 instalado, deixa o B decidir).
+    let candidate = match spec {
+        Specificity::Clear => false,
+        Specificity::Vague => true,
+        Specificity::Borderline => embedding_vague(settings, &task).await.unwrap_or(true),
+    };
+    log::info!("[clarify] chat level={level} spec={spec:?} bias={bias} candidate={candidate}");
+    if !candidate {
+        return Vec::new();
+    }
+    // B gera/veta (force_fallback=false → veto respeitado: parse-fail/[] → não pergunta).
+    clarifying_questions(settings, use_api, model, messages, opts, total_in, total_out, false).await
 }
 
 #[cfg(test)]
