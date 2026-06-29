@@ -1784,12 +1784,17 @@ function renderSidebar() {
   for (const c of state.conversations) {
     const row = document.createElement("div");
     row.className = "conv" + (c.id === state.currentConversationId ? " active" : "");
+    // Clicar em qualquer ponto da linha abre a Saga (não só no texto). Ignora os botões de
+    // ação (renomear/apagar) e o campo de renomear.
+    row.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest(".conv-act, .conv-rename")) return;
+      selectConversation(c.id);
+    });
 
     const title = document.createElement("span");
     title.className = "conv-title";
     title.textContent = c.title || t("Nova conversa");
     title.title = c.title;
-    title.addEventListener("click", () => selectConversation(c.id));
     title.addEventListener("dblclick", (e) => {
       e.stopPropagation();
       startRename(c, row, title);
