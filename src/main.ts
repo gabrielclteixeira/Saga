@@ -625,22 +625,40 @@ app.innerHTML = `
           <p class="wiz-intro">${t("Um assistente que corre no teu próprio computador. Sem contas, sem subscrição obrigatória — as tuas conversas ficam contigo.")}</p>
         </div>
         <ul class="wiz-points">
-          <li>${icon("doc")}<div><strong>${t("Local primeiro")}</strong><span>${t("As respostas saem do modelo que corres em casa, via Ollama.")}</span></div></li>
+          <li>${icon("doc")}<div><strong>${t("Local primeiro")}</strong><span>${t("As respostas saem do modelo que corres em casa, via Ollama ou LM Studio.")}</span></div></li>
           <li>${icon("search")}<div><strong>${t("Pesquisa na web")}</strong><span>${t("Modelos com ferramentas conseguem procurar e ler páginas online.")}</span></div></li>
           <li>${icon("escalate")}<div><strong>${t("Claude opcional")}</strong><span>${t("Liga o Claude para escalar tarefas pesadas — só quando quiseres.")}</span></div></li>
         </ul>
       </section>
 
       <section class="wiz-step" data-step="1" hidden>
-        <h2>${t("Escolhe o teu modelo")}</h2>
-        <div class="wiz-status" id="wiz-ollama-status">${t("A verificar…")}</div>
-        <div id="wiz-rec" class="wiz-rec" hidden></div>
-        <details class="wiz-manual">
-          <summary>${t("Configuração manual")}</summary>
-          <label>${t("Endpoint")} <input id="w_ollama_endpoint" type="text" /></label>
-          <label>${t("Modelo ativo")} <input id="w_ollama_model" type="text" list="ollama-models" /></label>
-          <p class="wiz-hint">${t("Sem Ollama? Instala em <strong>ollama.com</strong> e corre <code>ollama pull llama3.2</code>.")}</p>
-        </details>
+        <h2>${t("Escolhe o teu modelo local")}</h2>
+        <div class="wiz-choice" id="wiz-backend">
+          <button type="button" class="wiz-choice-opt active" data-backend="ollama">
+            ${icon("download")}<div><strong>${t("Instalar Ollama")}</strong><span>${t("Recomendado — a Saga descarrega os modelos por ti.")}</span></div>
+          </button>
+          <button type="button" class="wiz-choice-opt" data-backend="lmstudio">
+            ${icon("escalate")}<div><strong>${t("Já tenho o LM Studio")}</strong><span>${t("Liga ao servidor local do LM Studio.")}</span></div>
+          </button>
+        </div>
+        <div id="wiz-ollama-panel">
+          <div class="wiz-status" id="wiz-ollama-status">${t("A verificar…")}</div>
+          <div id="wiz-rec" class="wiz-rec" hidden></div>
+          <details class="wiz-manual">
+            <summary>${t("Configuração manual")}</summary>
+            <label>${t("Endpoint")} <input id="w_ollama_endpoint" type="text" /></label>
+            <label>${t("Modelo ativo")} <input id="w_ollama_model" type="text" list="ollama-models" /></label>
+            <p class="wiz-hint">${t("Sem Ollama? Instala em <strong>ollama.com</strong> e corre <code>ollama pull llama3.2</code>.")}</p>
+          </details>
+        </div>
+        <div id="wiz-lm-panel" hidden>
+          <label>${t("Endpoint")} <input id="w_oai_local_endpoint" type="text" placeholder="http://localhost:1234/v1" /></label>
+          <label>${t("Modelo")} <input id="w_oai_local_model" type="text" placeholder="${t("ex.: ID no LM Studio")}" /></label>
+          <div class="wiz-status" id="wiz-lm-status"></div>
+          <div class="models-list" id="wiz-lm-installed"></div>
+          <button type="button" class="ghost" id="wiz-lm-refresh">${t("Atualizar")}</button>
+          <p class="wiz-hint">${t("Abre o LM Studio, carrega um modelo e liga o servidor local (porta 1234).")}</p>
+        </div>
       </section>
 
       <section class="wiz-step" data-step="2" hidden>
@@ -3290,8 +3308,12 @@ function wizInput(id: string): HTMLInputElement {
 function mergeWizardSettings(base: Settings): Settings {
   return {
     ...base,
+    local_provider: wizBackend === "lmstudio" ? "openai" : "ollama",
     ollama_endpoint: wizInput("w_ollama_endpoint").value,
     ollama_model: wizInput("w_ollama_model").value,
+    openai_local_endpoint:
+      wizInput("w_oai_local_endpoint").value.trim() || "http://localhost:1234/v1",
+    openai_local_model: wizInput("w_oai_local_model").value.trim(),
     claude_mode: document.querySelector<HTMLSelectElement>("#w_claude_mode")!
       .value as Settings["claude_mode"],
     claude_api_key: wizInput("w_claude_api_key").value,
@@ -3319,6 +3341,7 @@ function renderDiagnostics(d: Diagnostics) {
 
 const WIZ_STEPS = 3;
 let wizStep = 0;
+let wizBackend: "ollama" | "lmstudio" = "ollama";
 
 /** Persiste o que está nos campos e atualiza os diagnósticos visíveis. */
 async function runWizardTest() {
@@ -3333,6 +3356,39 @@ async function runWizardTest() {
     renderDiagnostics(await api.diagnostics());
   } catch (e) {
     console.error(e);
+  }
+}
+
+/** Caminho LM Studio do wizard: guarda as settings e lista os modelos carregados (sem diagnostics do Ollama). */
+async function runWizardLmTest() {
+  const next = mergeWizardSettings(state.settings!);
+  try {
+    await api.saveSettings(next);
+    state.settings = next;
+  } catch (e) {
+    console.error(e);
+  }
+  await renderLmInstalled("#wiz-lm-installed", "#wiz-lm-status", (id) => {
+    wizInput("w_oai_local_model").value = id;
+    void runWizardLmTest();
+  });
+}
+
+/** Alterna o backend do passo 1 (Ollama vs LM Studio): painéis + teste do escolhido. */
+function setWizBackend(b: "ollama" | "lmstudio") {
+  wizBackend = b;
+  document
+    .querySelectorAll<HTMLElement>("#wiz-backend .wiz-choice-opt")
+    .forEach((el) => el.classList.toggle("active", el.dataset.backend === b));
+  document.querySelector("#wiz-ollama-panel")?.toggleAttribute("hidden", b !== "ollama");
+  document.querySelector("#wiz-lm-panel")?.toggleAttribute("hidden", b !== "lmstudio");
+  if (wizStep === 1) {
+    if (b === "ollama") {
+      void runWizardTest();
+      void renderRecommendation("#wiz-rec");
+    } else {
+      void runWizardLmTest();
+    }
   }
 }
 
@@ -3353,9 +3409,13 @@ async function wizGoTo(step: number) {
     wizStep === WIZ_STEPS - 1 ? t("Começar a usar") : t("Seguinte");
   renderWizDots();
   if (wizStep === 1) {
-    // Passo do modelo: testa o Ollama e mostra a recomendação consciente do hardware.
-    void runWizardTest();
-    void renderRecommendation("#wiz-rec");
+    // Passo do modelo: testa o backend escolhido (Ollama: diagnostics + recomendação; LM Studio: lista).
+    if (wizBackend === "ollama") {
+      void runWizardTest();
+      void renderRecommendation("#wiz-rec");
+    } else {
+      void runWizardLmTest();
+    }
   } else if (wizStep === 2) {
     void runWizardTest();
   }
@@ -3375,9 +3435,12 @@ async function openWizard() {
   const s = state.settings!;
   wizInput("w_ollama_endpoint").value = s.ollama_endpoint;
   wizInput("w_ollama_model").value = s.ollama_model;
+  wizInput("w_oai_local_endpoint").value = s.openai_local_endpoint || "http://localhost:1234/v1";
+  wizInput("w_oai_local_model").value = s.openai_local_model;
   document.querySelector<HTMLSelectElement>("#w_claude_mode")!.value = s.claude_mode;
   wizInput("w_claude_api_key").value = s.claude_api_key;
   document.querySelector("#wiz-key-wrap")!.toggleAttribute("hidden", s.claude_mode !== "api");
+  setWizBackend(s.local_provider === "openai" ? "lmstudio" : "ollama");
   await wizGoTo(0);
   els.wizard.showModal();
 }
@@ -4959,9 +5022,13 @@ async function setActiveLmModel(id: string) {
 }
 
 /** Lista os modelos descarregados no LM Studio (servidor REST local). */
-async function renderLmInstalled() {
-  const list = document.querySelector<HTMLDivElement>("#hub-lm-installed");
-  const status = document.querySelector<HTMLElement>("#hub-lm-status");
+async function renderLmInstalled(
+  listSel = "#hub-lm-installed",
+  statusSel = "#hub-lm-status",
+  onPick?: (id: string) => void
+) {
+  const list = document.querySelector<HTMLDivElement>(listSel);
+  const status = document.querySelector<HTMLElement>(statusSel);
   if (!list) return;
   let models: import("./api").LmModel[] = [];
   try {
@@ -4990,9 +5057,12 @@ async function renderLmInstalled() {
       </div>`;
     })
     .join("");
-  list
-    .querySelectorAll<HTMLButtonElement>("[data-use]")
-    .forEach((b) => b.addEventListener("click", () => setActiveLmModel(b.dataset.use!)));
+  list.querySelectorAll<HTMLButtonElement>("[data-use]").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (onPick) onPick(b.dataset.use!);
+      else void setActiveLmModel(b.dataset.use!);
+    })
+  );
 }
 
 /** Badges de capacidade (tools · visão · raciocínio) com tooltip. */
@@ -5358,6 +5428,12 @@ async function init() {
   setPanel(localStorage.getItem("saga.panelCollapsed") === "1");
   document.querySelector("#wiz-next")!.addEventListener("click", () => void wizNext());
   document.querySelector("#wiz-back")!.addEventListener("click", () => void wizGoTo(wizStep - 1));
+  document
+    .querySelectorAll<HTMLButtonElement>("#wiz-backend .wiz-choice-opt")
+    .forEach((b) =>
+      b.addEventListener("click", () => setWizBackend(b.dataset.backend as "ollama" | "lmstudio"))
+    );
+  document.querySelector("#wiz-lm-refresh")?.addEventListener("click", () => void runWizardLmTest());
   document.querySelector("#wiz-skip")!.addEventListener("click", (e) => {
     e.preventDefault();
     void finishWizard();

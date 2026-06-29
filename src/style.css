@@ -1517,6 +1517,51 @@ mark.find-current {
   padding: 12px;
   background: var(--bg);
 }
+.wiz-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.wiz-choice-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.wiz-choice-opt:hover {
+  border-color: var(--accent);
+}
+.wiz-choice-opt.active {
+  border-color: var(--accent);
+  background: var(--bg-3);
+}
+.wiz-choice-opt .ic {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--accent);
+  margin-top: 1px;
+}
+.wiz-choice-opt div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wiz-choice-opt strong {
+  font-size: 13px;
+}
+.wiz-choice-opt span {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
 .wiz-manual summary {
   cursor: pointer;
   font-size: 12px;

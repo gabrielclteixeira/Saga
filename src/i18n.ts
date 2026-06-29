@@ -513,6 +513,8 @@ const EN: Record<string, string> = {
   "Local primeiro": "Local first",
   "As respostas saem do modelo que corres em casa, via Ollama.":
     "Answers come from the model you run at home, via Ollama.",
+  "As respostas saem do modelo que corres em casa, via Ollama ou LM Studio.":
+    "Answers come from the model you run at home, via Ollama or LM Studio.",
   "Pesquisa na web": "Web search",
   "Modelos com ferramentas conseguem procurar e ler páginas online.":
     "Models with tools can search and read pages online.",
@@ -520,6 +522,14 @@ const EN: Record<string, string> = {
   "Liga o Claude para escalar tarefas pesadas — só quando quiseres.":
     "Connect Claude to escalate heavy tasks — only when you want to.",
   "Escolhe o teu modelo": "Choose your model",
+  "Escolhe o teu modelo local": "Choose your local model",
+  "Instalar Ollama": "Install Ollama",
+  "Recomendado — a Saga descarrega os modelos por ti.":
+    "Recommended — Saga downloads the models for you.",
+  "Já tenho o LM Studio": "I already have LM Studio",
+  "Liga ao servidor local do LM Studio.": "Connects to LM Studio's local server.",
+  "Abre o LM Studio, carrega um modelo e liga o servidor local (porta 1234).":
+    "Open LM Studio, load a model and start its local server (port 1234).",
   "Configuração manual": "Manual setup",
   "Modelo ativo": "Active model",
   "Liga o Claude (opcional)": "Connect Claude (optional)",
