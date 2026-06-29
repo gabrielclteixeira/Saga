@@ -563,8 +563,8 @@ const EN: Record<string, string> = {
   "Médio": "Medium",
   "Alto": "High",
   "Clarificação (perguntar quando o pedido é vago)": "Clarification (ask when the request is vague)",
-  "Off: nunca. Leve: só pedidos claramente vagos (no início). Médio: o modelo decide e pergunta o que falta. Alto: pergunta mais cedo. Aplica-se ao chat e ao Plan mode.":
-    "Off: never. Light: only clearly vague requests (at the start). Medium: the model decides and asks what's missing. High: asks earlier. Applies to chat and Plan mode.",
+  "Off: nunca. Leve e Médio clarificam só o pedido inicial vago (no Médio o modelo decide o que falta). Alto: também a meio da conversa. Aplica-se ao chat e ao Plan mode.":
+    "Off: never. Light and Medium clarify only the initial vague request (Medium lets the model decide what's missing). High: also mid-conversation. Applies to chat and Plan mode.",
   "Responde ao que souberes; salta o resto.": "Answer what you know; skip the rest.",
   "Responder": "Answer",
   "Saltar": "Skip",

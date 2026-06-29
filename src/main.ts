@@ -564,7 +564,7 @@ app.innerHTML = `
               <option value="high">${t("Alto")}</option>
             </select>
           </label>
-          <p class="wiz-hint">${t("Off: nunca. Leve: só pedidos claramente vagos (no início). Médio: o modelo decide e pergunta o que falta. Alto: pergunta mais cedo. Aplica-se ao chat e ao Plan mode.")}</p>
+          <p class="wiz-hint">${t("Off: nunca. Leve e Médio clarificam só o pedido inicial vago (no Médio o modelo decide o que falta). Alto: também a meio da conversa. Aplica-se ao chat e ao Plan mode.")}</p>
           <p class="wiz-hint" id="hub-clarify-l2"></p>
         </fieldset>
 

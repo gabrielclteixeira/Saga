@@ -216,11 +216,11 @@ pub async fn clarifying_questions(
     total_out: &mut u64,
     force_fallback: bool,
 ) -> Vec<String> {
-    let instruction = "[ESCLARECER] Antes de responder, vê se a minha ÚLTIMA mensagem (no contexto desta \
-conversa) já tem o ESSENCIAL para uma boa resposta: objetivo, escala/dimensão, restrições/orçamento, \
-contexto/região e formato. Se já tem o essencial, responde APENAS com []. Caso contrário, faz 1 a 3 \
-perguntas CURTAS e concretas sobre o que FALTA (uma por elemento em falta). NÃO respondas à \
-tarefa. Responde APENAS com um array JSON de strings (as perguntas), nada mais.";
+    let instruction = "[ESCLARECER] Olha para TODA esta conversa, não só a última mensagem. Se o ESSENCIAL \
+(objetivo, escala/dimensão, restrições/orçamento, contexto/região, formato) JÁ foi dito em QUALQUER mensagem \
+(minha ou tua), considera-o CONHECIDO e NÃO voltes a perguntar sobre isso. Só se faltar mesmo algo essencial \
+é que fazes 1 a 3 perguntas CURTAS sobre o que FALTA (uma por elemento). Se já há o essencial, responde \
+APENAS com []. NÃO respondas à tarefa nem planeies. Responde APENAS com um array JSON de strings, nada mais.";
     // Contexto enxuto + instrução na última mensagem (mesmo padrão do rascunho do plano).
     let msgs = with_instruction(&lean_for_draft(messages), instruction);
     let opts = GenOpts { num_predict: Some(256), temperature: Some(0.2), ..base_opts };
@@ -293,13 +293,19 @@ pub async fn gate(
     if task.is_empty() {
         return Vec::new();
     }
+    // Follow-ups (o assistente já respondeu antes): só o nível `high` clarifica a meio da conversa.
+    // light/medium clarificam SÓ o pedido inicial — evita reperguntar o que já foi respondido (o veto
+    // do B é frágil em modelos locais pequenos).
+    if is_followup && level != "high" {
+        return Vec::new();
+    }
     let bias = settings.clarify_bias.get(model).copied().unwrap_or(0);
     let level_bias = if level == "high" { -1 } else { 0 }; // high pergunta mais cedo
     let spec = specificity(&task, bias + level_bias);
 
     if level == "light" {
-        // A só: vago de alta confiança e só a iniciar a conversa; perguntas-template (sem modelo).
-        if is_followup || spec != Specificity::Vague {
+        // A só: vago de alta confiança; perguntas-template (sem modelo).
+        if spec != Specificity::Vague {
             return Vec::new();
         }
         log::info!("[clarify] chat light spec={spec:?} → template");
