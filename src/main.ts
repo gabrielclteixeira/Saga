@@ -1075,8 +1075,15 @@ function renderMessagesInner() {
       const bits = [
         `<span class="badge">${badge}</span>`,
         `<span>${escapeHtml(m.model)}</span>`,
-        `<span>${fmtInt(m.input_tokens)}↓ / ${fmtInt(m.output_tokens)}↑ tok</span>`,
       ];
+      // Nível de clarificação ("reasoning") ativo neste turno — a feature de perguntar antes de responder.
+      const lvl = state.settings?.clarify_level;
+      const lvlLabel =
+        lvl === "light" ? t("Leve") : lvl === "medium" ? t("Médio") : lvl === "high" ? t("Alto") : null;
+      if (lvlLabel) bits.push(`<span>${t("raciocínio")}: ${lvlLabel}</span>`);
+      bits.push(
+        `<span>${fmtInt(m.input_tokens)}↓ / ${fmtInt(m.output_tokens)}↑ tok</span>`
+      );
       if (m.gen_ms && m.gen_ms > 0) bits.push(`<span>${fmtDuration(m.gen_ms)}</span>`);
       if (m.route === "claude") {
         bits.push(`<span>${fmtUsd(m.cost_usd)}</span>`);

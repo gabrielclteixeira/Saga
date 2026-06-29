@@ -1279,6 +1279,10 @@ pub async fn send_message_stream(
     // Tokens do gate de clarificação do chat (B), somados ao turno depois (0 no Plan mode).
     let mut clarify_in = 0u64;
     let mut clarify_out = 0u64;
+    log::info!(
+        "[clarify] nivel={} (plan={plan}, regen={regenerate})",
+        settings.clarify_level
+    );
     let response = if plan {
         // Plan mode: planeia → aprova/edita → executa passo a passo (planner orquestra; 🔎 fundamenta).
         let use_api = prepared.route == router::Route::Claude;
