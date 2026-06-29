@@ -242,11 +242,15 @@ pub async fn diagnostics(state: State<'_, AppState>) -> Result<Diagnostics, Stri
         "cli" => {
             let path = settings.claude_cli_path.clone();
             let ok = tauri::async_runtime::spawn_blocking(move || {
-                std::process::Command::new(&path)
-                    .arg("--version")
-                    .output()
-                    .map(|o| o.status.success())
-                    .unwrap_or(false)
+                #[allow(unused_mut)]
+                let mut cmd = std::process::Command::new(&path);
+                cmd.arg("--version");
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+                }
+                cmd.output().map(|o| o.status.success()).unwrap_or(false)
             })
             .await
             .unwrap_or(false);
@@ -905,21 +909,31 @@ pub struct SystemInfo {
 }
 
 /// VRAM total da GPU NVIDIA via `nvidia-smi` (0 se ausente/erro). Cobre o caso comum (NVIDIA).
+/// Resultado em cache (a VRAM não muda) — senão o `nvidia-smi` corria a cada abertura dos Models
+/// (lento + janela de consola no Windows). No Windows usa CREATE_NO_WINDOW para não abrir consola.
 fn detect_vram_gb() -> u64 {
-    let out = std::process::Command::new("nvidia-smi")
-        .args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"])
-        .output();
-    let Ok(out) = out else { return 0 };
-    if !out.status.success() {
-        return 0;
-    }
-    // Uma linha por GPU (MiB); usa a maior.
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .filter_map(|l| l.trim().parse::<f64>().ok())
-        .map(|mib| (mib / 1024.0).round() as u64)
-        .max()
-        .unwrap_or(0)
+    static CACHE: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *CACHE.get_or_init(|| {
+        #[allow(unused_mut)]
+        let mut cmd = std::process::Command::new("nvidia-smi");
+        cmd.args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let Ok(out) = cmd.output() else { return 0 };
+        if !out.status.success() {
+            return 0;
+        }
+        // Uma linha por GPU (MiB); usa a maior.
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|l| l.trim().parse::<f64>().ok())
+            .map(|mib| (mib / 1024.0).round() as u64)
+            .max()
+            .unwrap_or(0)
+    })
 }
 
 #[tauri::command]

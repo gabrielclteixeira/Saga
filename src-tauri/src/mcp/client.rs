@@ -30,6 +30,8 @@ impl McpClient {
         for (k, v) in env {
             cmd.env(k, v);
         }
+        #[cfg(windows)]
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW — não abrir consola no Windows
         let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

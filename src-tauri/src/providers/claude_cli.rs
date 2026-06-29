@@ -115,12 +115,19 @@ pub async fn run(
     let output = tauri::async_runtime::spawn_blocking(move || -> std::io::Result<std::process::Output> {
         use std::io::Write;
         use std::process::Stdio;
-        let mut child = Command::new(&cli_path)
+        #[allow(unused_mut)]
+        let mut builder = Command::new(&cli_path);
+        builder
             .args(&args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            builder.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let mut child = builder.spawn()?;
         // Escreve o prompt e fecha o stdin (a CLI lê tudo até EOF antes de responder).
         if let Some(mut sin) = child.stdin.take() {
             sin.write_all(prompt.as_bytes())?;

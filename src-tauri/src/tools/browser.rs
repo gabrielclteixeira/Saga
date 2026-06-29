@@ -22,12 +22,17 @@ impl PlaywrightSidecar {
                 "caminho do sidecar do browser não configurado (Definições → Browser)"
             ));
         }
-        let mut child = Command::new(node)
+        #[allow(unused_mut)]
+        let mut builder = Command::new(node);
+        builder
             .arg(script)
             .env("SAGA_USER_DATA_DIR", user_data_dir)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit());
+        #[cfg(windows)]
+        builder.creation_flags(0x0800_0000); // CREATE_NO_WINDOW — não abrir consola no Windows
+        let mut child = builder
             .spawn()
             .map_err(|e| anyhow!("falha a lançar o sidecar ({node} {script}): {e}"))?;
 
