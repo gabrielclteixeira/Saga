@@ -562,6 +562,7 @@ const EN: Record<string, string> = {
   "Leve": "Light",
   "Médio": "Medium",
   "Alto": "High",
+  "compras": "shopping",
   "Clarificação (perguntar quando o pedido é vago)": "Clarification (ask when the request is vague)",
   "Off: nunca. Leve e Médio clarificam só o pedido inicial vago (no Médio o modelo decide o que falta). Alto: também a meio da conversa. Aplica-se ao chat e ao Plan mode.":
     "Off: never. Light and Medium clarify only the initial vague request (Medium lets the model decide what's missing). High: also mid-conversation. Applies to chat and Plan mode.",

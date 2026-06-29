@@ -153,6 +153,8 @@ pub enum StreamEvent {
         tokens_saved: u64,
         cost_usd: f64,
         gen_ms: i64,
+        /// Intenção classificada do pedido (camada reasoning): "shopping" | "general".
+        intent: String,
         accounting: Accounting,
     },
 }
@@ -1279,8 +1281,17 @@ pub async fn send_message_stream(
     // Tokens do gate de clarificação do chat (B), somados ao turno depois (0 no Plan mode).
     let mut clarify_in = 0u64;
     let mut clarify_out = 0u64;
+    // Camada "reasoning": intenção do pedido (determinística). Alimenta o deep-research e a metadata.
+    let turn_intent = crate::reasoning::classify_intent(
+        messages
+            .iter()
+            .rev()
+            .find(|m| m.role == "user")
+            .map(|m| m.content.as_str())
+            .unwrap_or(""),
+    );
     log::info!(
-        "[clarify] nivel={} (plan={plan}, regen={regenerate})",
+        "[clarify] nivel={} intent={turn_intent:?} (plan={plan}, regen={regenerate})",
         settings.clarify_level
     );
     let response = if plan {
@@ -1468,6 +1479,7 @@ pub async fn send_message_stream(
                         &settings.web_search_provider,
                         &settings.active_web_key(),
                         &prepared.full_messages,
+                        turn_intent,
                         gopts,
                         settings.research_max_rounds,
                         on_delta,
@@ -1795,6 +1807,7 @@ pub async fn send_message_stream(
         tokens_saved: prepared.tokens_saved,
         cost_usd: cost,
         gen_ms,
+        intent: turn_intent.as_str().to_string(),
         accounting: snapshot,
     });
 

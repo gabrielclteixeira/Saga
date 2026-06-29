@@ -11,6 +11,7 @@ mod ollama_registry;
 mod orchestrator;
 mod planner;
 mod providers;
+mod reasoning;
 mod router;
 mod scheduler;
 mod settings;

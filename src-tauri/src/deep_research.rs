@@ -10,6 +10,7 @@ use anyhow::Result;
 
 use crate::providers::ollama::{self, GenOpts};
 use crate::providers::{ChatMessage, LlmResponse};
+use crate::reasoning::Intent;
 use crate::tools::web;
 
 const MAX_SUBQ: usize = 6; // teto de sub-perguntas
@@ -23,6 +24,24 @@ fn last_user(messages: &[ChatMessage]) -> String {
         .find(|m| m.role == "user")
         .map(|m| m.content.clone())
         .unwrap_or_default()
+}
+
+/// Contexto recente para ANCORAR o decompose nas entidades já referidas (produtos/modelos/região).
+/// Últimas mensagens não-system, cada uma truncada; o system (persona/honestidade) não ajuda aqui.
+/// Devolve vazio quando só há o pedido atual (sem histórico que valha a pena dar ao decompose).
+fn recent_context(messages: &[ChatMessage]) -> String {
+    const KEEP: usize = 6;
+    const PER_MSG: usize = 600;
+    let non_system: Vec<&ChatMessage> = messages.iter().filter(|m| m.role != "system").collect();
+    if non_system.len() <= 1 {
+        return String::new();
+    }
+    let start = non_system.len().saturating_sub(KEEP);
+    non_system[start..]
+        .iter()
+        .map(|m| format!("{}: {}", m.role, truncate(&m.content, PER_MSG)))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn msg(role: &str, content: String) -> ChatMessage {
@@ -86,6 +105,7 @@ pub async fn run<D, T>(
     provider: &str,
     api_key: &str,
     full_messages: &[ChatMessage],
+    intent: Intent,
     opts: GenOpts,
     max_rounds: u32,
     mut on_delta: D,
@@ -105,15 +125,34 @@ where
 
     // ── Fase 1: decompor (geral → específico, ancorado ao ano atual) ──────────────────────
     on_tool("research", "decompose");
-    let decompose_sys = format!(
-        "Hoje é {today}. És um planeador de investigação. NÃO respondas de memória — o teu trabalho é \
+    let ctx = recent_context(full_messages);
+    let decompose_sys = match intent {
+        Intent::Shopping => format!(
+            "Hoje é {today}. O utilizador quer COMPRAR / encontrar onde comprar. NÃO definas conceitos nem \
+modelos de negócio. A partir dos PRODUTOS/itens concretos referidos na conversa, gera buscas de COMPRA — para \
+CADA item uma query curta como '<produto> preço <região>', 'comprar <produto> <região>' ou '<loja> <produto>'. \
+Inclui a região/país já referido. Foca em LOJAS, PREÇOS e disponibilidade — não em teoria. Responde APENAS \
+com um array JSON de 4 a 6 strings (as queries), nada mais."
+        ),
+        Intent::General => format!(
+            "Hoje é {today}. És um planeador de investigação. NÃO respondas de memória — o teu trabalho é \
 dividir a pergunta do utilizador em sub-perguntas que serão respondidas por PESQUISA web. Ordena do GERAL \
 para o ESPECÍFICO: primeiro define o conceito, depois os componentes/partes, depois as opções ATUAIS de \
-{year}, e por fim dados concretos (preços, especificações, datas). Cada sub-pergunta deve ser auto-contida, \
-pesquisável e mencionar {year} quando fizer sentido. Responde APENAS com um array JSON de 4 a 6 strings \
-(as sub-perguntas), nada mais."
-    );
-    let dz = ask(endpoint, model, &decompose_sys, &question, opts).await?;
+{year}, e por fim dados concretos (preços, especificações, datas). Usa os detalhes concretos \
+(produtos/modelos/região) já referidos na conversa. Cada sub-pergunta deve ser auto-contida, pesquisável e \
+mencionar {year} quando fizer sentido. Responde APENAS com um array JSON de 4 a 6 strings, nada mais."
+        ),
+    };
+    // Com histórico, dá a conversa ao decompose (ancora nas entidades); senão, só o pedido.
+    let decompose_user = if ctx.is_empty() {
+        question.clone()
+    } else {
+        format!(
+            "Conversa (usa os detalhes concretos — produtos/modelos/região — já referidos):\n{ctx}\n\n\
+Gera as queries de pesquisa para o ÚLTIMO pedido do utilizador."
+        )
+    };
+    let dz = ask(endpoint, model, &decompose_sys, &decompose_user, opts).await?;
     total_in += dz.input_tokens;
     total_out += dz.output_tokens;
     let mut subqs = parse_json_array(&dz.text);
@@ -121,6 +160,7 @@ pesquisável e mencionar {year} quando fizer sentido. Responde APENAS com um arr
     if subqs.is_empty() {
         subqs = vec![question.clone()]; // fallback: trata a pergunta como um único nó
     }
+    log::info!("[research] intent={intent:?} subqs={}", subqs.len());
 
     // ── Fase 2: recolher factos por sub-pergunta (Self-Ask, conduzido pelo andaime) ───────
     let mut evidence = String::new();
@@ -152,7 +192,8 @@ pesquisável e mencionar {year} quando fizer sentido. Responde APENAS com um arr
     }
 
     // ── Fase 3: verificar afirmações voláteis (Chain-of-Verification) ─────────────────────
-    let n_verify = (max_rounds as usize).min(4);
+    // Em compras não faz sentido "verificar" (que loja vende uma GPU) — gerava sub-perguntas abstratas.
+    let n_verify = if intent == Intent::Shopping { 0 } else { (max_rounds as usize).min(4) };
     if n_verify > 0 {
         on_tool("research", "verify");
         let verify_sys = format!(

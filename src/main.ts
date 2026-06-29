@@ -1076,11 +1076,17 @@ function renderMessagesInner() {
         `<span class="badge">${badge}</span>`,
         `<span>${escapeHtml(m.model)}</span>`,
       ];
-      // Nível de clarificação ("reasoning") ativo neste turno — a feature de perguntar antes de responder.
+      // Camada "reasoning": nível de clarificação ativo + intenção classificada do pedido.
       const lvl = state.settings?.clarify_level;
       const lvlLabel =
         lvl === "light" ? t("Leve") : lvl === "medium" ? t("Médio") : lvl === "high" ? t("Alto") : null;
-      if (lvlLabel) bits.push(`<span>${t("raciocínio")}: ${lvlLabel}</span>`);
+      const showIntent = !!m.intent && m.intent !== "general";
+      if (lvlLabel || showIntent) {
+        const parts: string[] = [];
+        if (lvlLabel) parts.push(`${t("raciocínio")}: ${lvlLabel}`);
+        if (showIntent) parts.push(t("compras"));
+        bits.push(`<span>${parts.join(" · ")}</span>`);
+      }
       bits.push(
         `<span>${fmtInt(m.input_tokens)}↓ / ${fmtInt(m.output_tokens)}↑ tok</span>`
       );
@@ -2358,6 +2364,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
             cost_usd: evt.cost_usd,
             reason: start?.reason ?? "",
             gen_ms: evt.gen_ms,
+            intent: evt.intent,
             accounting: evt.accounting,
           };
           // Persiste os breadcrumbs de ferramentas para sobreviverem a reinícios.

@@ -170,6 +170,7 @@ export interface ChatResponse {
   cost_usd: number;
   reason: string;
   gen_ms?: number;
+  intent?: string;
   accounting: Accounting;
 }
 
@@ -234,6 +235,7 @@ export type StreamEvent =
       tokens_saved: number;
       cost_usd: number;
       gen_ms: number;
+      intent: string;
       accounting: Accounting;
     };
 
