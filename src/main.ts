@@ -1948,21 +1948,36 @@ function resetCompaction() {
 }
 
 async function selectConversation(id: number) {
-  if (state.busy) return;
+  // Bloqueia só quando há um cartão à espera de resposta (não durante streaming normal).
+  if (awaitingPrompt) return;
+  // Guarda de corrida: cliques rápidos disparam várias cargas; só a última vence.
+  const seq = ++selectSeq;
   state.currentConversationId = id;
+  renderSidebar(); // realce imediato na barra lateral
   const msgs = await api.getConversation(id);
+  if (seq !== selectSeq) return;
   state.items = msgs.map(storedToItem);
+  // Se esta Saga está a gerar agora (em fundo), re-anexa a bolha em curso para se ver ao vivo.
+  if (streamingConvId === id && streamingItem) state.items.push(streamingItem);
   try {
     const c = await api.getCompaction(id);
+    if (seq !== selectSeq) return;
     state.compactedSummary = c.summary;
     state.compactedUpto = c.upto;
   } catch {
+    if (seq !== selectSeq) return;
     resetCompaction();
   }
   renderMessages();
   scrollChatToBottom(); // ao abrir uma Saga, mostra a mensagem mais recente
   renderSidebar();
-  renderAccounting(await api.conversationAccounting(id));
+  try {
+    const acct = await api.conversationAccounting(id);
+    if (seq !== selectSeq) return;
+    renderAccounting(acct);
+  } catch {
+    /* ignora */
+  }
 }
 
 async function createConversation() {
@@ -2181,6 +2196,14 @@ function warmLocalModel(model?: string, force = false) {
   void api.warmModel(m).catch(() => {});
 }
 
+// Troca de Saga: corrida (cliques rápidos) + streaming em fundo.
+// `selectSeq` deixa só o clique mais recente aplicar-se; `streamingConvId`/`streamingItem` permitem
+// continuar a gerar numa Saga enquanto se vê outra (e re-anexar a bolha ao voltar).
+let selectSeq = 0;
+let streamingConvId: number | null = null;
+let streamingItem: Item | null = null;
+let awaitingPrompt = false; // há um cartão (plano/esclarecimento/aprovação) à espera de resposta
+
 async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   const conversationId = state.currentConversationId!;
   const sendOpts: SendOpts = {
@@ -2220,6 +2243,10 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   waitStart = Date.now();
   const assistant: Item = { role: "assistant", content: "", report: sendOpts.research };
   state.items.push(assistant);
+  streamingConvId = conversationId;
+  streamingItem = assistant;
+  // Esta Saga ainda está a ser vista? (permite gerar em fundo enquanto se navega para outra)
+  const viewing = () => state.currentConversationId === conversationId;
   setBusy(true);
   renderMessages();
   scrollChatToBottom(); // novo turno (envio/regenerar) = salta para o fim
@@ -2232,6 +2259,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   }
 
   const paintBubble = () => {
+    if (!viewing()) return; // a gerar em fundo: acumula em `assistant`, sem tocar no DOM
     const stick = isChatNearBottom();
     const b = els.messages.lastElementChild?.querySelector(".bubble") as HTMLDivElement | null;
     if (b) {
@@ -2244,6 +2272,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   // Atualiza só o texto do bloco de raciocínio (NÃO re-renderiza tudo — modelos que pensam
   // emitem centenas de fragmentos; um renderMessages() por fragmento congelava a UI).
   const paintThinking = () => {
+    if (!viewing()) return;
     const stick = isChatNearBottom();
     const body = els.messages.lastElementChild?.querySelector(
       ".thinking-block .thinking-body"
@@ -2258,7 +2287,13 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
     await api.sendMessageStream(
       conversationId,
       payload,
-      (evt) => {
+      async (evt) => {
+        // Eventos interativos bloqueiam o backend à espera de resposta → garante que a Saga certa
+        // está à vista (re-anexa a bolha) antes de mostrar o cartão, mesmo que se tenha navegado.
+        if (evt.kind === "ApprovalRequest" || evt.kind === "Clarify" || evt.kind === "Plan") {
+          if (!viewing()) await selectConversation(conversationId);
+          awaitingPrompt = true;
+        }
         if (evt.kind === "Start") {
           start = { route: evt.route, model: evt.model, reason: evt.reason };
         } else if (evt.kind === "Delta") {
@@ -2269,12 +2304,13 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
           const firstChunk = !assistant.thinking;
           assistant.thinking = (assistant.thinking ?? "") + evt.text;
           // 1.º fragmento → cria o bloco (1 render); seguintes → atualização incremental barata.
-          if (firstChunk) renderMessages();
-          else paintThinking();
+          if (firstChunk) {
+            if (viewing()) renderMessages();
+          } else paintThinking();
         } else if (evt.kind === "ToolStep") {
           assistant.steps = assistant.steps ?? [];
           assistant.steps.push(formatToolStep(evt.tool, evt.detail));
-          renderMessages();
+          if (viewing()) renderMessages();
           paintBubble();
         } else if (evt.kind === "ApprovalRequest") {
           showApproval(evt.id, evt.tool, evt.preview);
@@ -2288,7 +2324,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
           if (assistant.plan?.steps[evt.index]) {
             assistant.plan.steps[evt.index].status =
               evt.status as "pending" | "executing" | "searching" | "done" | "error";
-            renderMessages();
+            if (viewing()) renderMessages();
             paintBubble();
           }
         } else if (evt.kind === "Done") {
@@ -2330,6 +2366,11 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   } finally {
     setBusy(false);
     stopWaitTicker();
+    if (streamingItem === assistant) {
+      streamingConvId = null;
+      streamingItem = null;
+    }
+    awaitingPrompt = false;
     // Breadcrumb: última ação antes de um eventual crash do renderer (render pesado com imagem).
     const hasImg = state.items.some((i) => i.attachments && i.attachments.length);
     void api
@@ -2338,17 +2379,20 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
         `turn done: a renderizar ${state.items.length} msgs (img=${hasImg}, content=${assistant.content.length}c, thinking=${(assistant.thinking ?? "").length}c)`
       )
       .catch(() => {});
-    renderMessages();
+    if (viewing()) renderMessages();
     loadConversations(); // atualiza título/ordem na sidebar
-    try {
-      renderAccounting(await api.conversationAccounting(conversationId));
-    } catch {
-      /* ignora */
+    if (viewing()) {
+      try {
+        renderAccounting(await api.conversationAccounting(conversationId));
+      } catch {
+        /* ignora */
+      }
     }
   }
   // Pediste pesquisa mas a resposta local não traz fontes → o modelo não chamou a ferramenta
   // (ou a pesquisa veio vazia). Diz porquê, em vez de deixar parecer que pesquisou.
   if (
+    viewing() &&
     sendOpts.research &&
     !assistant.error &&
     (assistant.meta?.route ?? "local") === "local" &&
@@ -2716,8 +2760,9 @@ async function regenerate(opts: SendOpts = {}) {
 
 function setBusy(b: boolean) {
   state.busy = b;
+  // Só o botão Enviar fica em espera (uma geração de cada vez). O input permanece ativo para
+  // se poder redigir a próxima mensagem enquanto a atual gera.
   els.send.disabled = b;
-  els.input.disabled = b;
 }
 
 // ---- Settings (app: aparência + atualizações; config de modelos vive no hub Modelos) ----
@@ -3432,6 +3477,7 @@ function showApproval(id: number, tool: string, preview: string) {
       <button type="button" class="primary" data-ok="1">${t("Aprovar")}</button>
     </div>`;
   const done = (ok: boolean) => {
+    awaitingPrompt = false;
     api.approveAction(id, ok).catch(() => {});
     card.remove();
   };
@@ -3476,6 +3522,7 @@ function showClarifyCard(id: number, questions: string[]) {
     list.appendChild(row);
   }
   const done = (answered: boolean) => {
+    awaitingPrompt = false;
     const answers = inputs.map((i) => i.value.trim());
     api.respondClarify(id, answered, answered ? answers : []).catch(() => {});
     card.remove();
@@ -3582,6 +3629,7 @@ function showPlanCard(
       // Guarda os passos na mensagem → render da checklist com estado durante a execução.
       assistant.plan = { steps: edited.map((title) => ({ title, status: "pending" })) };
     }
+    awaitingPrompt = false;
     api.respondPlan(id, ok, edited, useWeb).catch(() => {});
     card.remove();
     renderMessages();
