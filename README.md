@@ -229,6 +229,18 @@ of the verbose step label) · **live token streaming during Plan execution**.
 - **Code-sign & notarize installers** *(current focus)* — the updater is signed and auto-update is live; still
   pending is OS-level **code-signing + notarization** (Apple Developer ID / Windows Authenticode) to drop the
   "unknown publisher" warnings.
+- **Projects** — a folder you add becomes a *project*: the models get **local context** for it (its file tree +
+  on-demand reads), and **skills, playbooks & agents can be scoped per-project or shared** across all projects
+  (a project-scoped doc overrides the shared one of the same name). Inside a project the agent gets **file tools
+  — view, edit, create** within the folder, gated by a **permission mode**: **ask** (confirm each file action,
+  reusing the action log + `confirm_mode`) or **auto** (runs unattended to the end — but **only after you approve
+  a plan first**, extending Plan mode's draft → approve → execute to real file edits). Every auto run is
+  **reversible** via **rollback**: the folder is snapshotted/checkpointed before the run starts, so one click
+  undoes the whole thing. Builds on the existing Workspace (skills/playbooks/workflows/agents), action log, Plan
+  mode and the agentic tool loop — this is the natural home for **Agentic Plan execution (v2)** below. Open:
+  project context as plain file-tree + reads vs an indexed/RAG layer for large repos; rollback via per-run shadow
+  git (stash/commit) vs a filesystem snapshot copy; and whether the file tools also run on the local route (today
+  the agentic loop is Claude-only).
 - **Agentic Plan execution (v2)** — today Plan mode *generates* each step (reasoning/writing, optionally web-grounded);
   a v2 would let approved steps take **real actions** via the agentic tool loop (browser, workspace, MCP, files) on
   the Claude route, with per-step approval for risky ones.
