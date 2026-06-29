@@ -217,11 +217,18 @@ of the verbose step label) · **live token streaming during Plan execution**.
 
 **Next:**
 
+- **First-time experience** *(current focus)* — make the first run delightful and self-explanatory beyond the
+  existing welcome flow: detect an **incomplete setup** (Ollama not running, no model pulled, no embed model for
+  the L2 clarification) and guide the fix inline; seed a couple of **example skills/workflows** so the Workspace
+  isn't empty; **suggested starter prompts** in the empty state; a short **guided tour** of the key surfaces
+  (composer toggles, route picker, Workspace, Automations). Goal: a new user is productive within a minute,
+  without reading docs.
 - **Zero-setup distribution** — bundle/auto-install Ollama as a managed sidecar (auto-pull a small default
   model on first run), package the Playwright sidecar (`externalBin`) so the browser tool needs no manual
   install. Goal: double-click the installer and it just works.
-- **Code-sign & notarize installers** — the updater is signed and auto-update is live; still pending is OS-level
-  **code-signing + notarization** (Apple Developer ID / Windows Authenticode) to drop the "unknown publisher" warnings.
+- **Code-sign & notarize installers** *(current focus)* — the updater is signed and auto-update is live; still
+  pending is OS-level **code-signing + notarization** (Apple Developer ID / Windows Authenticode) to drop the
+  "unknown publisher" warnings.
 - **Agentic Plan execution (v2)** — today Plan mode *generates* each step (reasoning/writing, optionally web-grounded);
   a v2 would let approved steps take **real actions** via the agentic tool loop (browser, workspace, MCP, files) on
   the Claude route, with per-step approval for risky ones.
