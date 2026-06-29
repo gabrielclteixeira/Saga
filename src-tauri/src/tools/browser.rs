@@ -22,11 +22,14 @@ impl PlaywrightSidecar {
                 "caminho do sidecar do browser não configurado (Definições → Browser)"
             ));
         }
+        // Apps GUI no macOS têm PATH mínimo e não veem o node — resolve o caminho real + PATH aumentado.
+        let node = crate::which::launch_path(node);
         #[allow(unused_mut)]
-        let mut builder = Command::new(node);
+        let mut builder = Command::new(&node);
         builder
             .arg(script)
             .env("SAGA_USER_DATA_DIR", user_data_dir)
+            .env("PATH", crate::which::augmented_path())
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::inherit());

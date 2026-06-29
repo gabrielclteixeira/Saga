@@ -242,11 +242,13 @@ pub async fn diagnostics(state: State<'_, AppState>) -> Result<Diagnostics, Stri
             }
         }
         "cli" => {
-            let path = settings.claude_cli_path.clone();
+            // Resolve o caminho real (apps GUI no macOS têm PATH mínimo) e dá um PATH aumentado.
+            let path = crate::which::launch_path(&settings.claude_cli_path);
+            let env_path = crate::which::augmented_path();
             let ok = tauri::async_runtime::spawn_blocking(move || {
                 #[allow(unused_mut)]
                 let mut cmd = std::process::Command::new(&path);
-                cmd.arg("--version");
+                cmd.arg("--version").env("PATH", &env_path);
                 #[cfg(windows)]
                 {
                     use std::os::windows::process::CommandExt;
@@ -259,7 +261,10 @@ pub async fn diagnostics(state: State<'_, AppState>) -> Result<Diagnostics, Stri
             if ok {
                 (true, "Claude CLI detetada".into())
             } else {
-                (false, "Claude CLI não encontrada".into())
+                (
+                    false,
+                    "Claude CLI não encontrada — instala-a ou define o caminho completo em Modelos".into(),
+                )
             }
         }
         _ => (false, "Claude desligado".into()),

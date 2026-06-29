@@ -87,7 +87,11 @@ pub async fn run(
     let tmp_dir = std::env::temp_dir().join("saga-cli-images");
     let (prompt, tmp_files) = flatten(messages, &tmp_dir);
     let has_images = !tmp_files.is_empty();
-    let cli_path = cli_path.to_string();
+    // Apps GUI no macOS herdam um PATH mínimo e não veem o claude/node — resolve o caminho real
+    // e passa um PATH aumentado ao subprocesso (o claude do npm precisa de encontrar o node).
+    let launch = crate::which::launch_path(cli_path);
+    let env_path = crate::which::augmented_path();
+    let path_msg = cli_path.to_string();
     let model = model.to_string();
 
     let mut tools: Vec<String> = allowed_tools.iter().map(|s| s.to_string()).collect();
@@ -110,15 +114,15 @@ pub async fn run(
         args.push(tools.join(","));
     }
 
-    let path_msg = cli_path.clone();
     // Command é síncrono — corre num thread de blocking para não travar o runtime async.
     let output = tauri::async_runtime::spawn_blocking(move || -> std::io::Result<std::process::Output> {
         use std::io::Write;
         use std::process::Stdio;
         #[allow(unused_mut)]
-        let mut builder = Command::new(&cli_path);
+        let mut builder = Command::new(&launch);
         builder
             .args(&args)
+            .env("PATH", &env_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

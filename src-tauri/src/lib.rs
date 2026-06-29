@@ -18,6 +18,7 @@ mod settings;
 mod store;
 mod tools;
 mod web_agent;
+mod which;
 mod workspace;
 
 use commands::AppState;

@@ -25,8 +25,12 @@ impl McpClient {
         if command.trim().is_empty() {
             return Err(anyhow!("comando do servidor MCP não configurado"));
         }
-        let mut cmd = Command::new(command);
+        // Apps GUI no macOS têm PATH mínimo e não veem o npx/node — resolve o comando + PATH aumentado
+        // (o env do servidor, a seguir, ainda se pode sobrepor ao PATH se for explícito).
+        let launch = crate::which::launch_path(command);
+        let mut cmd = Command::new(&launch);
         cmd.args(args);
+        cmd.env("PATH", crate::which::augmented_path());
         for (k, v) in env {
             cmd.env(k, v);
         }
