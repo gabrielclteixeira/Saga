@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Saga",
   "version": "0.9.0",
-  "identifier": "pt.erp24.saga",
+  "identifier": "io.github.gabrielclteixeira.saga",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
