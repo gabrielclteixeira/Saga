@@ -155,6 +155,8 @@ pub enum StreamEvent {
         gen_ms: i64,
         /// Intenção classificada do pedido (camada reasoning): "shopping" | "general".
         intent: String,
+        /// Concordância das amostras no modo "verify" (0–1). None fora do verify.
+        confidence: Option<f32>,
         accounting: Accounting,
     },
 }
@@ -1222,7 +1224,7 @@ pub async fn send_message_stream(
     route_override: Option<String>,
     model_override: Option<String>,
     regenerate: bool,
-    thinking: bool,
+    think_level: String,
     research: bool,
     subagents: bool,
     plan: bool,
@@ -1380,7 +1382,7 @@ pub async fn send_message_stream(
 
     // Breadcrumb: contexto do turno (útil para ver a última ação antes de um crash).
     log::info!(
-        "turn conv={conversation_id} route={} model={effective_model} research={research} subagents={subagents} think={thinking} msgs={} images={} web_search={}",
+        "turn conv={conversation_id} route={} model={effective_model} research={research} subagents={subagents} think={think_level} msgs={} images={} web_search={}",
         prepared.route.as_str(),
         prepared.full_messages.len(),
         prepared.has_images,
@@ -1405,6 +1407,8 @@ pub async fn send_message_stream(
     // Tokens do gate de clarificação do chat (B), somados ao turno depois (0 no Plan mode).
     let mut clarify_in = 0u64;
     let mut clarify_out = 0u64;
+    // Concordância das amostras no modo Think "verify" (preenchida no Passo 2). None = sem verify.
+    let turn_confidence: Option<f32> = None;
     // Camada "reasoning": intenção do pedido (determinística). Alimenta o deep-research e a metadata.
     let turn_intent = crate::reasoning::classify_intent(
         messages
@@ -1671,8 +1675,9 @@ pub async fn send_message_stream(
                 r
             } else {
                 // Modelos com raciocínio (gemma4, qwen3, deepseek-r1…) emitem "thinking"
-                // separado — pede-o e reenvia-o como feedback ao utilizador.
-                let think = providers::ollama::model_reasons(&prepared.model);
+                // separado — só o pedimos se o nível Think estiver ligado (off suprime-o).
+                // (verify/debate ligam-se aqui no Passo 2/3; por agora só o raciocínio nativo.)
+                let think = think_level != "off" && providers::ollama::model_reasons(&prepared.model);
                 let tx_think = channel.clone();
                 providers::ollama::chat_stream(
                     &settings.ollama_endpoint,
@@ -1827,7 +1832,7 @@ pub async fn send_message_stream(
                 )
                 .await
             } else if use_api {
-                let thinking_budget = if thinking {
+                let thinking_budget = if think_level != "off" {
                     Some(settings.thinking_budget)
                 } else {
                     None
@@ -1972,6 +1977,7 @@ pub async fn send_message_stream(
         cost_usd: cost,
         gen_ms,
         intent: turn_intent.as_str().to_string(),
+        confidence: turn_confidence,
         accounting: snapshot,
     });
 

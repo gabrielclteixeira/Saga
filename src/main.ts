@@ -70,6 +70,9 @@ interface Item {
   plan?: { steps: { title: string; status: "pending" | "executing" | "searching" | "done" | "error" }[] };
 }
 
+/** Nível de esforço de raciocínio (Think): off → nativo → self-consistency → debate. */
+type ThinkLevel = "off" | "think" | "verify" | "debate";
+
 const state: {
   items: Item[];
   settings: Settings | null;
@@ -78,7 +81,7 @@ const state: {
   currentConversationId: number | null;
   pendingAttachments: Attachment[];
   routeMode: "local" | "claude";
-  thinking: boolean;
+  thinkLevel: ThinkLevel;
   research: boolean;
   subagents: boolean;
   plan: boolean;
@@ -95,7 +98,7 @@ const state: {
   currentConversationId: null,
   pendingAttachments: [],
   routeMode: "local",
-  thinking: false,
+  thinkLevel: "off",
   research: false,
   subagents: false,
   plan: false,
@@ -212,7 +215,16 @@ app.innerHTML = `
           <button type="button" id="btn-plan" class="chip-toggle" title="${t("Plan mode: rascunha um plano de passos, aprovas/editas, e executa passo a passo")}">${icon("list")}<span>${t("Plano")}</span></button>
           <button type="button" id="btn-subagents" class="chip-toggle" title="${t("Subagentes (API: orquestra em paralelo · CLI: ferramenta Task)")}">${icon("nodes")}<span>${t("Subagentes")}</span></button>
           <button type="button" id="btn-research" class="chip-toggle" title="${t("Pesquisa web (API: web_search · CLI: WebSearch)")}">${icon("search")}<span>${t("Pesquisar")}</span></button>
-          <button type="button" id="btn-think" class="chip-toggle" title="${t("Extended thinking (raciocínio) — só Claude API")}">${icon("brain")}<span>${t("Think")}</span></button>
+          <span class="think-split">
+            <button type="button" id="btn-think" class="chip-toggle" title="${t("Nível de raciocínio (Think)")}">${icon("brain")}<span id="btn-think-label">${t("Think")}</span></button>
+            <button type="button" id="btn-think-caret" class="chip-caret" title="${t("Escolher nível de Think")}" aria-haspopup="true">${icon("chevron")}</button>
+            <div class="think-menu" id="think-menu" hidden>
+              <button type="button" data-level="off">${t("Desligado")}</button>
+              <button type="button" data-level="think">${t("Nativo (pensar)")}</button>
+              <button type="button" data-level="verify">${t("Verificar (consenso)")}</button>
+              <button type="button" data-level="debate">${t("Debater")}</button>
+            </div>
+          </span>
         </span>
       </div>
       <div class="slash-menu" id="slash-menu" hidden></div>
@@ -382,7 +394,14 @@ app.innerHTML = `
             <label class="ws-check"><input type="checkbox" id="ws-agent-research" /> ${t("Pesquisa aprofundada")}</label>
             <label class="ws-check"><input type="checkbox" id="ws-agent-subagents" /> ${t("Subagentes")}</label>
             <label class="ws-check"><input type="checkbox" id="ws-agent-plan" /> ${t("Plano")}</label>
-            <label class="ws-check"><input type="checkbox" id="ws-agent-think" /> ${t("Pensamento estendido (Think)")}</label>
+            <label class="ws-inline">${t("Think (raciocínio)")}
+              <select id="ws-agent-think-level">
+                <option value="off">${t("Desligado")}</option>
+                <option value="think">${t("Nativo (pensar)")}</option>
+                <option value="verify">${t("Verificar (consenso)")}</option>
+                <option value="debate">${t("Debater")}</option>
+              </select>
+            </label>
           </fieldset>
           <label id="ws-body-label">${t("Corpo (markdown)")}
             <textarea id="ws-content" rows="12" spellcheck="false" placeholder="${t("# Instruções…")}"></textarea>
@@ -1153,10 +1172,20 @@ function renderMessagesInner() {
       const lvlLabel =
         lvl === "light" ? t("Leve") : lvl === "medium" ? t("Médio") : lvl === "high" ? t("Alto") : null;
       const showIntent = !!m.intent && m.intent !== "general";
-      if (lvlLabel || showIntent) {
+      // Nível Think usado neste turno (+ confiança das amostras no modo verify).
+      const tl = m.thinkLevel;
+      const thinkLabel = tl && tl !== "off" ? `${t("Think")}: ${tl}` : null;
+      if (lvlLabel || showIntent || thinkLabel) {
         const parts: string[] = [];
         if (lvlLabel) parts.push(`${t("raciocínio")}: ${lvlLabel}`);
         if (showIntent) parts.push(t("compras"));
+        if (thinkLabel) {
+          parts.push(
+            m.confidence != null
+              ? `${thinkLabel} · ${t("confiança")} ${Math.round(m.confidence * 100)}%`
+              : thinkLabel
+          );
+        }
         bits.push(`<span>${parts.join(" · ")}</span>`);
       }
       bits.push(
@@ -2551,7 +2580,7 @@ type SendOpts = {
   routeOverride?: "local" | "claude";
   modelOverride?: string;
   regenerate?: boolean;
-  thinking?: boolean;
+  thinkLevel?: ThinkLevel;
   research?: boolean;
   subagents?: boolean;
   plan?: boolean;
@@ -2712,7 +2741,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   const conversationId = state.currentConversationId!;
   const sendOpts: SendOpts = {
     ...opts,
-    thinking: opts.thinking ?? state.thinking,
+    thinkLevel: opts.thinkLevel ?? state.thinkLevel,
     research: opts.research ?? state.research,
     subagents: opts.subagents ?? state.subagents,
     plan: opts.plan ?? state.plan,
@@ -2741,7 +2770,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
         ? "subagents"
         : hasDoc
           ? "doc"
-          : sendOpts.thinking || localReasons
+          : (sendOpts.thinkLevel && sendOpts.thinkLevel !== "off") || localReasons
             ? "think"
             : "normal";
   waitStart = Date.now();
@@ -2844,6 +2873,8 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
             reason: start?.reason ?? "",
             gen_ms: evt.gen_ms,
             intent: evt.intent,
+            thinkLevel: sendOpts.thinkLevel,
+            confidence: evt.confidence,
             accounting: evt.accounting,
           };
           // Persiste os breadcrumbs de ferramentas para sobreviverem a reinícios.
@@ -2938,10 +2969,9 @@ function setRouteMode(mode: "local" | "claude") {
     .querySelectorAll<HTMLButtonElement>("button[data-mode]")
     .forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
 }
-function toggleComposerFlag(flag: "thinking" | "research" | "subagents") {
+function toggleComposerFlag(flag: "research" | "subagents") {
   state[flag] = !state[flag];
-  const id =
-    flag === "thinking" ? "#btn-think" : flag === "research" ? "#btn-research" : "#btn-subagents";
+  const id = flag === "research" ? "#btn-research" : "#btn-subagents";
   document.querySelector(id)!.classList.toggle("active", state[flag]);
 }
 function openSettingsDialog() {
@@ -2978,7 +3008,7 @@ function slashCommands(): SlashCmd[] {
     cmds.push(
       { cmd: "local", label: t("Rota: Local"), kind: "setting", run: () => setRouteMode("local") },
       { cmd: "claude", label: t("Rota: Claude"), kind: "setting", run: () => setRouteMode("claude") },
-      { cmd: "think", label: t("Toggle: Think"), kind: "setting", run: () => toggleComposerFlag("thinking") },
+      { cmd: "think", label: t("Toggle: Think"), kind: "setting", run: () => setThinkLevel(state.thinkLevel === "off" ? "think" : "off") },
       { cmd: t("subagentes"), label: t("Toggle: Subagentes"), kind: "setting", run: () => toggleComposerFlag("subagents") }
     );
   }
@@ -3297,17 +3327,30 @@ function applyComposerToggles() {
 }
 
 // ---- Picker de agente (persona) no composer ----
-function setToggle(which: "research" | "subagents" | "thinking" | "plan", on: boolean) {
+function setToggle(which: "research" | "subagents" | "plan", on: boolean) {
   state[which] = on;
   const id =
-    which === "thinking"
-      ? "#btn-think"
-      : which === "research"
-        ? "#btn-research"
-        : which === "plan"
-          ? "#btn-plan"
-          : "#btn-subagents";
+    which === "research" ? "#btn-research" : which === "plan" ? "#btn-plan" : "#btn-subagents";
   document.querySelector(id)?.classList.toggle("active", on);
+}
+
+const THINK_LABELS: Record<ThinkLevel, string> = {
+  off: "off",
+  think: "think",
+  verify: "verify",
+  debate: "debate",
+};
+
+/** Define o nível de Think (escala de esforço) e atualiza o chip + o menu. */
+function setThinkLevel(level: ThinkLevel) {
+  state.thinkLevel = level;
+  const btn = document.querySelector("#btn-think");
+  btn?.classList.toggle("active", level !== "off");
+  const lbl = document.querySelector("#btn-think-label");
+  if (lbl) lbl.textContent = level === "off" ? t("Think") : `${t("Think")}: ${THINK_LABELS[level]}`;
+  document
+    .querySelectorAll<HTMLElement>("#think-menu [data-level]")
+    .forEach((el) => el.classList.toggle("active", el.dataset.level === level));
 }
 
 function updateAgentChip() {
@@ -3333,8 +3376,7 @@ async function setActiveAgent(name: string | null) {
     setToggle("research", !!f.agentResearch && canSearch);
     setToggle("subagents", !!f.agentSubagents && cloudEnabled());
     setToggle("plan", !!f.agentPlan);
-    // Pensamento estendido é Claude API — só liga se o cloud estiver configurado.
-    setToggle("thinking", !!f.agentThink && cloudEnabled());
+    setThinkLevel(f.agentThinkLevel ?? "off");
     updateAgentChip();
     showHint(t("Agente ativo: {n}", { n: state.activeAgent.name }));
     if (state.research) maybeWarnSearch(); // avisa se faltar chave de pesquisa
@@ -4317,7 +4359,7 @@ interface DocFields {
   agentResearch?: boolean;
   agentSubagents?: boolean;
   agentPlan?: boolean;
-  agentThink?: boolean;
+  agentThinkLevel?: ThinkLevel;
 }
 
 const wsq = <T extends HTMLElement>(id: string) => document.querySelector<T>(id)!;
@@ -4386,7 +4428,12 @@ function parseDocFields(kind: WsKind, raw: string): DocFields {
     agentResearch: truthy(fm["research"]),
     agentSubagents: truthy(fm["subagents"]),
     agentPlan: truthy(fm["plan"]),
-    agentThink: truthy(fm["think"]),
+    // `think` passou de bool para nível; retrocompatível: true→think, false/ausente→off.
+    agentThinkLevel: ((): ThinkLevel => {
+      const v = (fm["think"] ?? "").toString().trim().toLowerCase();
+      if (v === "verify" || v === "debate" || v === "think") return v;
+      return truthy(fm["think"]) ? "think" : "off";
+    })(),
   };
 }
 
@@ -4408,7 +4455,7 @@ function assembleDoc(kind: WsKind, f: DocFields): string {
       `research: ${f.agentResearch ? "true" : "false"}`,
       `subagents: ${f.agentSubagents ? "true" : "false"}`,
       `plan: ${f.agentPlan ? "true" : "false"}`,
-      `think: ${f.agentThink ? "true" : "false"}`,
+      `think: ${f.agentThinkLevel || "off"}`,
       `route: ${f.agentRoute === "claude" ? "claude" : "local"}`
     );
   } else {
@@ -4433,7 +4480,7 @@ function fillEditorFields(f: Partial<DocFields>) {
   wsq<HTMLInputElement>("#ws-agent-research").checked = !!f.agentResearch;
   wsq<HTMLInputElement>("#ws-agent-subagents").checked = !!f.agentSubagents;
   wsq<HTMLInputElement>("#ws-agent-plan").checked = !!f.agentPlan;
-  wsq<HTMLInputElement>("#ws-agent-think").checked = !!f.agentThink;
+  wsq<HTMLSelectElement>("#ws-agent-think-level").value = f.agentThinkLevel || "off";
 }
 
 // Estado ativo/inativo do doc em edição — preservado no save (o toggle vive na lista, não no editor).
@@ -4454,7 +4501,7 @@ function readEditorFields(): DocFields {
     agentResearch: wsq<HTMLInputElement>("#ws-agent-research").checked,
     agentSubagents: wsq<HTMLInputElement>("#ws-agent-subagents").checked,
     agentPlan: wsq<HTMLInputElement>("#ws-agent-plan").checked,
-    agentThink: wsq<HTMLInputElement>("#ws-agent-think").checked,
+    agentThinkLevel: wsq<HTMLSelectElement>("#ws-agent-think-level").value as ThinkLevel,
   };
 }
 
@@ -5978,9 +6025,23 @@ async function init() {
   els.routeModeBar.querySelectorAll<HTMLButtonElement>("button[data-mode]").forEach((btn) => {
     btn.addEventListener("click", () => setRouteMode((btn.dataset.mode as "local" | "claude") ?? "local"));
   });
-  document.querySelector("#btn-think")!.addEventListener("click", (e) => {
-    state.thinking = !state.thinking;
-    (e.currentTarget as HTMLElement).classList.toggle("active", state.thinking);
+  // Chip Think: corpo alterna off↔think; a seta abre o menu de níveis.
+  document.querySelector("#btn-think")!.addEventListener("click", () => {
+    setThinkLevel(state.thinkLevel === "off" ? "think" : "off");
+  });
+  const thinkMenu = document.querySelector<HTMLElement>("#think-menu")!;
+  document.querySelector("#btn-think-caret")!.addEventListener("click", (e) => {
+    e.stopPropagation();
+    thinkMenu.toggleAttribute("hidden");
+  });
+  thinkMenu.querySelectorAll<HTMLButtonElement>("[data-level]").forEach((b) =>
+    b.addEventListener("click", () => {
+      setThinkLevel(b.dataset.level as ThinkLevel);
+      thinkMenu.setAttribute("hidden", "");
+    })
+  );
+  document.addEventListener("click", (e) => {
+    if (!(e.target as HTMLElement).closest(".think-split")) thinkMenu.setAttribute("hidden", "");
   });
   document.querySelector("#btn-research")!.addEventListener("click", (e) => {
     state.research = !state.research;

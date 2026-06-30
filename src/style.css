@@ -1361,6 +1361,68 @@ mark.find-current {
   border-color: var(--claude);
   color: var(--claude);
 }
+/* Chip Think com seta (escala de esforço) */
+.think-split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+.chip-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  margin-left: -1px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.chip-caret:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.chip-caret .ic {
+  width: 12px;
+  height: 12px;
+  transform: rotate(90deg);
+}
+.think-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 190px;
+  padding: 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+.think-menu[hidden] {
+  display: none;
+}
+.think-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.think-menu button:hover {
+  background: var(--bg-3);
+}
+.think-menu button.active {
+  color: var(--accent);
+}
 
 /* Bloco de raciocínio (extended thinking) */
 .thinking-block {

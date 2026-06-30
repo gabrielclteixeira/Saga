@@ -171,6 +171,8 @@ export interface ChatResponse {
   reason: string;
   gen_ms?: number;
   intent?: string;
+  thinkLevel?: string;
+  confidence?: number | null;
   accounting: Accounting;
 }
 
@@ -246,6 +248,7 @@ export type StreamEvent =
       cost_usd: number;
       gen_ms: number;
       intent: string;
+      confidence: number | null;
       accounting: Accounting;
     };
 
@@ -299,7 +302,7 @@ export const api = {
       routeOverride?: "local" | "claude";
       modelOverride?: string;
       regenerate?: boolean;
-      thinking?: boolean;
+      thinkLevel?: string;
       research?: boolean;
       subagents?: boolean;
       plan?: boolean;
@@ -314,7 +317,7 @@ export const api = {
       routeOverride: opts?.routeOverride ?? null,
       modelOverride: opts?.modelOverride ?? null,
       regenerate: opts?.regenerate ?? false,
-      thinking: opts?.thinking ?? false,
+      thinkLevel: opts?.thinkLevel ?? "off",
       research: opts?.research ?? false,
       subagents: opts?.subagents ?? false,
       plan: opts?.plan ?? false,
