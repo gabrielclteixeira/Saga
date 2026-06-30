@@ -3,6 +3,7 @@
 
 pub mod browser;
 pub mod dispatch;
+pub mod project;
 pub mod web;
 
 use anyhow::Result;

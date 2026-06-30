@@ -1299,6 +1299,16 @@ pub async fn send_message_stream(
         if !notes.is_empty() {
             block.push_str(&format!("\n\nNotas do tópico:\n{notes}"));
         }
+        // Projeto: anexa a árvore da pasta ao contexto (leitura; as file tools são da rota Claude).
+        let folder = tp.folder_path.trim();
+        if !folder.is_empty() {
+            let tree = crate::tools::project::tree_text(folder, 400);
+            if !tree.trim().is_empty() {
+                block.push_str(&format!(
+                    "\n\n## Projeto (pasta): {folder}\nÁrvore de ficheiros (parcial):\n{tree}"
+                ));
+            }
+        }
         router::TopicCtx { name: tp.name, block }
     });
 
