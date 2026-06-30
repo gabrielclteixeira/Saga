@@ -469,6 +469,7 @@ app.innerHTML = `
         <label>${t("Nome")} <input id="sched-name" type="text" placeholder="${t("ex.: Login diário")}" /></label>
         <label>${t("Workflow")} <select id="sched-workflow"></select></label>
         <label>${t("Argumentos")} <input id="sched-args" type="text" placeholder="${t("(opcional)")}" /></label>
+        <label>${t("Modelo")} <input id="sched-model" type="text" list="ollama-models" autocomplete="off" placeholder="${t("(default da rota)")}" /></label>
         <label>${t("Frequência")}
           <select id="sched-preset">
             <option value="0 0 9 * * *">${t("Todos os dias às 9h")}</option>
@@ -1465,20 +1466,39 @@ function buildActions(): HTMLDivElement {
         regenerate({ routeOverride: "claude" })
       )
     );
+  }
+
+  // A/B: regenerar o MESMO prompt noutro modelo (local instalado ou Claude). Mostra-se se houver
+  // modelos locais para escolher ou se o cloud estiver ligado.
+  if (localModelsCache.length || cloudEnabled()) {
     const sel = document.createElement("select");
     sel.className = "model-pick";
-    sel.innerHTML = `
-      <option value="">${t("Modelo")}</option>
-      <option value="local">${t("Tentar local")}</option>
-      <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
-      <option value="claude-sonnet-4-6">Sonnet 4.6</option>
-      <option value="claude-opus-4-8">Opus 4.8</option>`;
+    let opts = `<option value="">${t("Modelo")}</option>`;
+    if (localModelsCache.length) {
+      opts +=
+        `<optgroup label="${t("Local")}">` +
+        localModelsCache
+          .map((m) => `<option value="local:${escapeHtml(m)}">${escapeHtml(m)}</option>`)
+          .join("") +
+        `</optgroup>`;
+    }
+    if (cloudEnabled()) {
+      opts +=
+        `<optgroup label="Claude">` +
+        `<option value="local">${t("Tentar local")}</option>` +
+        `<option value="claude-haiku-4-5-20251001">Haiku 4.5</option>` +
+        `<option value="claude-sonnet-4-6">Sonnet 4.6</option>` +
+        `<option value="claude-opus-4-8">Opus 4.8</option>` +
+        `</optgroup>`;
+    }
+    sel.innerHTML = opts;
     sel.addEventListener("change", () => {
       const v = sel.value;
+      sel.value = "";
       if (!v) return;
       if (v === "local") regenerate({ routeOverride: "local" });
+      else if (v.startsWith("local:")) regenerate({ routeOverride: "local", modelOverride: v.slice(6) });
       else regenerate({ routeOverride: "claude", modelOverride: v });
-      sel.value = "";
     });
     actions.appendChild(sel);
   }
@@ -2735,6 +2755,14 @@ function stopWaitTicker() {
     clearInterval(waitTicker);
     waitTicker = undefined;
   }
+}
+
+// Cache dos modelos locais instalados (para o A/B no chat e o autocomplete do agente). Atualizado
+// no arranque e quando a vista Modelos lista os instalados.
+let localModelsCache: string[] = [];
+function setLocalModelsCache(ms: string[]) {
+  localModelsCache = ms;
+  els.modelsList.innerHTML = ms.map((m) => `<option value="${escapeHtml(m)}"></option>`).join("");
 }
 
 // Pré-aquecimento do modelo local: carrega-o em VRAM antes do 1.º envio para a resposta
@@ -4976,6 +5004,7 @@ function clearSchedForm() {
   schedEditingId = null;
   (document.querySelector("#sched-name") as HTMLInputElement).value = "";
   (document.querySelector("#sched-args") as HTMLInputElement).value = "";
+  (document.querySelector("#sched-model") as HTMLInputElement).value = "";
   (document.querySelector("#sched-preset") as HTMLSelectElement).value = "0 0 9 * * *";
   (document.querySelector("#sched-cron") as HTMLInputElement).value = "0 0 9 * * *";
   (document.querySelector("#sched-enabled") as HTMLInputElement).checked = true;
@@ -5041,6 +5070,7 @@ function editSchedule(s: Schedule) {
   schedEditingId = s.id;
   (document.querySelector("#sched-name") as HTMLInputElement).value = s.name;
   (document.querySelector("#sched-args") as HTMLInputElement).value = s.arguments;
+  (document.querySelector("#sched-model") as HTMLInputElement).value = s.model || "";
   (document.querySelector("#sched-cron") as HTMLInputElement).value = s.cron;
   (document.querySelector("#sched-preset") as HTMLSelectElement).value = "__custom__";
   (document.querySelector("#sched-enabled") as HTMLInputElement).checked = s.enabled;
@@ -5053,6 +5083,7 @@ async function addOrUpdateSchedule() {
   const name = (document.querySelector("#sched-name") as HTMLInputElement).value.trim();
   const workflow = (document.querySelector("#sched-workflow") as HTMLSelectElement).value;
   const args = (document.querySelector("#sched-args") as HTMLInputElement).value.trim();
+  const model = (document.querySelector("#sched-model") as HTMLInputElement).value.trim();
   const cron = (document.querySelector("#sched-cron") as HTMLInputElement).value.trim();
   const enabled = (document.querySelector("#sched-enabled") as HTMLInputElement).checked;
   const status = document.querySelector("#sched-status")!;
@@ -5062,9 +5093,9 @@ async function addOrUpdateSchedule() {
   }
   try {
     if (schedEditingId !== null) {
-      await api.updateSchedule(schedEditingId, name, workflow, args, cron, enabled);
+      await api.updateSchedule(schedEditingId, name, workflow, args, cron, enabled, model);
     } else {
-      await api.createSchedule(name, workflow, args, cron, enabled);
+      await api.createSchedule(name, workflow, args, cron, enabled, model);
     }
     clearSchedForm();
     await renderSchedules();
@@ -5075,7 +5106,7 @@ async function addOrUpdateSchedule() {
 
 async function toggleSchedule(s: Schedule, enabled: boolean) {
   try {
-    await api.updateSchedule(s.id, s.name, s.workflow_name, s.arguments, s.cron, enabled);
+    await api.updateSchedule(s.id, s.name, s.workflow_name, s.arguments, s.cron, enabled, s.model);
     await renderSchedules();
   } catch (e) {
     alert(t("Falha: ") + e);
@@ -5489,8 +5520,9 @@ async function renderInstalled() {
   } catch {
     models = [];
   }
-  // alimenta o datalist partilhado (#ollama-models) para os campos com sugestões
+  // alimenta o datalist partilhado (#ollama-models) + cache (A/B no chat / autocomplete do agente)
   els.modelsList.innerHTML = models.map((m) => `<option value="${escapeHtml(m.name)}"></option>`).join("");
+  localModelsCache = models.map((m) => m.name);
   // Aviso: nenhum modelo instalado lê imagens → não dá para anexar imagens com nenhum.
   const anyVision = models.some((m) => modelCapabilities(m.name).vision);
   document.querySelector("#hub-vision-warn")?.toggleAttribute("hidden", models.length === 0 || anyVision);
@@ -6312,15 +6344,8 @@ async function init() {
     }
     // Aquece o modelo local logo no arranque → 1.ª resposta sem cold-start.
     warmLocalModel();
-    // Alimenta o datalist partilhado (#ollama-models) p/ o autocomplete do modelo no editor de agente.
-    api
-      .listOllamaModels()
-      .then((ms) => {
-        els.modelsList.innerHTML = ms
-          .map((m) => `<option value="${escapeHtml(m)}"></option>`)
-          .join("");
-      })
-      .catch(() => {});
+    // Alimenta o datalist partilhado (#ollama-models) + cache para o A/B no chat e o autocomplete.
+    api.listOllamaModels().then(setLocalModelsCache).catch(() => {});
   } catch (e) {
     console.error(e);
   } finally {

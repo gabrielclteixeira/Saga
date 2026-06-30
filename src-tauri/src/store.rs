@@ -147,6 +147,12 @@ fn init(conn: &Connection) -> Result<()> {
         [],
     )
     .ok();
+    // Migração: modelo por automação (vazio = modelo default da rota).
+    conn.execute(
+        "ALTER TABLE schedules ADD COLUMN model TEXT NOT NULL DEFAULT ''",
+        [],
+    )
+    .ok();
     // Migração: colunas de compactação na conversa (ignora erro se já existirem).
     conn.execute(
         "ALTER TABLE conversations ADD COLUMN compacted_summary TEXT NOT NULL DEFAULT ''",
@@ -631,6 +637,8 @@ pub struct Schedule {
     pub last_status: String,
     /// Mensagem/erro da última execução (resumo), para mostrar na vista de Automações.
     pub last_error: String,
+    /// Modelo a usar (vazio = default da rota do workflow).
+    pub model: String,
 }
 
 fn row_to_schedule(r: &rusqlite::Row) -> rusqlite::Result<Schedule> {
@@ -645,11 +653,12 @@ fn row_to_schedule(r: &rusqlite::Row) -> rusqlite::Result<Schedule> {
         next_run_epoch: r.get(7)?,
         last_status: r.get(8)?,
         last_error: r.get(9)?,
+        model: r.get(10)?,
     })
 }
 
 const SCHED_COLS: &str =
-    "id, name, workflow_name, arguments, cron, enabled, last_run_at, next_run_epoch, last_status, last_error";
+    "id, name, workflow_name, arguments, cron, enabled, last_run_at, next_run_epoch, last_status, last_error, model";
 
 #[allow(clippy::too_many_arguments)]
 pub fn create_schedule(
@@ -660,11 +669,12 @@ pub fn create_schedule(
     cron: &str,
     enabled: bool,
     next_run_epoch: i64,
+    model: &str,
 ) -> Result<i64> {
     conn.execute(
-        "INSERT INTO schedules (name, workflow_name, arguments, cron, enabled, next_run_epoch)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![name, workflow_name, arguments, cron, enabled as i64, next_run_epoch],
+        "INSERT INTO schedules (name, workflow_name, arguments, cron, enabled, next_run_epoch, model)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![name, workflow_name, arguments, cron, enabled as i64, next_run_epoch, model],
     )?;
     Ok(conn.last_insert_rowid())
 }
@@ -679,10 +689,11 @@ pub fn update_schedule(
     cron: &str,
     enabled: bool,
     next_run_epoch: i64,
+    model: &str,
 ) -> Result<()> {
     conn.execute(
-        "UPDATE schedules SET name=?2, workflow_name=?3, arguments=?4, cron=?5, enabled=?6, next_run_epoch=?7 WHERE id=?1",
-        params![id, name, workflow_name, arguments, cron, enabled as i64, next_run_epoch],
+        "UPDATE schedules SET name=?2, workflow_name=?3, arguments=?4, cron=?5, enabled=?6, next_run_epoch=?7, model=?8 WHERE id=?1",
+        params![id, name, workflow_name, arguments, cron, enabled as i64, next_run_epoch, model],
     )?;
     Ok(())
 }

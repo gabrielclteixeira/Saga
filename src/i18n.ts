@@ -60,6 +60,7 @@ const EN: Record<string, string> = {
   "Mover para tópico": "Move to topic",
   "Guardar no projeto": "Save to project",
   "Mais": "More",
+  "(default da rota)": "(route default)",
   "(todos os tópicos)": "(all topics)",
   "Restringe este doc aos chats de um tópico; (todos) = global.":
     "Restrict this doc to a topic's chats; (all) = global.",

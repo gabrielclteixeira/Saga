@@ -85,6 +85,7 @@ export interface Schedule {
   next_run_epoch: number;
   last_status: string;
   last_error: string;
+  model: string; // "" = default da rota
 }
 
 export interface ActionLogEntry {
@@ -393,7 +394,8 @@ export const api = {
     workflowName: string,
     args: string,
     cron: string,
-    enabled: boolean
+    enabled: boolean,
+    model: string
   ) =>
     invoke<number>("create_schedule", {
       name,
@@ -401,6 +403,7 @@ export const api = {
       arguments: args,
       cron,
       enabled,
+      model,
     }),
   updateSchedule: (
     id: number,
@@ -408,7 +411,8 @@ export const api = {
     workflowName: string,
     args: string,
     cron: string,
-    enabled: boolean
+    enabled: boolean,
+    model: string
   ) =>
     invoke<void>("update_schedule", {
       id,
@@ -417,6 +421,7 @@ export const api = {
       arguments: args,
       cron,
       enabled,
+      model,
     }),
   deleteSchedule: (id: number) => invoke<void>("delete_schedule", { id }),
   runScheduleNow: (id: number) => invoke<string>("run_schedule_now", { id }),

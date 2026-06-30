@@ -662,6 +662,7 @@ pub fn create_schedule(
     arguments: String,
     cron: String,
     enabled: bool,
+    model: String,
 ) -> Result<i64, String> {
     let next = if enabled {
         crate::scheduler::next_epoch(&cron).ok_or("expressão cron inválida")?
@@ -669,7 +670,7 @@ pub fn create_schedule(
         0
     };
     let conn = state.db.lock().unwrap();
-    store::create_schedule(&conn, &name, &workflow_name, &arguments, &cron, enabled, next)
+    store::create_schedule(&conn, &name, &workflow_name, &arguments, &cron, enabled, next, &model)
         .map_err(|e| e.to_string())
 }
 
@@ -682,6 +683,7 @@ pub fn update_schedule(
     arguments: String,
     cron: String,
     enabled: bool,
+    model: String,
 ) -> Result<(), String> {
     let next = if enabled {
         crate::scheduler::next_epoch(&cron).ok_or("expressão cron inválida")?
@@ -689,7 +691,7 @@ pub fn update_schedule(
         0
     };
     let conn = state.db.lock().unwrap();
-    store::update_schedule(&conn, id, &name, &workflow_name, &arguments, &cron, enabled, next)
+    store::update_schedule(&conn, id, &name, &workflow_name, &arguments, &cron, enabled, next, &model)
         .map_err(|e| e.to_string())
 }
 

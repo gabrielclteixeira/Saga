@@ -97,6 +97,10 @@ async fn run_schedule_inner(app: &AppHandle, sched: &Schedule) -> (String, Strin
     if route == "claude" && (settings.claude_mode != "api" || settings.claude_api_key.trim().is_empty()) {
         return ("ERRO".into(), "requer Claude API configurado".into());
     }
+    // Modelo por automação (vazio = default da rota).
+    let sched_model = sched.model.trim();
+    let claude_m = if sched_model.is_empty() { settings.claude_model.as_str() } else { sched_model };
+    let local_m = if sched_model.is_empty() { settings.ollama_model.as_str() } else { sched_model };
 
     // Saga "Automações" + regista o disparo (mensagem + entrada no action_log para a Activity).
     let (conv_id, action_id) = {
@@ -190,7 +194,7 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
         };
         agent::run(
             &settings.claude_api_key,
-            &settings.claude_model,
+            claude_m,
             settings.claude_max_tokens,
             &messages,
             &mut dispatcher,
@@ -217,7 +221,7 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
         } else if settings.local_web_search {
             crate::web_agent::run(
                 &settings.ollama_endpoint,
-                &settings.ollama_model,
+                local_m,
                 &settings.web_search_provider,
                 &settings.active_web_key(),
                 &messages,
@@ -234,7 +238,7 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
         } else {
             crate::providers::ollama::chat(
                 &settings.ollama_endpoint,
-                &settings.ollama_model,
+                local_m,
                 &messages,
                 gopts,
             )
@@ -257,9 +261,9 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
     };
     let summary: String = text.chars().take(140).collect();
     let model_label = if route == "claude" {
-        settings.claude_model.clone()
+        claude_m.to_string()
     } else {
-        settings.ollama_model.clone()
+        local_m.to_string()
     };
     {
         let conn = state.db.lock().unwrap();
