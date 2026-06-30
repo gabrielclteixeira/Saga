@@ -61,6 +61,9 @@ pub struct AppState {
     /// Esclarecimentos pendentes (id → (canal, modelo)); `None` = saltou, `Some(answers)` = respondeu.
     /// O modelo é guardado para o `respond_clarify` afinar o viés adaptativo desse modelo.
     pub pending_clarify: tokio::sync::Mutex<HashMap<u64, (oneshot::Sender<Option<Vec<String>>>, String)>>,
+    /// Gerações em curso (conversation_id → canal de cancelamento). O botão "Parar" dispara-o e a
+    /// geração termina cooperativamente, preservando o texto já produzido.
+    pub cancels: Mutex<HashMap<i64, oneshot::Sender<()>>>,
 }
 
 impl AppState {
@@ -76,6 +79,7 @@ impl AppState {
             approval_seq: AtomicU64::new(0),
             pending_plans: tokio::sync::Mutex::new(HashMap::new()),
             pending_clarify: tokio::sync::Mutex::new(HashMap::new()),
+            cancels: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -760,6 +764,15 @@ async fn distill_hint_pass(state: &State<'_, AppState>, conv_id: i64) {
         let hint = serde_json::json!({ "type": ty, "name": name, "reason": reason }).to_string();
         let conn = state.db.lock().unwrap();
         let _ = store::set_distill_hint(&conn, topic_id, &hint);
+    }
+}
+
+/// Para a geração em curso de uma Saga (botão "Parar"). A geração termina cooperativamente
+/// e o texto já produzido é preservado.
+#[tauri::command]
+pub fn cancel_generation(state: State<AppState>, conversation_id: i64) {
+    if let Some(tx) = state.cancels.lock().unwrap().remove(&conversation_id) {
+        let _ = tx.send(());
     }
 }
 
@@ -1697,9 +1710,15 @@ pub async fn send_message_stream(
         reason: prepared.reason.clone(),
     });
 
-    // Closure que reenvia cada fragmento para o frontend.
+    // Acumulador do texto gerado — persiste o parcial se o utilizador carregar em "Parar".
+    let acc_buf = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    // Closure que reenvia cada fragmento para o frontend (e acumula para o cancelamento).
     let tx = channel.clone();
+    let acc_delta = acc_buf.clone();
     let on_delta = move |d: &str| {
+        if let Ok(mut g) = acc_delta.lock() {
+            g.push_str(d);
+        }
         let _ = tx.send(StreamEvent::Delta {
             text: d.to_string(),
         });
@@ -1729,7 +1748,11 @@ pub async fn send_message_stream(
         "[clarify] nivel={} intent={turn_intent:?} (plan={plan}, regen={regenerate})",
         settings.clarify_level
     );
-    let response = if plan {
+    // Canal de cancelamento: o botão "Parar" (cancel_generation) dispara-o e o select! abaixo
+    // termina a geração, preservando o texto já acumulado.
+    let (cancel_tx, mut cancel_rx) = oneshot::channel::<()>();
+    state.cancels.lock().unwrap().insert(conversation_id, cancel_tx);
+    let gen_fut = async { if plan {
         // Plan mode: planeia → aprova/edita → executa passo a passo (planner orquestra; 🔎 fundamenta).
         let use_api = prepared.route == router::Route::Claude;
         let plan_gopts = providers::ollama::GenOpts {
@@ -2094,7 +2117,7 @@ pub async fn send_message_stream(
                     .await
                     {
                         Ok(s) => *browser_guard = Some(s),
-                        Err(e) => return Err(e.to_string()),
+                        Err(e) => return Err(anyhow::anyhow!("{e}")),
                     }
                 }
                 // Garante os servidores MCP ativos.
@@ -2243,8 +2266,58 @@ pub async fn send_message_stream(
             }
         }
     }
-    }
-    .map_err(|e| e.to_string())?;
+    } };
+    // Corre a geração contra o cancelamento. Se o utilizador parar, mantemos o parcial já gerado.
+    let outcome = {
+        tokio::pin!(gen_fut);
+        tokio::select! {
+            r = &mut gen_fut => Some(r),
+            _ = &mut cancel_rx => None,
+        }
+    };
+    state.cancels.lock().unwrap().remove(&conversation_id);
+    let response = match outcome {
+        Some(r) => r.map_err(|e| e.to_string())?,
+        None => {
+            // Cancelado: persiste o texto já produzido (se houver) e finaliza limpo com um Done.
+            let gen_ms = gen_start.elapsed().as_millis() as i64;
+            let partial = acc_buf.lock().map(|g| g.clone()).unwrap_or_default();
+            let mut mid = 0i64;
+            if !partial.trim().is_empty() {
+                let conn = state.db.lock().unwrap();
+                if let Ok(m) = store::append_message(
+                    &conn,
+                    conversation_id,
+                    "assistant",
+                    &partial,
+                    "[]",
+                    prepared.route.as_str(),
+                    &effective_model,
+                    0,
+                    0,
+                    0.0,
+                    prepared.tokens_saved as i64,
+                ) {
+                    let _ = store::set_message_gen_ms(&conn, m, gen_ms);
+                    mid = m;
+                }
+            }
+            let snapshot = state.accounting.lock().unwrap().clone();
+            let _ = channel.send(StreamEvent::Done {
+                message_id: mid,
+                input_tokens: 0,
+                output_tokens: 0,
+                tokens_saved: prepared.tokens_saved,
+                cost_usd: 0.0,
+                gen_ms,
+                intent: turn_intent.as_str().to_string(),
+                think_level: think_used,
+                confidence: None,
+                accounting: snapshot,
+            });
+            return Ok(());
+        }
+    };
     let gen_ms = gen_start.elapsed().as_millis() as i64;
 
     // Pesquisa numa só passagem (sem subagentes): acrescenta as fontes capturadas.

@@ -336,6 +336,8 @@ export const api = {
       plan: opts?.plan ?? false,
     });
   },
+  cancelGeneration: (conversationId: number) =>
+    invoke<void>("cancel_generation", { conversationId }),
   respondPlan: (id: number, approved: boolean, steps: string[], research: boolean) =>
     invoke<void>("respond_plan", { id, approved, steps, research }),
   respondClarify: (id: number, answered: boolean, answers: string[]) =>

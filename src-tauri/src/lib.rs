@@ -165,6 +165,7 @@ pub fn run() {
             commands::set_conversation_topic,
             commands::distill_topic,
             commands::dismiss_distill_hint,
+            commands::cancel_generation,
             commands::project_save_file,
             commands::search_chats,
             commands::get_conversation_accounting,

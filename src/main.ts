@@ -3136,6 +3136,11 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
       streamingConvId = null;
       streamingItem = null;
     }
+    // Cancelado antes do 1.º token → bolha vazia sem utilidade: remove-a.
+    if (!assistant.content && !assistant.thinking && !assistant.steps?.length && !assistant.error) {
+      const i = state.items.indexOf(assistant);
+      if (i >= 0) state.items.splice(i, 1);
+    }
     awaitingPrompt = false;
     // Breadcrumb: última ação antes de um eventual crash do renderer (render pesado com imagem).
     const hasImg = state.items.some((i) => i.attachments && i.attachments.length);
@@ -3353,9 +3358,14 @@ async function warnIfNoVisionModel(activeModel: string, visionModel: string) {
 
 async function onSubmit(ev: Event) {
   ev.preventDefault();
+  // A gerar → o botão é "Parar": cancela em vez de enviar (só por clique no botão, não por Enter).
+  if (state.busy) {
+    if ((ev as SubmitEvent).submitter === els.send) cancelCurrentGeneration();
+    return;
+  }
   hideSlash();
   const text = els.input.value.trim();
-  if ((!text && state.pendingAttachments.length === 0) || state.busy) return;
+  if (!text && state.pendingAttachments.length === 0) return;
 
   // Comandos "/" (criar / definições). Workflows seguem para o envio normal (backend corre-os).
   const m = text.match(/^\/([\w-]+)\s*([\s\S]*)$/);
@@ -3525,9 +3535,18 @@ async function regenerate(opts: SendOpts = {}) {
 
 function setBusy(b: boolean) {
   state.busy = b;
-  // Só o botão Enviar fica em espera (uma geração de cada vez). O input permanece ativo para
-  // se poder redigir a próxima mensagem enquanto a atual gera.
-  els.send.disabled = b;
+  // Durante a geração, o botão Enviar transforma-se em "Parar" (cancela a geração, mantendo o
+  // texto já produzido). O input permanece ativo para se redigir a próxima mensagem entretanto.
+  els.send.textContent = b ? t("Parar") : t("Enviar");
+  els.send.classList.toggle("stop", b);
+  els.send.disabled = false;
+}
+
+/** Cancela a geração em curso (botão "Parar"). O backend finaliza com o parcial já gerado. */
+function cancelCurrentGeneration() {
+  if (streamingConvId == null) return;
+  void api.cancelGeneration(streamingConvId).catch(() => {});
+  showHint(t("Geração parada."));
 }
 
 // ---- Settings (app: aparência + atualizações; config de modelos vive no hub Modelos) ----
@@ -6300,7 +6319,8 @@ async function init() {
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      els.composer.requestSubmit();
+      // A gerar → Enter não envia nem cancela (deixa redigir a próxima mensagem); só o botão Parar.
+      if (!state.busy) els.composer.requestSubmit();
     }
   });
 

@@ -110,6 +110,8 @@ const EN: Record<string, string> = {
   "Projeto: ": "Project: ",
   "Escreve uma mensagem…": "Type a message…",
   "Enviar": "Send",
+  "Parar": "Stop",
+  "Geração parada.": "Generation stopped.",
   "Auto": "Auto",
   "Local": "Local",
   "Claude": "Claude",

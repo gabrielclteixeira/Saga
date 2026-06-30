@@ -1057,6 +1057,11 @@ mark.find-current {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* Botão Enviar em modo "Parar" durante a geração. */
+.composer button.stop {
+  background: var(--danger);
+  color: #fff;
+}
 .attach-btn {
   align-self: flex-end;
   flex-shrink: 0;
