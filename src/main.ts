@@ -655,7 +655,7 @@ app.innerHTML = `
             <option value="ask">${t("Edição confirmada (pede aprovação para gravar)")}</option>
           </select>
         </label>
-        <p class="wiz-hint">${t("Anexar uma pasta dá ao agente a árvore e leitura dos ficheiros; a edição precisa do modo Claude e confirma cada gravação.")}</p>
+        <p class="wiz-hint">${t("Anexar uma pasta dá a árvore ao contexto; ler/editar ficheiros corre na rota Claude (modo API) e confirma cada gravação.")}</p>
       </fieldset>
 
       <menu>

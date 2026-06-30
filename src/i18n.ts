@@ -75,8 +75,8 @@ const EN: Record<string, string> = {
   "Leitura (o agente lê a pasta)": "Read (the agent reads the folder)",
   "Edição confirmada (pede aprovação para gravar)":
     "Confirmed edits (asks before writing)",
-  "Anexar uma pasta dá ao agente a árvore e leitura dos ficheiros; a edição precisa do modo Claude e confirma cada gravação.":
-    "Attaching a folder gives the agent the file tree and file reading; editing needs Claude mode and confirms every write.",
+  "Anexar uma pasta dá a árvore ao contexto; ler/editar ficheiros corre na rota Claude (modo API) e confirma cada gravação.":
+    "Attaching a folder adds the file tree to the context; reading/editing files runs on the Claude route (API mode) and confirms every write.",
   "Projeto: ": "Project: ",
   "Escreve uma mensagem…": "Type a message…",
   "Enviar": "Send",
