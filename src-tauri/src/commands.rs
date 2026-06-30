@@ -1323,6 +1323,11 @@ pub async fn send_message_stream(
         let conn = state.db.lock().unwrap();
         store::get_topic_for_conversation(&conn, conversation_id)
     };
+    // Nome do tópico → scope do Workspace (docs `topic:` só ativam no seu tópico).
+    let topic_name: Option<String> = topic
+        .as_ref()
+        .map(|t| t.name.trim().to_string())
+        .filter(|s| !s.is_empty());
     // Projeto: pasta + se a edição é permitida (file tools na rota Claude — ver Dispatcher abaixo).
     let project_root: Option<String> = topic
         .as_ref()
@@ -1682,6 +1687,7 @@ pub async fn send_message_stream(
                         &prepared.full_messages,
                         &settings.workspace_dir,
                         &prepared.skills_applied,
+                        topic_name.as_deref(),
                         project_tools.as_ref(),
                         Some(&gate),
                         gopts,
@@ -1790,7 +1796,8 @@ pub async fn send_message_stream(
                 .iter()
                 .any(|s| s.enabled && !s.name.trim().is_empty());
             // Só os itens ativos chegam ao Dispatcher (manifesto + tools load_skill/read_playbook).
-            let ws_index = crate::workspace::index(&settings.workspace_dir).active();
+            let ws_index =
+                crate::workspace::index(&settings.workspace_dir).active(topic_name.as_deref());
             let has_ws = !ws_index.skills.is_empty() || !ws_index.playbooks.is_empty();
             let want_tools = use_api
                 && !prepared.has_images

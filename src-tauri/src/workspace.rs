@@ -13,6 +13,8 @@ pub struct DocMeta {
     pub description: String,
     /// Item ligado/desligado (frontmatter `enabled:`; default true quando ausente).
     pub enabled: bool,
+    /// Tópico a que o doc está restrito (frontmatter `topic:`). Vazio = global (todos os tópicos).
+    pub topic: String,
 }
 
 #[derive(Serialize, Default, Clone)]
@@ -24,10 +26,15 @@ pub struct WorkspaceIndex {
 }
 
 impl WorkspaceIndex {
-    /// Só os itens ativos (para os consumidores: Dispatcher, manifesto, etc.). A UI usa o índice
-    /// completo (mostra os desativados a cinzento).
-    pub fn active(&self) -> WorkspaceIndex {
-        let keep = |v: &[DocMeta]| v.iter().filter(|d| d.enabled).cloned().collect();
+    /// Itens ativos e aplicáveis ao tópico atual: `enabled` e (sem `topic:` = global) ou do `topic`
+    /// dado. `topic = None` (conversa sem tópico) → só os globais. A UI usa o índice completo.
+    pub fn active(&self, topic: Option<&str>) -> WorkspaceIndex {
+        let keep = |v: &[DocMeta]| {
+            v.iter()
+                .filter(|d| d.enabled && doc_in_topic(&d.topic, topic))
+                .cloned()
+                .collect()
+        };
         WorkspaceIndex {
             skills: keep(&self.skills),
             playbooks: keep(&self.playbooks),
@@ -35,6 +42,12 @@ impl WorkspaceIndex {
             agents: keep(&self.agents),
         }
     }
+}
+
+/// Um doc aplica-se ao tópico? Global (topic vazio) sempre; senão só se igualar o tópico atual.
+pub fn doc_in_topic(doc_topic: &str, topic: Option<&str>) -> bool {
+    let dt = doc_topic.trim();
+    dt.is_empty() || topic.map(|t| t.eq_ignore_ascii_case(dt)).unwrap_or(false)
 }
 
 fn skills_dir(root: &str) -> PathBuf {
@@ -71,6 +84,21 @@ pub fn parse_frontmatter(content: &str) -> (Option<String>, Option<String>) {
 
 fn clean_value(v: &str) -> String {
     v.trim().trim_matches('"').trim_matches('\'').to_string()
+}
+
+/// Lê o `topic:` do frontmatter (vazio = global). Restringe o doc aos chats desse tópico.
+pub fn parse_topic(content: &str) -> String {
+    let trimmed = content.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("---") {
+        if let Some(end) = rest.find("\n---") {
+            for line in rest[..end].lines() {
+                if let Some(v) = line.strip_prefix("topic:") {
+                    return clean_value(v);
+                }
+            }
+        }
+    }
+    String::new()
 }
 
 /// Lê a rota `route:` do frontmatter. Default `"local"` (local-first); `"claude"` só se explícito.
@@ -136,7 +164,7 @@ pub fn parse_triggers(description: &str) -> Vec<String> {
 /// Skills cujos triggers batem no texto do utilizador → (nome, corpo das instruções).
 /// Determinístico (sem modelo): suporte às skills na rota local. Limita a 2 skills e trunca
 /// o corpo (~6 KB) para conter os tokens injetados no system prompt.
-pub fn triggered_skills(root: &str, text: &str) -> Vec<(String, String)> {
+pub fn triggered_skills(root: &str, text: &str, topic: Option<&str>) -> Vec<(String, String)> {
     const MAX_SKILLS: usize = 2;
     const MAX_BODY: usize = 6000;
     let hay = text.to_lowercase();
@@ -154,7 +182,7 @@ pub fn triggered_skills(root: &str, text: &str) -> Vec<(String, String)> {
         let Ok(content) = fs::read_to_string(e.path().join("SKILL.md")) else {
             continue;
         };
-        if !parse_enabled(&content) {
+        if !parse_enabled(&content) || !doc_in_topic(&parse_topic(&content), topic) {
             continue;
         }
         let dir_name = e.file_name().to_string_lossy().to_string();
@@ -189,6 +217,7 @@ pub fn index(root: &str) -> WorkspaceIndex {
                     name: n.unwrap_or(dir_name),
                     description: d.unwrap_or_default(),
                     enabled: parse_enabled(&content),
+                    topic: parse_topic(&content),
                 });
             }
         }
@@ -210,6 +239,7 @@ pub fn index(root: &str) -> WorkspaceIndex {
                 name: n.unwrap_or(stem),
                 description: d.unwrap_or_default(),
                 enabled: parse_enabled(&content),
+                topic: parse_topic(&content),
             });
         }
     }
@@ -231,6 +261,7 @@ pub fn index(root: &str) -> WorkspaceIndex {
                     name: n.unwrap_or(stem),
                     description: d.unwrap_or_default(),
                     enabled: parse_enabled(&content),
+                    topic: parse_topic(&content),
                 });
             }
         }
@@ -253,6 +284,7 @@ pub fn index(root: &str) -> WorkspaceIndex {
                     name: n.unwrap_or(stem),
                     description: d.unwrap_or_default(),
                     enabled: parse_enabled(&content),
+                    topic: parse_topic(&content),
                 });
             }
         }

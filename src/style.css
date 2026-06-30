@@ -2917,6 +2917,21 @@ input[type="checkbox"]:disabled {
   color: var(--muted);
   font-weight: 500;
 }
+/* Badge "só no tópico X" num doc do Workspace (scope por tópico). */
+.ws-topic-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-3);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  vertical-align: middle;
+}
 /* Resultado da última execução de um agendamento (vista Automações). */
 .sched-main {
   display: flex;

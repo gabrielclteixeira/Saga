@@ -152,7 +152,7 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
             .mcp_servers
             .iter()
             .any(|s| s.enabled && !s.name.trim().is_empty());
-        let ws_index = workspace::index(&settings.workspace_dir).active();
+        let ws_index = workspace::index(&settings.workspace_dir).active(None);
         let mut browser_guard = state.browser.lock().await;
         if settings.enable_browser_tools && browser_guard.is_none() {
             if let Ok(s) = PlaywrightSidecar::spawn(
@@ -223,6 +223,7 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
                 &messages,
                 &settings.workspace_dir,
                 &[],
+                None, // sem tópico (automações são globais)
                 None, // sem projeto/pasta nas automações
                 None, // sem gate (auto-executa)
                 gopts,

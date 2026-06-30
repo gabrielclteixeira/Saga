@@ -379,6 +379,9 @@ app.innerHTML = `
           </div>
           <label>${t("Nome")} <input id="ws-name" type="text" placeholder="${t("nome-sem-espacos")}" /></label>
           <label>${t("Descrição")} <input id="ws-desc" type="text" placeholder="${t("o que é / quando usar")}" /></label>
+          <label class="ws-inline" id="ws-topic-wrap" title="${t("Restringe este doc aos chats de um tópico; (todos) = global.")}">${t("Tópico")}
+            <select id="ws-topic"><option value="">${t("(todos os tópicos)")}</option></select>
+          </label>
           <label id="ws-triggers-wrap">${t("Triggers (palavras que ativam)")} <input id="ws-triggers" type="text" placeholder="${t("resumir, o que diz este link, …")}" /></label>
           <label id="ws-arghint-wrap" hidden>${t("Argumentos esperados")} <input id="ws-arghint" type="text" placeholder="${t("ex.: o URL a abrir")}" /></label>
           <label class="ws-inline" id="ws-workflow-route-wrap" hidden title="${t("Claude só se precisar de browser/ferramentas avançadas; senão corre local.")}">${t("Correr em")}
@@ -4413,7 +4416,7 @@ async function renderWorkspaceList() {
       return `
     <div class="ws-item${on ? "" : " disabled"}">
       <label class="ws-item-toggle" title="${toggleTitle}" aria-label="${toggleTitle}"><input type="checkbox" data-toggle="${escapeHtml(it.name)}" ${on ? "checked" : ""} /></label>
-      <div class="ws-item-main"><strong>${escapeHtml(it.name)}</strong><span>${escapeHtml(it.description)}</span></div>
+      <div class="ws-item-main"><strong>${escapeHtml(it.name)}${it.topic ? ` <span class="ws-topic-badge" title="${t("Só no tópico")}: ${escapeHtml(it.topic)}">${escapeHtml(it.topic)}</span>` : ""}</strong><span>${escapeHtml(it.description)}</span></div>
       <div class="ws-item-actions">
         ${wsKind === "workflow" && on ? `<button type="button" class="ghost" data-run="${escapeHtml(it.name)}">${icon("play")}<span>${t("Correr")}</span></button>` : ""}
         <button type="button" class="ghost" data-edit="${escapeHtml(it.name)}">${t("Editar")}</button>
@@ -4472,6 +4475,7 @@ interface DocFields {
   agentPlan?: boolean;
   agentThinkLevel?: ThinkLevel;
   agentModel?: string;
+  topic?: string; // restringe o doc a um tópico ("" = global)
 }
 
 const wsq = <T extends HTMLElement>(id: string) => document.querySelector<T>(id)!;
@@ -4547,14 +4551,20 @@ function parseDocFields(kind: WsKind, raw: string): DocFields {
       return truthy(fm["think"]) ? "think" : "off";
     })(),
     agentModel: (fm["model"] ?? "").toString().trim(),
+    topic: (fm["topic"] ?? "").toString().trim(),
   };
 }
 
 function assembleDoc(kind: WsKind, f: DocFields): string {
-  // Só se escreve `enabled: false` quando desativado — mantém os ficheiros limpos quando ativos.
+  // Só se escreve frontmatter (enabled/topic) quando preciso — mantém os ficheiros limpos.
   const disabled = f.enabled === false;
-  if (kind === "playbook")
-    return (disabled ? "---\nenabled: false\n---\n\n" : "") + f.body.trim() + "\n";
+  const topic = (f.topic || "").trim();
+  if (kind === "playbook") {
+    const fm: string[] = [];
+    if (disabled) fm.push("enabled: false");
+    if (topic) fm.push(`topic: ${topic}`);
+    return (fm.length ? `---\n${fm.join("\n")}\n---\n\n` : "") + f.body.trim() + "\n";
+  }
   const esc = (s: string) => s.replace(/"/g, '\\"');
   const lines = ["---", `name: ${f.name}`];
   if (disabled) lines.push("enabled: false");
@@ -4582,6 +4592,7 @@ function assembleDoc(kind: WsKind, f: DocFields): string {
       `route: ${f.workflowRoute === "claude" ? "claude" : "local"}`
     );
   }
+  if (topic) lines.push(`topic: ${topic}`);
   lines.push("---", "", f.body.trim(), "");
   return lines.join("\n");
 }
@@ -4599,6 +4610,16 @@ function fillEditorFields(f: Partial<DocFields>) {
   wsq<HTMLInputElement>("#ws-agent-plan").checked = !!f.agentPlan;
   wsq<HTMLSelectElement>("#ws-agent-think-level").value = f.agentThinkLevel || "off";
   wsq<HTMLInputElement>("#ws-agent-model").value = f.agentModel || "";
+  // Tópico: (todos) + os tópicos existentes (+ o atual se já não existir, para não o perder).
+  const topicSel = wsq<HTMLSelectElement>("#ws-topic");
+  const cur = (f.topic || "").trim();
+  let opts = `<option value="">${t("(todos os tópicos)")}</option>`;
+  for (const tp of state.topics) opts += `<option value="${escapeHtml(tp.name)}">${escapeHtml(tp.name)}</option>`;
+  if (cur && !state.topics.some((tp) => tp.name.toLowerCase() === cur.toLowerCase())) {
+    opts += `<option value="${escapeHtml(cur)}">${escapeHtml(cur)}</option>`;
+  }
+  topicSel.innerHTML = opts;
+  topicSel.value = cur;
 }
 
 // Estado ativo/inativo do doc em edição — preservado no save (o toggle vive na lista, não no editor).
@@ -4621,6 +4642,7 @@ function readEditorFields(): DocFields {
     agentPlan: wsq<HTMLInputElement>("#ws-agent-plan").checked,
     agentThinkLevel: wsq<HTMLSelectElement>("#ws-agent-think-level").value as ThinkLevel,
     agentModel: wsq<HTMLInputElement>("#ws-agent-model").value.trim(),
+    topic: wsq<HTMLSelectElement>("#ws-topic").value.trim(),
   };
 }
 

@@ -64,6 +64,7 @@ export interface DocMeta {
   name: string;
   description: string;
   enabled: boolean;
+  topic: string; // "" = global; senão restrito a esse tópico
 }
 
 export interface WorkspaceIndex {

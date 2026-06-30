@@ -279,7 +279,11 @@ pub async fn prepare(
                     .find(|m| m.role == "user")
                     .map(|m| m.content.as_str())
                     .unwrap_or("");
-                crate::workspace::triggered_skills(&settings.workspace_dir, last_user)
+                crate::workspace::triggered_skills(
+                    &settings.workspace_dir,
+                    last_user,
+                    topic.map(|t| t.name.as_str()),
+                )
             };
             let skills_applied = skills.iter().map(|(n, _)| n.clone()).collect();
             Ok(Prepared {

@@ -60,6 +60,10 @@ const EN: Record<string, string> = {
   "Mover para tópico": "Move to topic",
   "Guardar no projeto": "Save to project",
   "Mais": "More",
+  "(todos os tópicos)": "(all topics)",
+  "Restringe este doc aos chats de um tópico; (todos) = global.":
+    "Restrict this doc to a topic's chats; (all) = global.",
+  "Só no tópico": "Only in topic",
   "vazio = modelo ativo; cai no default se for apagado":
     "empty = active model; falls back to default if deleted",
   "Modelo '{m}' do agente não está instalado — a usar o default.":

@@ -96,6 +96,7 @@ pub async fn run<D, T>(
     full_messages: &[ChatMessage],
     workspace_dir: &str,
     applied: &[String],
+    topic: Option<&str>,
     project: Option<&ProjectTools>,
     gate: Option<&ActionGate<'_>>,
     opts: GenOpts,
@@ -114,7 +115,11 @@ where
         crate::workspace::index(workspace_dir)
             .skills
             .into_iter()
-            .filter(|sk| sk.enabled && !applied.iter().any(|a| a == &sk.name))
+            .filter(|sk| {
+                sk.enabled
+                    && !applied.iter().any(|a| a == &sk.name)
+                    && crate::workspace::doc_in_topic(&sk.topic, topic)
+            })
             .collect()
     };
     if !skills.is_empty() {
