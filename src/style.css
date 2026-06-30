@@ -398,8 +398,25 @@ body {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
-.conv.dragging {
-  opacity: 0.45;
+body.dragging-conv {
+  cursor: grabbing;
+  user-select: none;
+}
+/* Etiqueta flutuante que segue o cursor ao arrastar uma conversa. */
+.drag-ghost {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+  max-width: 220px;
+  padding: 5px 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
 }
 .topic-head {
   display: flex;

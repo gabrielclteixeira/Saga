@@ -1877,14 +1877,9 @@ function convRow(c: ConversationMeta): HTMLElement {
     if ((e.target as HTMLElement).closest(".conv-act, .conv-rename")) return;
     selectConversation(c.id);
   });
-  // Arrastar para um tópico (alternativa ao popover de mover).
-  row.draggable = true;
-  row.addEventListener("dragstart", (e) => {
-    e.dataTransfer?.setData("text/plain", String(c.id));
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-    row.classList.add("dragging");
-  });
-  row.addEventListener("dragend", () => row.classList.remove("dragging"));
+  // Arrastar para um tópico. Pointer-based (não HTML5 DnD): o Tauri intercepta o
+  // drag-drop nativo do webview para o drop de ficheiros, o que bloqueava o DnD da página.
+  row.addEventListener("pointerdown", (e) => beginConvDrag(e, c.id));
 
   const title = document.createElement("span");
   title.className = "conv-title";
@@ -1948,21 +1943,8 @@ function renderSidebar() {
     const isCollapsed = collapsed.has(key);
     const group = document.createElement("div");
     group.className = "topic-group";
-    // Zona de largada: arrastar uma conversa para aqui move-a para este tópico (null = sem tópico).
-    group.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-      group.classList.add("drop-target");
-    });
-    group.addEventListener("dragleave", (e) => {
-      if (!group.contains(e.relatedTarget as Node)) group.classList.remove("drop-target");
-    });
-    group.addEventListener("drop", (e) => {
-      e.preventDefault();
-      group.classList.remove("drop-target");
-      const convId = Number(e.dataTransfer?.getData("text/plain"));
-      if (convId) void assignTopic(convId, topic ? topic.id : null);
-    });
+    // Alvo do arrasto pointer-based (ver beginConvDrag). null = sem tópico.
+    group.dataset.topicId = topic ? String(topic.id) : "none";
 
     const head = document.createElement("div");
     head.className = "topic-head" + (topic && topic.id === state.activeTopicId ? " active" : "");
@@ -2161,6 +2143,84 @@ async function assignTopic(convId: number, topicId: number | null) {
   }
   if (state.currentConversationId === convId) setActiveTopic(topicId);
   await loadConversations();
+}
+
+// ---- Arrastar uma conversa para um tópico (pointer-based) ----
+// O Tauri intercepta o drag-drop nativo do webview (para o drop de ficheiros do SO), o que
+// impede o HTML5 DnD interno. Implementamos o arrasto com pointer events + elementFromPoint.
+let convDrag: {
+  convId: number;
+  startX: number;
+  startY: number;
+  active: boolean;
+  ghost: HTMLElement | null;
+} | null = null;
+
+function beginConvDrag(e: PointerEvent, convId: number) {
+  if (e.button !== 0) return; // só botão esquerdo
+  if ((e.target as HTMLElement).closest(".conv-act, .conv-rename")) return; // ações/renomear não arrastam
+  convDrag = { convId, startX: e.clientX, startY: e.clientY, active: false, ghost: null };
+  window.addEventListener("pointermove", onConvDragMove);
+  window.addEventListener("pointerup", onConvDragUp);
+}
+
+function highlightGroupAt(x: number, y: number) {
+  document
+    .querySelectorAll(".topic-group.drop-target")
+    .forEach((el) => el.classList.remove("drop-target"));
+  (document.elementFromPoint(x, y) as HTMLElement | null)
+    ?.closest(".topic-group")
+    ?.classList.add("drop-target");
+}
+
+function onConvDragMove(e: PointerEvent) {
+  if (!convDrag) return;
+  if (!convDrag.active) {
+    if (Math.hypot(e.clientX - convDrag.startX, e.clientY - convDrag.startY) < 5) return; // limiar clique→arrasto
+    convDrag.active = true;
+    document.body.classList.add("dragging-conv");
+    const g = document.createElement("div");
+    g.className = "drag-ghost";
+    g.textContent =
+      state.conversations.find((c) => c.id === convDrag!.convId)?.title || t("Nova conversa");
+    document.body.appendChild(g);
+    convDrag.ghost = g;
+  }
+  if (convDrag.ghost) {
+    convDrag.ghost.style.left = `${e.clientX + 14}px`;
+    convDrag.ghost.style.top = `${e.clientY + 14}px`;
+  }
+  highlightGroupAt(e.clientX, e.clientY);
+}
+
+function onConvDragUp(e: PointerEvent) {
+  window.removeEventListener("pointermove", onConvDragMove);
+  window.removeEventListener("pointerup", onConvDragUp);
+  const ds = convDrag;
+  convDrag = null;
+  document
+    .querySelectorAll(".topic-group.drop-target")
+    .forEach((el) => el.classList.remove("drop-target"));
+  document.body.classList.remove("dragging-conv");
+  ds?.ghost?.remove();
+  if (!ds || !ds.active) return; // foi um clique, não um arrasto
+
+  // Suprime o clique que se segue ao pointerup (senão abria a conversa).
+  const suppress = (ev: MouseEvent) => {
+    ev.stopPropagation();
+    ev.preventDefault();
+    window.removeEventListener("click", suppress, true);
+  };
+  window.addEventListener("click", suppress, true);
+  setTimeout(() => window.removeEventListener("click", suppress, true), 0);
+
+  const group = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest(
+    ".topic-group"
+  ) as HTMLElement | null;
+  if (group) {
+    const tid = group.dataset.topicId;
+    void assignTopic(ds.convId, tid && tid !== "none" ? Number(tid) : null);
+  }
 }
 
 /** Popover para mover uma conversa: (sem tópico) + tópicos existentes + novo tópico. */
