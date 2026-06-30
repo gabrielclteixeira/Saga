@@ -1361,29 +1361,18 @@ mark.find-current {
   border-color: var(--claude);
   color: var(--claude);
 }
-/* Chip Think com seta (escala de esforço) */
+/* Chip Think com seta inline (escala de esforço) */
 .think-split {
   position: relative;
   display: inline-flex;
-  align-items: stretch;
 }
-.chip-caret {
+.think-caret {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 0 5px;
-  margin-left: -1px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--muted);
-  cursor: pointer;
+  margin-left: 1px;
+  opacity: 0.7;
 }
-.chip-caret:hover {
-  border-color: var(--accent);
-  color: var(--text);
-}
-.chip-caret .ic {
+.think-caret .ic {
   width: 12px;
   height: 12px;
   transform: rotate(90deg);

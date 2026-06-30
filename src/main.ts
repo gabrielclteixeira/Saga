@@ -216,8 +216,7 @@ app.innerHTML = `
           <button type="button" id="btn-subagents" class="chip-toggle" title="${t("Subagentes (API: orquestra em paralelo · CLI: ferramenta Task)")}">${icon("nodes")}<span>${t("Subagentes")}</span></button>
           <button type="button" id="btn-research" class="chip-toggle" title="${t("Pesquisa web (API: web_search · CLI: WebSearch)")}">${icon("search")}<span>${t("Pesquisar")}</span></button>
           <span class="think-split">
-            <button type="button" id="btn-think" class="chip-toggle" title="${t("Nível de raciocínio (Think)")}">${icon("brain")}<span id="btn-think-label">${t("Think")}</span></button>
-            <button type="button" id="btn-think-caret" class="chip-caret" title="${t("Escolher nível de Think")}" aria-haspopup="true">${icon("chevron")}</button>
+            <button type="button" id="btn-think" class="chip-toggle" title="${t("Nível de raciocínio (Think)")}" aria-haspopup="true">${icon("brain")}<span id="btn-think-label">${t("Think")}</span><span class="think-caret">${icon("chevron")}</span></button>
             <div class="think-menu" id="think-menu" hidden>
               <button type="button" data-level="off">${t("Desligado")}</button>
               <button type="button" data-level="think">${t("Nativo (pensar)")}</button>
@@ -6025,12 +6024,9 @@ async function init() {
   els.routeModeBar.querySelectorAll<HTMLButtonElement>("button[data-mode]").forEach((btn) => {
     btn.addEventListener("click", () => setRouteMode((btn.dataset.mode as "local" | "claude") ?? "local"));
   });
-  // Chip Think: corpo alterna off↔think; a seta abre o menu de níveis.
-  document.querySelector("#btn-think")!.addEventListener("click", () => {
-    setThinkLevel(state.thinkLevel === "off" ? "think" : "off");
-  });
+  // Chip Think (seta inline): clicar abre o menu de níveis; escolher um nível aplica-o.
   const thinkMenu = document.querySelector<HTMLElement>("#think-menu")!;
-  document.querySelector("#btn-think-caret")!.addEventListener("click", (e) => {
+  document.querySelector("#btn-think")!.addEventListener("click", (e) => {
     e.stopPropagation();
     thinkMenu.toggleAttribute("hidden");
   });
