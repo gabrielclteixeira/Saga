@@ -273,7 +273,7 @@ app.innerHTML = `
           <option value="technical">${t("Técnico")}</option>
         </select>
         <button type="button" class="ghost" id="artifact-pdf">${t("PDF")}</button>
-        <button type="button" class="ghost" id="artifact-save-project" hidden>${icon("folder")}<span>${t("Guardar no projeto")}</span></button>
+        <button type="button" class="ghost" id="artifact-save-project" title="${t("Guardar no projeto")}" aria-label="${t("Guardar no projeto")}" hidden>${icon("folder")}</button>
         <button type="button" class="ghost" id="artifact-export">${t("Guardar")}</button>
         <button type="button" class="ghost" id="artifact-copy">${t("Copiar")}</button>
         <button type="button" class="icon-x" id="artifact-close" title="${t("Fechar")}" aria-label="${t("Fechar")}">${icon("x")}</button>

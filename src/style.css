@@ -1605,6 +1605,8 @@ mark.find-current {
 .artifact-controls {
   margin-left: auto;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
 }
 .artifact-controls button {
