@@ -390,6 +390,17 @@ body {
   width: 14px;
   height: 14px;
 }
+.topic-group {
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+.topic-group.drop-target {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.conv.dragging {
+  opacity: 0.45;
+}
 .topic-head {
   display: flex;
   align-items: center;

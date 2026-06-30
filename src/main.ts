@@ -1853,7 +1853,7 @@ function toggleCollapsed(key: string) {
   localStorage.setItem("saga.collapsedTopics", JSON.stringify([...s]));
 }
 
-/** Linha de uma conversa: título + mover + renomear + apagar. */
+/** Linha de uma conversa: título + mover + renomear + apagar. Arrastável para um grupo de tópico. */
 function convRow(c: ConversationMeta): HTMLElement {
   const row = document.createElement("div");
   row.className = "conv" + (c.id === state.currentConversationId ? " active" : "");
@@ -1862,6 +1862,14 @@ function convRow(c: ConversationMeta): HTMLElement {
     if ((e.target as HTMLElement).closest(".conv-act, .conv-rename")) return;
     selectConversation(c.id);
   });
+  // Arrastar para um tópico (alternativa ao popover de mover).
+  row.draggable = true;
+  row.addEventListener("dragstart", (e) => {
+    e.dataTransfer?.setData("text/plain", String(c.id));
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    row.classList.add("dragging");
+  });
+  row.addEventListener("dragend", () => row.classList.remove("dragging"));
 
   const title = document.createElement("span");
   title.className = "conv-title";
@@ -1923,6 +1931,24 @@ function renderSidebar() {
 
   const renderGroup = (key: string, label: string, convs: ConversationMeta[], topic: Topic | null) => {
     const isCollapsed = collapsed.has(key);
+    const group = document.createElement("div");
+    group.className = "topic-group";
+    // Zona de largada: arrastar uma conversa para aqui move-a para este tópico (null = sem tópico).
+    group.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      group.classList.add("drop-target");
+    });
+    group.addEventListener("dragleave", (e) => {
+      if (!group.contains(e.relatedTarget as Node)) group.classList.remove("drop-target");
+    });
+    group.addEventListener("drop", (e) => {
+      e.preventDefault();
+      group.classList.remove("drop-target");
+      const convId = Number(e.dataTransfer?.getData("text/plain"));
+      if (convId) void assignTopic(convId, topic ? topic.id : null);
+    });
+
     const head = document.createElement("div");
     head.className = "topic-head" + (topic && topic.id === state.activeTopicId ? " active" : "");
     if (topic) head.dataset.topicId = String(topic.id);
@@ -1984,15 +2010,16 @@ function renderSidebar() {
       head.append(add, ren, del);
     }
 
-    els.convList.appendChild(head);
-    if (!isCollapsed) for (const c of convs) els.convList.appendChild(convRow(c));
+    group.appendChild(head);
+    if (!isCollapsed) for (const c of convs) group.appendChild(convRow(c));
+    els.convList.appendChild(group);
   };
 
   for (const tp of state.topics) {
     renderGroup("t" + tp.id, tp.name || t("Tópico"), byTopic.get(tp.id) ?? [], tp);
   }
-  const loose = byTopic.get(null) ?? [];
-  if (loose.length) renderGroup("none", t("(sem tópico)"), loose, null);
+  // "(sem tópico)" mostra-se sempre que há tópicos — serve de alvo para tirar um chat de um tópico.
+  renderGroup("none", t("(sem tópico)"), byTopic.get(null) ?? [], null);
 }
 
 /** Nome único para um tópico novo ("Novo tópico", "Novo tópico 2", …) — nomes são únicos no backend. */
