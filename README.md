@@ -241,6 +241,21 @@ of the verbose step label) · **live token streaming during Plan execution**.
   project context as plain file-tree + reads vs an indexed/RAG layer for large repos; rollback via per-run shadow
   git (stash/commit) vs a filesystem snapshot copy; and whether the file tools also run on the local route (today
   the agentic loop is Claude-only).
+- **Topics** — group related Sagas under a **topic** (e.g. *MyPortal billing*, *house hunt*): a topic carries
+  **shared context** every chat in it sees (a short brief + pinned notes + topic-scoped memory) and its own
+  **Workspace scope** (skills/playbooks/agents that apply only to that topic's chats). Lighter-weight than a
+  folder-backed **Project** (above): a Topic groups *conversations* and knowledge; a Project adds a local *folder*
+  + file tools — so a Topic can later be **promoted** to a Project by attaching a folder. The side rail gains a
+  topic filter/group and new Sagas inherit the active topic. Open: a chat in one topic vs many; whether topic
+  memory is just a tagged slice of the existing memory store vs its own.
+- **Self-distilling playbooks** — the model watches a topic's chats and, when it spots something **replicable**
+  (a recurring procedure, a stable fact about the project, a workflow you keep re-explaining), **proposes a
+  playbook** — drafted via the existing *Generate with AI* path, scoped to that topic, surfaced for one-tap
+  **approve / edit before it's saved** (never written silently). Once saved it auto-applies to the other chats in
+  the same topic through the `active()` Workspace index. Builds on: the AI doc generator, per-topic/Project
+  scoping, and the per-item enable/disable toggles already in the Workspace. Open: the detection trigger
+  (end-of-Saga summary pass vs a cheap local-model classifier per turn vs an explicit "capture this as a playbook"
+  affordance); dedupe against existing playbooks; keep it **opt-in** so it never feels intrusive.
 - **Agentic Plan execution (v2)** — today Plan mode *generates* each step (reasoning/writing, optionally web-grounded);
   a v2 would let approved steps take **real actions** via the agentic tool loop (browser, workspace, MCP, files) on
   the Claude route, with per-step approval for risky ones.
