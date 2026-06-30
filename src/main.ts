@@ -141,6 +141,7 @@ const ICON_PATHS: Record<string, string> = {
   book: `<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 17H6a2 2 0 0 0-2 2"/>`,
   chevron: `<polyline points="9 6 15 12 9 18"/>`,
   plus: `<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>`,
+  dots: `<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>`,
   folder: `<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>`,
   check: `<polyline points="20 6 9 17 4 12"/>`,
   circle: `<circle cx="12" cy="12" r="8"/>`,
@@ -276,6 +277,10 @@ app.innerHTML = `
         <button type="button" class="ghost" id="artifact-save-project" title="${t("Guardar no projeto")}" aria-label="${t("Guardar no projeto")}" hidden>${icon("folder")}</button>
         <button type="button" class="ghost" id="artifact-export">${t("Guardar")}</button>
         <button type="button" class="ghost" id="artifact-copy">${t("Copiar")}</button>
+        <span class="artifact-more-wrap" id="artifact-more-wrap" hidden>
+          <button type="button" class="ghost" id="artifact-more" title="${t("Mais")}" aria-haspopup="true">${icon("dots")}</button>
+          <div class="artifact-more-menu" id="artifact-more-menu" hidden></div>
+        </span>
         <button type="button" class="icon-x" id="artifact-close" title="${t("Fechar")}" aria-label="${t("Fechar")}">${icon("x")}</button>
       </span>
     </header>
@@ -3609,6 +3614,41 @@ function openArtifact(a: Artifact) {
     .querySelector("#artifact-save-project")
     ?.toggleAttribute("hidden", !currentProjectTopic());
   renderArtifactBody();
+  reflowArtifactControls();
+}
+
+// Overflow da barra de controlos: os botões que não couberem vão para um menu "⋯".
+const ARTIFACT_COLLAPSIBLE = [
+  "artifact-gallery",
+  "artifact-toggle",
+  "artifact-pdf-theme",
+  "artifact-pdf",
+  "artifact-save-project",
+  "artifact-export",
+  "artifact-copy",
+];
+function reflowArtifactControls() {
+  const head = document.querySelector<HTMLElement>(".artifact-head");
+  const bar = document.querySelector<HTMLElement>(".artifact-controls");
+  const wrap = document.querySelector<HTMLElement>("#artifact-more-wrap");
+  const menu = document.querySelector<HTMLElement>("#artifact-more-menu");
+  if (!head || !bar || !wrap || !menu || els.artifactPanel.hidden) return;
+  // Reset: tudo de volta à barra (antes do ⋯); menu fechado.
+  for (const id of ARTIFACT_COLLAPSIBLE) {
+    const el = document.getElementById(id);
+    if (el) bar.insertBefore(el, wrap);
+  }
+  wrap.hidden = true;
+  menu.hidden = true;
+  if (head.scrollWidth <= head.clientWidth + 1) return; // cabe tudo
+  wrap.hidden = false; // mostra o ⋯
+  // Move do fim para o início até caber (saltando os que já estão ocultos).
+  for (let i = ARTIFACT_COLLAPSIBLE.length - 1; i >= 0; i--) {
+    if (head.scrollWidth <= head.clientWidth + 1) break;
+    const el = document.getElementById(ARTIFACT_COLLAPSIBLE[i]);
+    if (!el || el.hasAttribute("hidden")) continue;
+    menu.prepend(el);
+  }
 }
 
 function closeArtifact() {
@@ -6150,6 +6190,20 @@ async function init() {
   document.querySelector("#artifact-save-project")!.addEventListener("click", () => void saveArtifactToProject());
   document.querySelector("#artifact-pdf")!.addEventListener("click", exportArtifactPdf);
   document.querySelector("#artifact-gallery")!.addEventListener("click", openGallery);
+  // Menu de overflow (⋯) da barra de controlos: abre os botões que não couberam; fecha ao clicar fora.
+  const artifactMoreMenu = document.querySelector<HTMLElement>("#artifact-more-menu")!;
+  document.querySelector("#artifact-more")!.addEventListener("click", (e) => {
+    e.stopPropagation();
+    artifactMoreMenu.toggleAttribute("hidden");
+  });
+  // Clicar num botão do menu executa a ação e fecha o menu (o select fica para escolher o tema).
+  artifactMoreMenu.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).closest("button")) artifactMoreMenu.setAttribute("hidden", "");
+  });
+  document.addEventListener("click", (e) => {
+    if (!(e.target as HTMLElement).closest(".artifact-more-wrap")) artifactMoreMenu.setAttribute("hidden", "");
+  });
+  new ResizeObserver(() => reflowArtifactControls()).observe(els.artifactPanel);
   document.querySelector("#btn-export-saga")!.addEventListener("click", exportSaga);
   document.querySelector("#btn-check-update")!.addEventListener("click", checkForUpdates);
   document.querySelector("#set-autostart")!.addEventListener("change", (e) => {

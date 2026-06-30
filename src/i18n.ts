@@ -59,6 +59,7 @@ const EN: Record<string, string> = {
   "(sem tópico)": "(no topic)",
   "Mover para tópico": "Move to topic",
   "Guardar no projeto": "Save to project",
+  "Mais": "More",
   "vazio = modelo ativo; cai no default se for apagado":
     "empty = active model; falls back to default if deleted",
   "Modelo '{m}' do agente não está instalado — a usar o default.":
