@@ -1976,6 +1976,7 @@ button.ghost:hover {
 }
 /* Ícones dentro de botões com label — tamanho consistente. */
 button.ghost .ic,
+.settings menu button .ic,
 .msg-actions .ic,
 .artifact-actions .ic,
 .reg-sizes-btn .ic,
@@ -2141,6 +2142,12 @@ dialog::backdrop {
   padding: 0;
 }
 .settings menu button {
+  display: inline-flex; /* normaliza Save (.primary) e Close (.ghost): mesma altura e alinhamento */
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0; /* anula o margin-top:10px do button.ghost que desalinhava o Close */
+  min-height: 0;
   border-radius: 8px;
   padding: 9px 16px;
   font: inherit;

@@ -4771,6 +4771,14 @@ async function hubSave() {
     });
     document.querySelector("#hub-status")!.textContent = t("Guardado");
     void renderHubStatus();
+    // Feedback junto ao botão (o #hub-status fica no topo, fora de vista depois do scroll).
+    const saveBtn = document.querySelector<HTMLButtonElement>("#hub-save")!;
+    saveBtn.innerHTML = `${icon("check")}${t("Guardado")}`;
+    saveBtn.disabled = true;
+    setTimeout(() => {
+      saveBtn.disabled = false;
+      saveBtn.textContent = t("Guardar");
+    }, 1600);
   } catch (e) {
     alert(t("Falha a guardar: ") + e);
   }
