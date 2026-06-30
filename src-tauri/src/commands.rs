@@ -1281,11 +1281,30 @@ pub async fn send_message_stream(
         route_override.clone()
     };
 
+    // Contexto do tópico da conversa (brief + notas) — anteposto verbatim ao system prompt.
+    let topic_ctx = {
+        let conn = state.db.lock().unwrap();
+        store::get_topic_for_conversation(&conn, conversation_id)
+    }
+    .map(|tp| {
+        let mut block = format!("## Tópico: {}", tp.name);
+        let brief = tp.brief.trim();
+        let notes = tp.notes.trim();
+        if !brief.is_empty() {
+            block.push_str(&format!("\n{brief}"));
+        }
+        if !notes.is_empty() {
+            block.push_str(&format!("\n\nNotas do tópico:\n{notes}"));
+        }
+        router::TopicCtx { name: tp.name, block }
+    });
+
     let mut prepared = router::prepare(
         &messages,
         &settings,
         route_override_eff.as_deref(),
         model_override.as_deref(),
+        topic_ctx.as_ref(),
     )
     .await
     .map_err(|e| e.to_string())?;

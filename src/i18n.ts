@@ -61,6 +61,13 @@ const EN: Record<string, string> = {
   "Nova Saga neste tópico": "New Saga in this topic",
   "Renomear tópico": "Rename topic",
   "Apagar tópico (mantém as conversas)": "Delete topic (keeps the conversations)",
+  "Editar tópico (brief/notas)": "Edit topic (brief/notes)",
+  "Brief (contexto partilhado)": "Brief (shared context)",
+  "Ex.: objetivo do projeto, stack, links, convenções…":
+    "E.g.: project goal, stack, links, conventions…",
+  "Notas fixadas": "Pinned notes",
+  "O brief e as notas entram no contexto de todos os chats deste tópico.":
+    "The brief and notes are added to the context of every chat in this topic.",
   "Escreve uma mensagem…": "Type a message…",
   "Enviar": "Send",
   "Auto": "Auto",

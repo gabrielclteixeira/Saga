@@ -634,6 +634,20 @@ app.innerHTML = `
     </div>
   </dialog>
 
+  <dialog id="topic-dialog">
+    <div class="settings">
+      <h2>${t("Tópico")}</h2>
+      <label>${t("Nome")} <input id="topic-name" type="text" autocomplete="off" /></label>
+      <label>${t("Brief (contexto partilhado)")} <textarea id="topic-brief" rows="4" placeholder="${t("Ex.: objetivo do projeto, stack, links, convenções…")}"></textarea></label>
+      <label>${t("Notas fixadas")} <textarea id="topic-notes" rows="3"></textarea></label>
+      <p class="wiz-hint">${t("O brief e as notas entram no contexto de todos os chats deste tópico.")}</p>
+      <menu>
+        <button type="button" class="primary" id="topic-save">${t("Guardar")}</button>
+        <button type="button" class="ghost" id="topic-cancel">${t("Fechar")}</button>
+      </menu>
+    </div>
+  </dialog>
+
   <dialog id="wizard-dialog">
     <div class="settings wizard">
       <div class="wiz-dots" id="wiz-dots"></div>
@@ -716,6 +730,7 @@ const els = {
   memPreview: document.querySelector<HTMLPreElement>("#mem-preview")!,
   dialog: document.querySelector<HTMLDialogElement>("#settings-dialog")!,
   wizard: document.querySelector<HTMLDialogElement>("#wizard-dialog")!,
+  topicDialog: document.querySelector<HTMLDialogElement>("#topic-dialog")!,
   modelsList: document.querySelector<HTMLDataListElement>("#ollama-models")!,
   convList: document.querySelector<HTMLDivElement>("#conv-list")!,
   convSearch: document.querySelector<HTMLInputElement>("#conv-search")!,
@@ -1989,6 +2004,15 @@ function renderSidebar() {
         void createConversation(topic.id);
       });
 
+      const edit = document.createElement("button");
+      edit.className = "topic-act";
+      edit.innerHTML = icon("doc");
+      edit.title = t("Editar tópico (brief/notas)");
+      edit.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openTopicEditor(topic);
+      });
+
       const ren = document.createElement("button");
       ren.className = "topic-act";
       ren.innerHTML = icon("pencil");
@@ -2007,7 +2031,7 @@ function renderSidebar() {
         void deleteTopicUi(topic.id);
       });
 
-      head.append(add, ren, del);
+      head.append(add, edit, ren, del);
     }
 
     group.appendChild(head);
@@ -2073,6 +2097,35 @@ async function deleteTopicUi(id: number) {
     console.error(e);
   }
   if (state.activeTopicId === id) setActiveTopic(null);
+  await loadConversations();
+}
+
+// Editor do tópico (nome + brief + notas) — o brief/notas entram no contexto dos chats do tópico.
+let editingTopicId: number | null = null;
+function openTopicEditor(tp: Topic) {
+  editingTopicId = tp.id;
+  (document.querySelector("#topic-name") as HTMLInputElement).value = tp.name;
+  (document.querySelector("#topic-brief") as HTMLTextAreaElement).value = tp.brief;
+  (document.querySelector("#topic-notes") as HTMLTextAreaElement).value = tp.notes;
+  els.topicDialog.showModal();
+}
+async function saveTopicEditor() {
+  if (editingTopicId == null) return;
+  const id = editingTopicId;
+  const name = (document.querySelector("#topic-name") as HTMLInputElement).value.trim();
+  const brief = (document.querySelector("#topic-brief") as HTMLTextAreaElement).value;
+  const notes = (document.querySelector("#topic-notes") as HTMLTextAreaElement).value;
+  const cur = state.topics.find((tp) => tp.id === id);
+  try {
+    if (name && cur && name.toLowerCase() !== cur.name.toLowerCase()) {
+      await api.renameTopic(id, name);
+    }
+    await api.updateTopic(id, brief, notes);
+  } catch (e) {
+    console.error(e); // ex.: nome duplicado (índice único)
+  }
+  els.topicDialog.close();
+  editingTopicId = null;
   await loadConversations();
 }
 
@@ -5740,6 +5793,8 @@ async function init() {
   document
     .querySelector("#btn-new-topic")!
     .addEventListener("click", () => void createTopicInteractive());
+  document.querySelector("#topic-save")!.addEventListener("click", () => void saveTopicEditor());
+  document.querySelector("#topic-cancel")!.addEventListener("click", () => els.topicDialog.close());
   els.convSearch.addEventListener("input", onSearch);
   document.querySelector("#btn-attach")!.addEventListener("click", () => els.fileInput.click());
   els.fileInput.addEventListener("change", onFilesSelected);

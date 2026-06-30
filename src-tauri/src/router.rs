@@ -183,6 +183,25 @@ fn with_system_local(
     out
 }
 
+/// Contexto de um tópico, injetado verbatim no system prompt (sem compressão — é curto e estável).
+pub struct TopicCtx {
+    /// Nome do tópico (usado no scope do Workspace — Fase 3).
+    pub name: String,
+    /// Bloco já formatado (## Tópico: … + brief + notas) a antepor ao contexto.
+    pub block: String,
+}
+
+/// Junta dois blocos de contexto, ignorando os vazios.
+fn join_ctx(a: &str, b: &str) -> String {
+    if a.trim().is_empty() {
+        b.to_string()
+    } else if b.trim().is_empty() {
+        a.to_string()
+    } else {
+        format!("{a}\n\n{b}")
+    }
+}
+
 /// Resultado da fase de decisão+preparação, partilhado pelos caminhos stream e não-stream.
 pub struct Prepared {
     pub route: Route,
@@ -204,6 +223,7 @@ pub async fn prepare(
     settings: &Settings,
     route_override: Option<&str>,
     model_override: Option<&str>,
+    topic: Option<&TopicCtx>,
 ) -> Result<Prepared> {
     // Só imagens forçam o caminho de visão; documentos são texto e seguem o caminho normal.
     // `has_images` (qualquer mensagem): usado para a decisão Claude-API (precisa de enviar as imagens).
@@ -232,6 +252,8 @@ pub async fn prepare(
     };
 
     let raw_memory = memory::load_raw(settings);
+    // O brief/notas do tópico vai verbatim à frente da memória (não passa pela compressão do Claude).
+    let topic_block = topic.map(|t| t.block.as_str()).unwrap_or("");
 
     match route {
         Route::Local => {
@@ -263,8 +285,8 @@ pub async fn prepare(
             Ok(Prepared {
                 route: Route::Local,
                 model,
-                // Honestidade + memória crua (local é grátis, sem compressão).
-                full_messages: with_system_local(&raw_memory, &skills, messages),
+                // Honestidade + tópico + memória crua (local é grátis, sem compressão).
+                full_messages: with_system_local(&join_ctx(topic_block, &raw_memory), &skills, messages),
                 tokens_saved: 0,
                 reason,
                 has_images,
@@ -281,7 +303,7 @@ pub async fn prepare(
             Ok(Prepared {
                 route: Route::Claude,
                 model,
-                full_messages: with_system(&compressed, messages),
+                full_messages: with_system(&join_ctx(topic_block, &compressed), messages),
                 tokens_saved: saved,
                 reason,
                 has_images,
@@ -293,7 +315,7 @@ pub async fn prepare(
 
 /// Orquestra um pedido completo (não-streaming): prepara + chama o provedor.
 pub async fn handle(messages: &[ChatMessage], settings: &Settings) -> Result<Outcome> {
-    let p = prepare(messages, settings, None, None).await?;
+    let p = prepare(messages, settings, None, None, None).await?;
 
     let response = match p.route {
         Route::Local => {

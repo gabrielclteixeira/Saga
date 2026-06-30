@@ -2228,6 +2228,7 @@ dialog::backdrop {
 .settings input[type="text"],
 .settings input[type="password"],
 .settings input[type="number"],
+.settings textarea,
 .settings select {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -2236,6 +2237,11 @@ dialog::backdrop {
   padding: 8px 10px;
   font: inherit;
   font-size: 13px;
+}
+.settings textarea {
+  resize: vertical;
+  min-height: 64px;
+  line-height: 1.45;
 }
 .settings .field-group {
   display: flex;
