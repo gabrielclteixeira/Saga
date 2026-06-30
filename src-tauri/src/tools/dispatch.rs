@@ -34,6 +34,12 @@ pub struct WorkspaceTools<'a> {
     pub index: &'a WorkspaceIndex,
 }
 
+/// Pasta de um projeto (file tools sandboxed à pasta). `writable` = pode editar/criar (confirmado).
+pub struct ProjectTools {
+    pub root: String,
+    pub writable: bool,
+}
+
 /// Modo de confirmação de ações.
 #[derive(Clone, Copy, PartialEq)]
 pub enum ConfirmMode {
@@ -106,7 +112,10 @@ fn is_action(name: &str) -> bool {
     if name.starts_with("mcp__") {
         return true;
     }
-    matches!(name, "browser_click" | "browser_fill" | "save_workspace_doc")
+    matches!(
+        name,
+        "browser_click" | "browser_fill" | "save_workspace_doc" | "project_edit" | "project_create"
+    )
 }
 
 /// Agregador concreto: browser (opcional) + servidores MCP (opcional) + gate.
@@ -115,6 +124,7 @@ pub struct Dispatcher<'a> {
     pub browser: Option<&'a mut PlaywrightSidecar>,
     pub mcp: Option<&'a mut McpManager>,
     pub workspace: Option<WorkspaceTools<'a>>,
+    pub project: Option<ProjectTools>,
     pub gate: ActionGate<'a>,
 }
 
@@ -146,6 +156,44 @@ impl Dispatcher<'_> {
                 },
                 None => "workspace indisponível".into(),
             });
+        }
+        // File tools do projeto (sandboxed à pasta; escritas passam pelo gate via is_action).
+        if let Some(p) = &self.project {
+            if matches!(name, "project_tree" | "project_read" | "project_edit" | "project_create") {
+                use crate::tools::project;
+                return Ok(match name {
+                    "project_tree" => {
+                        let sub = params.get("subpath").and_then(|x| x.as_str()).unwrap_or("");
+                        let root = if sub.trim().is_empty() {
+                            p.root.clone()
+                        } else {
+                            match project::resolve_in_root(&p.root, sub) {
+                                Some(pp) => pp.to_string_lossy().to_string(),
+                                None => return Ok(format!("caminho fora da pasta do projeto: {sub}")),
+                            }
+                        };
+                        let tree = project::tree_text(&root, 600);
+                        if tree.trim().is_empty() {
+                            "(vazio ou pasta inacessível)".into()
+                        } else {
+                            tree
+                        }
+                    }
+                    "project_read" => {
+                        let path = params.get("path").and_then(|x| x.as_str()).unwrap_or("");
+                        project::read_file(&p.root, path).unwrap_or_else(|e| format!("ERRO: {e}"))
+                    }
+                    // edit | create: ambos gravam o conteúdo completo (a distinção é semântica p/ o modelo).
+                    _ => {
+                        let path = params.get("path").and_then(|x| x.as_str()).unwrap_or("");
+                        let content = params.get("content").and_then(|x| x.as_str()).unwrap_or("");
+                        match project::write_file(&p.root, path, content) {
+                            Ok(_) => format!("gravado: {path}"),
+                            Err(e) => format!("ERRO: {e}"),
+                        }
+                    }
+                });
+            }
         }
         if name.starts_with("mcp__") {
             return match self.mcp.as_mut() {
@@ -266,33 +314,73 @@ impl ToolHost for Dispatcher<'_> {
                 }
             }));
         }
+        // File tools do projeto (a pasta do tópico). Leitura sempre; escrita só se writable.
+        if let Some(p) = &self.project {
+            arr.push(json!({
+                "name": "project_tree",
+                "description": "Lista a árvore de ficheiros da pasta do projeto. `subpath` (relativo, opcional) lista uma subpasta.",
+                "input_schema": { "type": "object", "properties": { "subpath": { "type": "string" } } }
+            }));
+            arr.push(json!({
+                "name": "project_read",
+                "description": "Lê o conteúdo de um ficheiro do projeto (caminho relativo à raiz da pasta).",
+                "input_schema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] }
+            }));
+            if p.writable {
+                arr.push(json!({
+                    "name": "project_edit",
+                    "description": "Substitui o conteúdo completo de um ficheiro do projeto (caminho relativo). O utilizador confirma antes de gravar.",
+                    "input_schema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"] }
+                }));
+                arr.push(json!({
+                    "name": "project_create",
+                    "description": "Cria um ficheiro novo no projeto (caminho relativo) com o conteúdo dado. O utilizador confirma antes de gravar.",
+                    "input_schema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"] }
+                }));
+            }
+        }
         Value::Array(arr)
     }
 
     fn system_addendum(&self) -> Option<String> {
-        let ws = self.workspace.as_ref()?;
-        if ws.index.skills.is_empty() && ws.index.playbooks.is_empty() {
-            return None;
-        }
         let mut s = String::new();
-        if !ws.index.skills.is_empty() {
+        if let Some(ws) = self.workspace.as_ref() {
+            if !ws.index.skills.is_empty() {
+                s.push_str(
+                    "Skills disponíveis (chama load_skill para carregar as instruções quando a tarefa encaixar):\n",
+                );
+                for sk in &ws.index.skills {
+                    s.push_str(&format!("- {}: {}\n", sk.name, sk.description));
+                }
+            }
+            if !ws.index.playbooks.is_empty() {
+                s.push_str("\nPlaybooks disponíveis (chama read_playbook):\n");
+                for p in &ws.index.playbooks {
+                    s.push_str(&format!("- {}\n", p.name));
+                }
+            }
+            if !ws.index.skills.is_empty() || !ws.index.playbooks.is_empty() {
+                s.push_str(
+                    "\nPodes criar ou editar skills, playbooks e workflows com a ferramenta save_workspace_doc quando o utilizador pedir.\n",
+                );
+            }
+        }
+        if let Some(p) = &self.project {
             s.push_str(
-                "Skills disponíveis (chama load_skill para carregar as instruções quando a tarefa encaixar):\n",
+                "\nProjeto: tens acesso aos ficheiros da pasta do projeto — usa project_tree e project_read para explorar antes de responder.",
             );
-            for sk in &ws.index.skills {
-                s.push_str(&format!("- {}: {}\n", sk.name, sk.description));
+            if p.writable {
+                s.push_str(
+                    " Podes editar/criar com project_edit/project_create (cada gravação é confirmada pelo utilizador). Usa caminhos relativos à raiz.",
+                );
             }
+            s.push('\n');
         }
-        if !ws.index.playbooks.is_empty() {
-            s.push_str("\nPlaybooks disponíveis (chama read_playbook):\n");
-            for p in &ws.index.playbooks {
-                s.push_str(&format!("- {}\n", p.name));
-            }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
         }
-        s.push_str(
-            "\nPodes criar ou editar skills, playbooks e workflows com a ferramenta save_workspace_doc quando o utilizador pedir.\n",
-        );
-        Some(s)
     }
 
     async fn call(&mut self, name: &str, params: &Value) -> Result<String> {

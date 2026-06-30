@@ -180,6 +180,7 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
                 dir: &settings.workspace_dir,
                 index: &ws_index,
             }),
+            project: None, // automações não têm projeto/pasta associada
             gate: ActionGate {
                 db: Some(&state.db),
                 conversation_id: conv_id,

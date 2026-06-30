@@ -1285,11 +1285,20 @@ pub async fn send_message_stream(
     };
 
     // Contexto do tópico da conversa (brief + notas) — anteposto verbatim ao system prompt.
-    let topic_ctx = {
+    let topic = {
         let conn = state.db.lock().unwrap();
         store::get_topic_for_conversation(&conn, conversation_id)
-    }
-    .map(|tp| {
+    };
+    // Projeto: pasta + se a edição é permitida (file tools na rota Claude — ver Dispatcher abaixo).
+    let project_root: Option<String> = topic
+        .as_ref()
+        .map(|t| t.folder_path.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let project_writable = topic
+        .as_ref()
+        .map(|t| t.permission_mode == "ask")
+        .unwrap_or(false);
+    let topic_ctx = topic.map(|tp| {
         let mut block = format!("## Tópico: {}", tp.name);
         let brief = tp.brief.trim();
         let notes = tp.notes.trim();
@@ -1646,7 +1655,11 @@ pub async fn send_message_stream(
             let has_ws = !ws_index.skills.is_empty() || !ws_index.playbooks.is_empty();
             let want_tools = use_api
                 && !prepared.has_images
-                && (settings.enable_browser_tools || any_mcp || has_ws || forced_workflow);
+                && (settings.enable_browser_tools
+                    || any_mcp
+                    || has_ws
+                    || forced_workflow
+                    || project_root.is_some());
             if want_tools {
                 // Loop agêntico com ferramentas (browser e/ou servidores MCP) — só API.
                 let tx_d = channel.clone();
@@ -1672,8 +1685,9 @@ pub async fn send_message_stream(
                     mcp_guard.ensure_ready(&settings.mcp_servers).await;
                 }
 
-                // Workflows fazem ações: se a confirmação estiver desligada, pede aprovação na mesma.
-                let mode = if forced_workflow && settings.confirm_mode == "off" {
+                // Workflows e projetos editáveis fazem ações: se a confirmação estiver desligada,
+                // pede aprovação na mesma (nunca grava ficheiros sem confirmar).
+                let mode = if (forced_workflow || project_writable) && settings.confirm_mode == "off" {
                     ConfirmMode::Ask
                 } else {
                     ConfirmMode::parse(&settings.confirm_mode)
@@ -1703,6 +1717,12 @@ pub async fn send_message_stream(
                     } else {
                         None
                     },
+                    project: project_root.as_ref().map(|root| {
+                        crate::tools::dispatch::ProjectTools {
+                            root: root.clone(),
+                            writable: project_writable,
+                        }
+                    }),
                     gate: ActionGate {
                         db: Some(&state.db),
                         conversation_id,
