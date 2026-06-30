@@ -347,9 +347,12 @@ pub fn update_topic(
     id: i64,
     brief: String,
     notes: String,
+    folder_path: String,
+    permission_mode: String,
 ) -> Result<(), String> {
     let conn = state.db.lock().unwrap();
-    store::update_topic(&conn, id, &brief, &notes).map_err(|e| e.to_string())
+    store::update_topic(&conn, id, &brief, &notes, &folder_path, &permission_mode)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

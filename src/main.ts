@@ -6,7 +6,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
 import mermaid from "mermaid";
-import { save } from "@tauri-apps/plugin-dialog";
+import { save, open } from "@tauri-apps/plugin-dialog";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
@@ -641,6 +641,23 @@ app.innerHTML = `
       <label>${t("Brief (contexto partilhado)")} <textarea id="topic-brief" rows="4" placeholder="${t("Ex.: objetivo do projeto, stack, links, convenções…")}"></textarea></label>
       <label>${t("Notas fixadas")} <textarea id="topic-notes" rows="3"></textarea></label>
       <p class="wiz-hint">${t("O brief e as notas entram no contexto de todos os chats deste tópico.")}</p>
+
+      <fieldset class="topic-project">
+        <legend>${t("Projeto (pasta)")}</legend>
+        <div class="topic-folder-row">
+          <button type="button" class="ghost" id="topic-folder-pick">${icon("folder")}<span>${t("Escolher pasta…")}</span></button>
+          <span class="topic-folder-path" id="topic-folder-path"></span>
+          <button type="button" class="icon-x" id="topic-folder-clear" title="${t("Remover pasta")}" aria-label="${t("Remover pasta")}" hidden>${icon("x")}</button>
+        </div>
+        <label>${t("Acesso aos ficheiros")}
+          <select id="topic-permission">
+            <option value="read">${t("Leitura (o agente lê a pasta)")}</option>
+            <option value="ask">${t("Edição confirmada (pede aprovação para gravar)")}</option>
+          </select>
+        </label>
+        <p class="wiz-hint">${t("Anexar uma pasta dá ao agente a árvore e leitura dos ficheiros; a edição precisa do modo Claude e confirma cada gravação.")}</p>
+      </fieldset>
+
       <menu>
         <button type="button" class="primary" id="topic-save">${t("Guardar")}</button>
         <button type="button" class="ghost" id="topic-cancel">${t("Fechar")}</button>
@@ -1973,7 +1990,16 @@ function renderSidebar() {
     count.className = "topic-count";
     count.textContent = String(convs.length);
 
-    head.append(caret, name, count);
+    head.append(caret, name);
+    // Badge de projeto: o tópico tem uma pasta anexada (file tools).
+    if (topic && topic.folder_path) {
+      const proj = document.createElement("span");
+      proj.className = "topic-proj";
+      proj.innerHTML = icon("folder");
+      proj.title = t("Projeto: ") + topic.folder_path;
+      head.append(proj);
+    }
+    head.append(count);
 
     if (topic) {
       // "+" cria uma Saga neste tópico; pencil/x renomeiam/apagam o tópico (não os chats).
@@ -2082,14 +2108,35 @@ async function deleteTopicUi(id: number) {
   await loadConversations();
 }
 
-// Editor do tópico (nome + brief + notas) — o brief/notas entram no contexto dos chats do tópico.
+// Editor do tópico (nome + brief + notas + pasta do projeto). O brief/notas entram no contexto;
+// a pasta dá file tools (ler/editar) aos chats do tópico.
 let editingTopicId: number | null = null;
+let editingFolder = "";
+function renderTopicFolder() {
+  (document.querySelector("#topic-folder-path") as HTMLElement).textContent = editingFolder;
+  document.querySelector("#topic-folder-clear")!.toggleAttribute("hidden", !editingFolder);
+}
 function openTopicEditor(tp: Topic) {
   editingTopicId = tp.id;
+  editingFolder = tp.folder_path;
   (document.querySelector("#topic-name") as HTMLInputElement).value = tp.name;
   (document.querySelector("#topic-brief") as HTMLTextAreaElement).value = tp.brief;
   (document.querySelector("#topic-notes") as HTMLTextAreaElement).value = tp.notes;
+  (document.querySelector("#topic-permission") as HTMLSelectElement).value =
+    tp.permission_mode || "read";
+  renderTopicFolder();
   els.topicDialog.showModal();
+}
+async function pickTopicFolder() {
+  try {
+    const picked = await open({ directory: true, multiple: false });
+    if (typeof picked === "string") {
+      editingFolder = picked;
+      renderTopicFolder();
+    }
+  } catch (e) {
+    console.error(e);
+  }
 }
 async function saveTopicEditor() {
   if (editingTopicId == null) return;
@@ -2097,12 +2144,13 @@ async function saveTopicEditor() {
   const name = (document.querySelector("#topic-name") as HTMLInputElement).value.trim();
   const brief = (document.querySelector("#topic-brief") as HTMLTextAreaElement).value;
   const notes = (document.querySelector("#topic-notes") as HTMLTextAreaElement).value;
+  const permission = (document.querySelector("#topic-permission") as HTMLSelectElement).value;
   const cur = state.topics.find((tp) => tp.id === id);
   try {
     if (name && cur && name.toLowerCase() !== cur.name.toLowerCase()) {
       await api.renameTopic(id, name);
     }
-    await api.updateTopic(id, brief, notes);
+    await api.updateTopic(id, brief, notes, editingFolder, permission);
   } catch (e) {
     console.error(e); // ex.: nome duplicado (índice único)
   }
@@ -5855,6 +5903,11 @@ async function init() {
     .addEventListener("click", () => void createTopicInteractive());
   document.querySelector("#topic-save")!.addEventListener("click", () => void saveTopicEditor());
   document.querySelector("#topic-cancel")!.addEventListener("click", () => els.topicDialog.close());
+  document.querySelector("#topic-folder-pick")!.addEventListener("click", () => void pickTopicFolder());
+  document.querySelector("#topic-folder-clear")!.addEventListener("click", () => {
+    editingFolder = "";
+    renderTopicFolder();
+  });
   els.convSearch.addEventListener("input", onSearch);
   document.querySelector("#btn-attach")!.addEventListener("click", () => els.fileInput.click());
   els.fileInput.addEventListener("change", onFilesSelected);

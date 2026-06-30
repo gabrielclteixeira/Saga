@@ -25,6 +25,10 @@ pub struct Topic {
     pub brief: String,
     /// Notas fixadas do tópico (também injetadas no contexto — Fase 2).
     pub notes: String,
+    /// Pasta do projeto (vazio = não é projeto). Dá file tools + árvore no contexto.
+    pub folder_path: String,
+    /// Permissão das file tools: "read" (só leitura) | "ask" (editar com confirmação).
+    pub permission_mode: String,
 }
 
 #[derive(Serialize)]
@@ -129,6 +133,17 @@ fn init(conn: &Connection) -> Result<()> {
     // o SET NULL ao apagar um tópico é feito em código em delete_topic).
     conn.execute(
         "ALTER TABLE conversations ADD COLUMN topic_id INTEGER",
+        [],
+    )
+    .ok();
+    // Migração: um tópico pode ser um projeto (pasta + permissão das file tools).
+    conn.execute(
+        "ALTER TABLE topics ADD COLUMN folder_path TEXT NOT NULL DEFAULT ''",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "ALTER TABLE topics ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'read'",
         [],
     )
     .ok();
@@ -245,7 +260,7 @@ pub fn list_conversations(conn: &Connection) -> Result<Vec<ConversationMeta>> {
 
 pub fn list_topics(conn: &Connection) -> Result<Vec<Topic>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, brief, notes FROM topics ORDER BY sort_order ASC, name COLLATE NOCASE ASC",
+        "SELECT id, name, brief, notes, folder_path, permission_mode FROM topics ORDER BY sort_order ASC, name COLLATE NOCASE ASC",
     )?;
     let rows = stmt.query_map([], |r| {
         Ok(Topic {
@@ -253,6 +268,8 @@ pub fn list_topics(conn: &Connection) -> Result<Vec<Topic>> {
             name: r.get(1)?,
             brief: r.get(2)?,
             notes: r.get(3)?,
+            folder_path: r.get(4)?,
+            permission_mode: r.get(5)?,
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -283,10 +300,17 @@ pub fn rename_topic(conn: &Connection, id: i64, name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn update_topic(conn: &Connection, id: i64, brief: &str, notes: &str) -> Result<()> {
+pub fn update_topic(
+    conn: &Connection,
+    id: i64,
+    brief: &str,
+    notes: &str,
+    folder_path: &str,
+    permission_mode: &str,
+) -> Result<()> {
     conn.execute(
-        "UPDATE topics SET brief = ?2, notes = ?3, updated_at = datetime('now') WHERE id = ?1",
-        params![id, brief, notes],
+        "UPDATE topics SET brief = ?2, notes = ?3, folder_path = ?4, permission_mode = ?5, updated_at = datetime('now') WHERE id = ?1",
+        params![id, brief, notes, folder_path, permission_mode],
     )?;
     Ok(())
 }
@@ -312,7 +336,7 @@ pub fn set_conversation_topic(conn: &Connection, conv_id: i64, topic_id: Option<
 /// Tópico de uma conversa (para injetar o brief no contexto — Fase 2).
 pub fn get_topic_for_conversation(conn: &Connection, conv_id: i64) -> Option<Topic> {
     conn.query_row(
-        "SELECT t.id, t.name, t.brief, t.notes FROM topics t
+        "SELECT t.id, t.name, t.brief, t.notes, t.folder_path, t.permission_mode FROM topics t
          JOIN conversations c ON c.topic_id = t.id WHERE c.id = ?1",
         params![conv_id],
         |r| {
@@ -321,6 +345,8 @@ pub fn get_topic_for_conversation(conn: &Connection, conv_id: i64) -> Option<Top
                 name: r.get(1)?,
                 brief: r.get(2)?,
                 notes: r.get(3)?,
+                folder_path: r.get(4)?,
+                permission_mode: r.get(5)?,
             })
         },
     )

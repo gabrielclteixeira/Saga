@@ -68,6 +68,16 @@ const EN: Record<string, string> = {
   "Notas fixadas": "Pinned notes",
   "O brief e as notas entram no contexto de todos os chats deste tópico.":
     "The brief and notes are added to the context of every chat in this topic.",
+  "Projeto (pasta)": "Project (folder)",
+  "Escolher pasta…": "Choose folder…",
+  "Remover pasta": "Remove folder",
+  "Acesso aos ficheiros": "File access",
+  "Leitura (o agente lê a pasta)": "Read (the agent reads the folder)",
+  "Edição confirmada (pede aprovação para gravar)":
+    "Confirmed edits (asks before writing)",
+  "Anexar uma pasta dá ao agente a árvore e leitura dos ficheiros; a edição precisa do modo Claude e confirma cada gravação.":
+    "Attaching a folder gives the agent the file tree and file reading; editing needs Claude mode and confirms every write.",
+  "Projeto: ": "Project: ",
   "Escreve uma mensagem…": "Type a message…",
   "Enviar": "Send",
   "Auto": "Auto",

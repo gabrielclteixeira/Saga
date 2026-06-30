@@ -463,6 +463,42 @@ body.dragging-conv {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+/* Badge de projeto (pasta anexada) no cabeçalho do tópico. */
+.topic-proj {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+}
+.topic-proj .ic {
+  width: 13px;
+  height: 13px;
+}
+/* Editor: bloco do projeto (pasta + permissão). */
+.topic-project {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.topic-project legend {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 4px;
+}
+.topic-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.topic-folder-path {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-all;
+}
 .topic-act {
   visibility: hidden;
   display: inline-flex;

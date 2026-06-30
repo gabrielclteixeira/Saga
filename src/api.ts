@@ -187,6 +187,8 @@ export interface Topic {
   name: string;
   brief: string;
   notes: string;
+  folder_path: string;
+  permission_mode: string; // "read" | "ask"
 }
 
 export interface Compaction {
@@ -335,8 +337,13 @@ export const api = {
   listTopics: () => invoke<Topic[]>("list_topics"),
   createTopic: (name: string) => invoke<number>("create_topic", { name }),
   renameTopic: (id: number, name: string) => invoke<void>("rename_topic", { id, name }),
-  updateTopic: (id: number, brief: string, notes: string) =>
-    invoke<void>("update_topic", { id, brief, notes }),
+  updateTopic: (
+    id: number,
+    brief: string,
+    notes: string,
+    folderPath: string,
+    permissionMode: string
+  ) => invoke<void>("update_topic", { id, brief, notes, folderPath, permissionMode }),
   deleteTopic: (id: number) => invoke<void>("delete_topic", { id }),
   setConversationTopic: (conversationId: number, topicId: number | null) =>
     invoke<void>("set_conversation_topic", { conversationId, topicId }),
