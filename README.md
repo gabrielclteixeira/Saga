@@ -213,7 +213,23 @@ then plans with your answers; the planning counterpart of asking-before-acting) 
 the borderline cases the deterministic gate can't; degrades safely to L1 when none is installed) +
 **adaptive per-model sensitivity** (answering/skipping the clarify card nudges a per-model threshold) ·
 **focused per-step search queries** (keyword + clarified-region queries — e.g. "RTX 4090 price Portugal" — instead
-of the verbose step label) · **live token streaming during Plan execution**.
+of the verbose step label) · **live token streaming during Plan execution** ·
+**Topics** (group Sagas under a topic with a side-rail collapsible group, drag-and-drop to move, a shared
+**brief + pinned notes** injected into every chat's context, and a per-topic editor) ·
+**topic-scoped Workspace docs** (a `topic:` frontmatter restricts a skill/playbook/workflow/agent to that topic's
+chats; empty = global — with a topic selector in the editor and a badge in the list) ·
+**Projects** (attach a folder to a topic → the model gets the **file tree** as context + **file tools**
+`project_tree`/`read`/`edit`/`create`/`delete` sandboxed to the folder, on **both the Claude API and the local
+Ollama route**, gated by per-write **confirmation** + action log; plus a **"Save to project"** button on artifacts
+and a seeded **project-files** skill that reinforces using the tools instead of paste-the-code) ·
+**local "Think" effort scale** (the Think chip becomes off → native → **verify** (self-consistency: sample N,
+measure agreement = confidence, synthesize) → **debate** (proponent → skeptic → judge), pickable per message and
+as an agent default) ·
+**per-agent defaults** (route, tools, deep research, subagents, **Plan**, **Think level**, and a **model** —
+with fallback to the default if the pinned model was deleted) ·
+**per-context model selection** (in-chat A/B: regenerate the same prompt on another installed local model or
+Claude; plus a **model field on scheduled automations**) ·
+**artifact toolbar overflow menu** ("⋯" collapses controls that don't fit when the panel is narrow).
 
 **Next:**
 
@@ -229,26 +245,13 @@ of the verbose step label) · **live token streaming during Plan execution**.
 - **Code-sign & notarize installers** *(current focus)* — the updater is signed and auto-update is live; still
   pending is OS-level **code-signing + notarization** (Apple Developer ID / Windows Authenticode) to drop the
   "unknown publisher" warnings.
-- **Projects** — a folder you add becomes a *project*: the models get **local context** for it (its file tree +
-  on-demand reads), and **skills, playbooks & agents can be scoped per-project or shared** across all projects
-  (a project-scoped doc overrides the shared one of the same name). Inside a project the agent gets **file tools
-  — view, edit, create** within the folder, gated by a **permission mode**: **ask** (confirm each file action,
-  reusing the action log + `confirm_mode`) or **auto** (runs unattended to the end — but **only after you approve
-  a plan first**, extending Plan mode's draft → approve → execute to real file edits). Every auto run is
-  **reversible** via **rollback**: the folder is snapshotted/checkpointed before the run starts, so one click
-  undoes the whole thing. Builds on the existing Workspace (skills/playbooks/workflows/agents), action log, Plan
-  mode and the agentic tool loop — this is the natural home for **Agentic Plan execution (v2)** below. Open:
-  project context as plain file-tree + reads vs an indexed/RAG layer for large repos; rollback via per-run shadow
-  git (stash/commit) vs a filesystem snapshot copy; and whether the file tools also run on the local route (today
-  the agentic loop is Claude-only).
-- **Topics** — group related Sagas under a **topic** (e.g. *MyPortal billing*, *house hunt*): a topic carries
-  **shared context** every chat in it sees (a short brief + pinned notes + topic-scoped memory) and its own
-  **Workspace scope** (skills/playbooks/agents that apply only to that topic's chats). Lighter-weight than a
-  folder-backed **Project** (above): a Topic groups *conversations* and knowledge; a Project adds a local *folder*
-  + file tools — so a Topic can later be **promoted** to a Project by attaching a folder. The side rail gains a
-  topic filter/group and new Sagas inherit the active topic. Open: a chat in one topic vs many; whether topic
-  memory is just a tagged slice of the existing memory store vs its own.
-- **Self-distilling Workspace docs** (skills / playbooks / workflows) — the model watches a topic's chats and,
+- **Projects — auto mode & rollback** — Projects shipped (folder context + sandboxed file tools on both routes,
+  per-write confirmation). The remaining piece is an **auto** permission mode: after you **approve a plan**, the
+  agent runs the file edits unattended to the end (extending Plan mode's draft → approve → execute to real edits),
+  with the folder **snapshotted before the run** so **rollback** undoes the whole thing in one click. This is the
+  home for **Agentic Plan execution (v2)** below. Open: rollback via per-run shadow git (stash/commit) vs a
+  filesystem snapshot copy; how to combine the multi-step tool loop with the (currently separate) verify/debate.
+- **Self-distilling Workspace docs** (skills / playbooks / workflows) *(current focus)* — the model watches a topic's chats and,
   when it spots something **replicable**, proposes capturing it — **choosing the right type for the pattern**, not
   always a playbook: a recurring **how-to you keep re-explaining** → a **playbook**; a stable piece of **domain
   knowledge or a reusable technique/convention** → a **skill**; a repeated **multi-step task you actually run**
@@ -267,11 +270,6 @@ of the verbose step label) · **live token streaming during Plan execution**.
 - **Clarification v3 — self-consistency** — the embedding L2 and adaptive per-model sensitivity shipped; the
   remaining lever is a **self-consistency** signal (sample a few plan drafts, measure assumption divergence) for the
   hardest borderline calls.
-- **Per-context model selection** — pick which model runs a task, since some models beat others per task (a coding
-  model for code, gemma4 for planning, a small fast one for triage). Add a `model` field to **Agents** (the
-  frontmatter already carries route/tools/research/subagents) and to **scheduled automations** (the runner uses the
-  default model today), plus quick in-chat model switching to A/B the same prompt. Open: what happens when a named
-  model isn't installed — fall back to the active model and warn?
 - **Smart Saga** — in *normal* chat (not just Plan mode), the model decides when it actually needs the web and
   **asks you inline** before searching (e.g. "queres que pesquise os preços atuais?"), instead of guessing or
   hallucinating — the ask-before-acting / clarification pattern extended to regular chat.

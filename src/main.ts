@@ -6345,7 +6345,14 @@ async function init() {
     // Aquece o modelo local logo no arranque → 1.ª resposta sem cold-start.
     warmLocalModel();
     // Alimenta o datalist partilhado (#ollama-models) + cache para o A/B no chat e o autocomplete.
-    api.listOllamaModels().then(setLocalModelsCache).catch(() => {});
+    // Re-renderiza a conversa quando chega (corrida com o 1.º render) p/ o picker ter os modelos locais.
+    api
+      .listOllamaModels()
+      .then((ms) => {
+        setLocalModelsCache(ms);
+        if (state.items.length) renderMessages();
+      })
+      .catch(() => {});
   } catch (e) {
     console.error(e);
   } finally {
