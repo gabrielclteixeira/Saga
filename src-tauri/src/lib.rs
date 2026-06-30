@@ -16,6 +16,7 @@ mod router;
 mod scheduler;
 mod settings;
 mod store;
+mod think;
 mod tools;
 mod web_agent;
 mod which;

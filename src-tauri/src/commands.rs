@@ -1407,8 +1407,8 @@ pub async fn send_message_stream(
     // Tokens do gate de clarificação do chat (B), somados ao turno depois (0 no Plan mode).
     let mut clarify_in = 0u64;
     let mut clarify_out = 0u64;
-    // Concordância das amostras no modo Think "verify" (preenchida no Passo 2). None = sem verify.
-    let turn_confidence: Option<f32> = None;
+    // Concordância das amostras no modo Think "verify" (None = sem verify).
+    let mut turn_confidence: Option<f32> = None;
     // Camada "reasoning": intenção do pedido (determinística). Alimenta o deep-research e a metadata.
     let turn_intent = crate::reasoning::classify_intent(
         messages
@@ -1674,23 +1674,52 @@ pub async fn send_message_stream(
                 }
                 r
             } else {
-                // Modelos com raciocínio (gemma4, qwen3, deepseek-r1…) emitem "thinking"
-                // separado — só o pedimos se o nível Think estiver ligado (off suprime-o).
-                // (verify/debate ligam-se aqui no Passo 2/3; por agora só o raciocínio nativo.)
-                let think = think_level != "off" && providers::ollama::model_reasons(&prepared.model);
-                let tx_think = channel.clone();
-                providers::ollama::chat_stream(
-                    &settings.ollama_endpoint,
-                    &prepared.model,
-                    &prepared.full_messages,
-                    gopts,
-                    think,
-                    on_delta,
-                    move |t| {
-                        let _ = tx_think.send(StreamEvent::Thinking { text: t.to_string() });
-                    },
-                )
-                .await
+                // Escala Think na rota local: verify = self-consistency (amostra + concordância +
+                // síntese); senão raciocínio nativo (off suprime-o).
+                if think_level == "verify" {
+                    let tx_t = channel.clone();
+                    let on_tool = move |tool: &str, detail: &str| {
+                        let _ = tx_t.send(StreamEvent::ToolStep {
+                            tool: tool.to_string(),
+                            detail: detail.to_string(),
+                        });
+                    };
+                    match crate::think::self_consistency(
+                        &settings.ollama_endpoint,
+                        &prepared.model,
+                        &prepared.full_messages,
+                        gopts,
+                        3,
+                        on_delta,
+                        on_tool,
+                    )
+                    .await
+                    {
+                        Ok((resp, conf)) => {
+                            turn_confidence = conf;
+                            Ok(resp)
+                        }
+                        Err(e) => Err(e),
+                    }
+                } else {
+                    // Modelos com raciocínio (gemma4, qwen3, deepseek-r1…) emitem "thinking"
+                    // separado — só o pedimos se o nível Think estiver ligado (off suprime-o).
+                    let think =
+                        think_level != "off" && providers::ollama::model_reasons(&prepared.model);
+                    let tx_think = channel.clone();
+                    providers::ollama::chat_stream(
+                        &settings.ollama_endpoint,
+                        &prepared.model,
+                        &prepared.full_messages,
+                        gopts,
+                        think,
+                        on_delta,
+                        move |t| {
+                            let _ = tx_think.send(StreamEvent::Thinking { text: t.to_string() });
+                        },
+                    )
+                    .await
+                }
             }
         }
         router::Route::Claude if cloud_openai => {
