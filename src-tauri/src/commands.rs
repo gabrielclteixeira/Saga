@@ -1701,6 +1701,23 @@ pub async fn send_message_stream(
                         }
                         Err(e) => Err(e),
                     }
+                } else if think_level == "debate" {
+                    let tx_t = channel.clone();
+                    let on_tool = move |tool: &str, detail: &str| {
+                        let _ = tx_t.send(StreamEvent::ToolStep {
+                            tool: tool.to_string(),
+                            detail: detail.to_string(),
+                        });
+                    };
+                    crate::think::debate(
+                        &settings.ollama_endpoint,
+                        &prepared.model,
+                        &prepared.full_messages,
+                        gopts,
+                        on_delta,
+                        on_tool,
+                    )
+                    .await
                 } else {
                     // Modelos com raciocínio (gemma4, qwen3, deepseek-r1…) emitem "thinking"
                     // separado — só o pedimos se o nível Think estiver ligado (off suprime-o).

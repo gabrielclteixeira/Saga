@@ -132,3 +132,77 @@ mencionar este processo nem as 'respostas' acima.",
         confidence,
     ))
 }
+
+/// Lê `message.content` de uma resposta crua do Ollama.
+fn content_of(resp: &Value) -> String {
+    resp.pointer("/message/content")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string()
+}
+
+/// Debate: proponente (resposta) → cético (crítica) → juiz (resposta final, streamed).
+/// Para perguntas abertas/contestadas; mais caro (3 passagens) e melhor com modelos fortes.
+pub async fn debate<D, T>(
+    endpoint: &str,
+    model: &str,
+    messages: &[ChatMessage],
+    opts: GenOpts,
+    on_delta: D,
+    mut on_tool: T,
+) -> Result<LlmResponse>
+where
+    D: FnMut(&str),
+    T: FnMut(&str, &str),
+{
+    let base = wire(messages);
+    let (mut tin, mut tout) = (0u64, 0u64);
+
+    // 1. Proponente — a melhor resposta direta à pergunta.
+    on_tool("debate", "proponente");
+    let p = ollama::chat_raw(endpoint, model, json!(base), None, opts).await?;
+    tin += p.get("prompt_eval_count").and_then(|x| x.as_u64()).unwrap_or(0);
+    tout += p.get("eval_count").and_then(|x| x.as_u64()).unwrap_or(0);
+    let proponent = content_of(&p);
+    if proponent.is_empty() {
+        return Err(anyhow!("debate: o proponente não respondeu"));
+    }
+
+    // 2. Cético — ataca a resposta do proponente.
+    on_tool("debate", "cético");
+    let mut crit = base.clone();
+    crit.push(json!({
+        "role": "user",
+        "content": format!(
+            "Uma resposta proposta à pergunta acima foi:\n\n{proponent}\n\nÉs o CÉTICO: aponta erros, \
+lacunas, suposições frágeis e pontos a verificar nesta resposta. NÃO a reescrevas — apenas critica-a, \
+em pontos curtos."
+        )
+    }));
+    let s = ollama::chat_raw(endpoint, model, json!(crit), None, opts).await?;
+    tin += s.get("prompt_eval_count").and_then(|x| x.as_u64()).unwrap_or(0);
+    tout += s.get("eval_count").and_then(|x| x.as_u64()).unwrap_or(0);
+    let skeptic = content_of(&s);
+
+    // 3. Juiz — resposta final (streamed), incorporando a crítica válida.
+    on_tool("debate", "juiz");
+    let mut synth = messages.to_vec();
+    synth.push(ChatMessage {
+        role: "user".into(),
+        content: format!(
+            "Resposta proposta:\n{proponent}\n\nCrítica:\n{skeptic}\n\nÉs o JUIZ: produz a resposta \
+FINAL ao utilizador, incorporando a crítica válida e corrigindo os erros apontados. Responde \
+diretamente, sem mencionar este processo."
+        ),
+        attachments: Vec::new(),
+    });
+    let final_resp = ollama::chat_stream(endpoint, model, &synth, opts, false, on_delta, |_| {}).await?;
+    Ok(LlmResponse {
+        text: final_resp.text,
+        input_tokens: tin + final_resp.input_tokens,
+        output_tokens: tout + final_resp.output_tokens,
+        reported_cost_usd: 0.0,
+        sources: Vec::new(),
+    })
+}
