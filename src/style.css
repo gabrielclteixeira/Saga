@@ -176,6 +176,7 @@ body {
 
 /* Centro: chat OU uma vista do rail (em vez de popup) */
 .center {
+  grid-column: 3; /* coluna fixa: pôr sidebar/panel em absolute não pode deslocar o centro */
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -2155,6 +2156,7 @@ dialog::backdrop {
 
 /* ---- Menu lateral (rail) ---- */
 .rail {
+  grid-column: 1;
   display: flex;
   flex-direction: column;
   align-items: stretch;
