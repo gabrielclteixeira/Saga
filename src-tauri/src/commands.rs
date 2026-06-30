@@ -311,10 +311,61 @@ pub fn set_message_steps(
 }
 
 #[tauri::command]
-pub fn new_conversation(state: State<AppState>, title: Option<String>) -> Result<i64, String> {
+pub fn new_conversation(
+    state: State<AppState>,
+    title: Option<String>,
+    topic_id: Option<i64>,
+) -> Result<i64, String> {
     let conn = state.db.lock().unwrap();
-    store::create_conversation(&conn, title.as_deref().unwrap_or("Nova conversa"))
+    store::create_conversation(&conn, title.as_deref().unwrap_or("Nova conversa"), topic_id)
         .map_err(|e| e.to_string())
+}
+
+// ---- Tópicos ----
+
+#[tauri::command]
+pub fn list_topics(state: State<AppState>) -> Result<Vec<store::Topic>, String> {
+    let conn = state.db.lock().unwrap();
+    store::list_topics(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn create_topic(state: State<AppState>, name: String) -> Result<i64, String> {
+    let conn = state.db.lock().unwrap();
+    store::create_topic(&conn, &name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn rename_topic(state: State<AppState>, id: i64, name: String) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    store::rename_topic(&conn, id, &name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_topic(
+    state: State<AppState>,
+    id: i64,
+    brief: String,
+    notes: String,
+) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    store::update_topic(&conn, id, &brief, &notes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_topic(state: State<AppState>, id: i64) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    store::delete_topic(&conn, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_conversation_topic(
+    state: State<AppState>,
+    conversation_id: i64,
+    topic_id: Option<i64>,
+) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    store::set_conversation_topic(&conn, conversation_id, topic_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

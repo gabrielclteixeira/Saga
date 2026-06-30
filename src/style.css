@@ -365,6 +365,141 @@ body {
 .conv-rename:focus {
   outline: none;
 }
+
+/* ---- Tópicos (agrupar Sagas) ---- */
+.new-topic {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 12px 8px;
+  padding: 5px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  align-self: flex-start;
+}
+.new-topic:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+.new-topic .ic {
+  width: 14px;
+  height: 14px;
+}
+.topic-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin-top: 2px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--muted);
+  user-select: none;
+}
+.topic-head:hover {
+  background: var(--bg-3);
+}
+.topic-head.active .topic-name {
+  color: var(--text);
+}
+.topic-caret {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--muted);
+  transform: rotate(90deg); /* expandido → aponta para baixo */
+  transition: transform 0.12s ease;
+}
+.topic-caret.collapsed {
+  transform: rotate(0deg); /* colapsado → aponta para a direita */
+}
+.topic-caret .ic {
+  width: 14px;
+  height: 14px;
+}
+.topic-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.topic-count {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.topic-act {
+  visibility: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px;
+}
+.topic-act .ic {
+  width: 14px;
+  height: 14px;
+}
+.topic-head:hover .topic-act {
+  visibility: visible;
+}
+.topic-act:hover {
+  color: var(--text);
+}
+.topic-del:hover {
+  color: var(--danger);
+}
+/* Popover para mover uma conversa para um tópico */
+.topic-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 180px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+.topic-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topic-menu-item:hover {
+  background: var(--bg-3);
+}
+.topic-menu-item.active {
+  color: var(--accent);
+}
+.topic-menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
 .chat {
   display: flex;
   flex-direction: column;

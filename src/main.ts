@@ -29,6 +29,7 @@ import {
   type SearchHit,
   type Settings,
   type StoredMessage,
+  type Topic,
 } from "./api";
 
 marked.setOptions({ breaks: true, gfm: true });
@@ -84,6 +85,8 @@ const state: {
   compactedSummary: string;
   compactedUpto: number; // id da última mensagem compactada (0 = sem compactação)
   activeAgent: { name: string; system: string } | null;
+  topics: Topic[];
+  activeTopicId: number | null; // tópico onde nascem as Sagas novas (segue o chat aberto)
 } = {
   items: [],
   settings: null,
@@ -99,7 +102,20 @@ const state: {
   compactedSummary: "",
   compactedUpto: 0,
   activeAgent: null,
+  topics: [],
+  activeTopicId: readActiveTopic(),
 };
+
+/** Tópico ativo persistido (onde nascem as Sagas novas). */
+function readActiveTopic(): number | null {
+  const v = localStorage.getItem("saga.activeTopic");
+  return v ? Number(v) || null : null;
+}
+function setActiveTopic(id: number | null) {
+  state.activeTopicId = id;
+  if (id == null) localStorage.removeItem("saga.activeTopic");
+  else localStorage.setItem("saga.activeTopic", String(id));
+}
 
 /** Ícones monocromáticos inline (estilo do rail: currentColor, 1em). Definido ANTES do
  *  template (app.innerHTML chama icon()), senão dá ReferenceError de TDZ no arranque. */
@@ -121,6 +137,8 @@ const ICON_PATHS: Record<string, string> = {
   export: `<path d="M12 15V3"/><polyline points="7 8 12 3 17 8"/><path d="M5 21h14a2 2 0 0 0 2-2v-4"/><path d="M3 15v4a2 2 0 0 0 2 2"/>`,
   book: `<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 17H6a2 2 0 0 0-2 2"/>`,
   chevron: `<polyline points="9 6 15 12 9 18"/>`,
+  plus: `<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>`,
+  folder: `<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>`,
   check: `<polyline points="20 6 9 17 4 12"/>`,
   circle: `<circle cx="12" cy="12" r="8"/>`,
   info: `<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>`,
@@ -166,6 +184,7 @@ app.innerHTML = `
     <aside class="sidebar">
       <button class="new-chat" id="btn-new-chat">${t("+ Nova Saga")}</button>
       <input class="conv-search" id="conv-search" type="search" placeholder="${t("Pesquisar Sagas…")}" autocomplete="off" />
+      <button class="new-topic" id="btn-new-topic" title="${t("Novo tópico")}">${icon("folder")}<span>${t("Novo tópico")}</span></button>
       <div class="conv-list" id="conv-list"></div>
     </aside>
     <div class="center" id="center">
@@ -1817,51 +1836,289 @@ async function onPaste(e: ClipboardEvent) {
   }
 }
 
-// ---- Conversas ----
+// ---- Conversas + Tópicos ----
+
+/** Conjunto de grupos colapsados (persistido). Chave = "t<id>" ou "none". */
+function collapsedTopics(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem("saga.collapsedTopics") || "[]") as string[]);
+  } catch {
+    return new Set();
+  }
+}
+function toggleCollapsed(key: string) {
+  const s = collapsedTopics();
+  if (s.has(key)) s.delete(key);
+  else s.add(key);
+  localStorage.setItem("saga.collapsedTopics", JSON.stringify([...s]));
+}
+
+/** Linha de uma conversa: título + mover + renomear + apagar. */
+function convRow(c: ConversationMeta): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "conv" + (c.id === state.currentConversationId ? " active" : "");
+  // Clicar em qualquer ponto da linha abre a Saga (ignora os botões de ação e o campo de renomear).
+  row.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).closest(".conv-act, .conv-rename")) return;
+    selectConversation(c.id);
+  });
+
+  const title = document.createElement("span");
+  title.className = "conv-title";
+  title.textContent = c.title || t("Nova conversa");
+  title.title = c.title;
+  title.addEventListener("dblclick", (e) => {
+    e.stopPropagation();
+    startRename(c, row, title);
+  });
+
+  const move = document.createElement("button");
+  move.className = "conv-act";
+  move.innerHTML = icon("folder");
+  move.title = t("Mover para tópico");
+  move.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openTopicMenu(move, c);
+  });
+
+  const ren = document.createElement("button");
+  ren.className = "conv-act";
+  ren.innerHTML = icon("pencil");
+  ren.title = t("Renomear");
+  ren.addEventListener("click", (e) => {
+    e.stopPropagation();
+    startRename(c, row, title);
+  });
+
+  const del = document.createElement("button");
+  del.className = "conv-act conv-del";
+  del.innerHTML = icon("x");
+  del.title = t("Apagar");
+  del.addEventListener("click", (e) => {
+    e.stopPropagation();
+    removeConversation(c.id);
+  });
+
+  row.append(title, move, ren, del);
+  return row;
+}
+
 function renderSidebar() {
   els.convList.innerHTML = "";
-  for (const c of state.conversations) {
-    const row = document.createElement("div");
-    row.className = "conv" + (c.id === state.currentConversationId ? " active" : "");
-    // Clicar em qualquer ponto da linha abre a Saga (não só no texto). Ignora os botões de
-    // ação (renomear/apagar) e o campo de renomear.
-    row.addEventListener("click", (e) => {
-      if ((e.target as HTMLElement).closest(".conv-act, .conv-rename")) return;
-      selectConversation(c.id);
-    });
 
-    const title = document.createElement("span");
-    title.className = "conv-title";
-    title.textContent = c.title || t("Nova conversa");
-    title.title = c.title;
-    title.addEventListener("dblclick", (e) => {
-      e.stopPropagation();
-      startRename(c, row, title);
-    });
-
-    const ren = document.createElement("button");
-    ren.className = "conv-act";
-    ren.innerHTML = icon("pencil");
-    ren.title = t("Renomear");
-    ren.addEventListener("click", (e) => {
-      e.stopPropagation();
-      startRename(c, row, title);
-    });
-
-    const del = document.createElement("button");
-    del.className = "conv-act conv-del";
-    del.innerHTML = icon("x");
-    del.title = t("Apagar");
-    del.addEventListener("click", (e) => {
-      e.stopPropagation();
-      removeConversation(c.id);
-    });
-
-    row.appendChild(title);
-    row.appendChild(ren);
-    row.appendChild(del);
-    els.convList.appendChild(row);
+  // Sem tópicos ainda → lista plana (UX inalterada até o utilizador criar o primeiro tópico).
+  if (state.topics.length === 0) {
+    for (const c of state.conversations) els.convList.appendChild(convRow(c));
+    return;
   }
+
+  const collapsed = collapsedTopics();
+  const byTopic = new Map<number | null, ConversationMeta[]>();
+  for (const c of state.conversations) {
+    const k = c.topic_id ?? null;
+    const arr = byTopic.get(k);
+    if (arr) arr.push(c);
+    else byTopic.set(k, [c]);
+  }
+
+  const renderGroup = (key: string, label: string, convs: ConversationMeta[], topic: Topic | null) => {
+    const isCollapsed = collapsed.has(key);
+    const head = document.createElement("div");
+    head.className = "topic-head" + (topic && topic.id === state.activeTopicId ? " active" : "");
+    if (topic) head.dataset.topicId = String(topic.id);
+    head.addEventListener("click", () => {
+      toggleCollapsed(key);
+      renderSidebar();
+    });
+
+    const caret = document.createElement("span");
+    caret.className = "topic-caret" + (isCollapsed ? " collapsed" : "");
+    caret.innerHTML = icon("chevron");
+
+    const name = document.createElement("span");
+    name.className = "topic-name";
+    name.textContent = label;
+    if (topic) {
+      name.title = label;
+      name.addEventListener("dblclick", (e) => {
+        e.stopPropagation();
+        startTopicRename(topic, head, name);
+      });
+    }
+
+    const count = document.createElement("span");
+    count.className = "topic-count";
+    count.textContent = String(convs.length);
+
+    head.append(caret, name, count);
+
+    if (topic) {
+      // "+" cria uma Saga neste tópico; pencil/x renomeiam/apagam o tópico (não os chats).
+      const add = document.createElement("button");
+      add.className = "topic-act";
+      add.innerHTML = icon("plus");
+      add.title = t("Nova Saga neste tópico");
+      add.addEventListener("click", (e) => {
+        e.stopPropagation();
+        void createConversation(topic.id);
+      });
+
+      const ren = document.createElement("button");
+      ren.className = "topic-act";
+      ren.innerHTML = icon("pencil");
+      ren.title = t("Renomear tópico");
+      ren.addEventListener("click", (e) => {
+        e.stopPropagation();
+        startTopicRename(topic, head, name);
+      });
+
+      const del = document.createElement("button");
+      del.className = "topic-act topic-del";
+      del.innerHTML = icon("x");
+      del.title = t("Apagar tópico (mantém as conversas)");
+      del.addEventListener("click", (e) => {
+        e.stopPropagation();
+        void deleteTopicUi(topic.id);
+      });
+
+      head.append(add, ren, del);
+    }
+
+    els.convList.appendChild(head);
+    if (!isCollapsed) for (const c of convs) els.convList.appendChild(convRow(c));
+  };
+
+  for (const tp of state.topics) {
+    renderGroup("t" + tp.id, tp.name || t("Tópico"), byTopic.get(tp.id) ?? [], tp);
+  }
+  const loose = byTopic.get(null) ?? [];
+  if (loose.length) renderGroup("none", t("(sem tópico)"), loose, null);
+}
+
+/** Nome único para um tópico novo ("Novo tópico", "Novo tópico 2", …) — nomes são únicos no backend. */
+function uniqueTopicName(base: string): string {
+  const names = new Set(state.topics.map((tp) => tp.name.toLowerCase()));
+  if (!names.has(base.toLowerCase())) return base;
+  for (let i = 2; ; i++) {
+    const n = `${base} ${i}`;
+    if (!names.has(n.toLowerCase())) return n;
+  }
+}
+
+/** Renomear o tópico in-place no cabeçalho (espelha startRename das conversas). */
+function startTopicRename(tp: Topic, head: HTMLElement, nameEl: HTMLElement) {
+  const input = document.createElement("input");
+  input.className = "conv-rename";
+  input.value = tp.name;
+  head.replaceChild(input, nameEl);
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = async (save: boolean) => {
+    if (done) return;
+    done = true;
+    const v = input.value.trim();
+    if (save && v && v.toLowerCase() !== tp.name.toLowerCase()) {
+      try {
+        await api.renameTopic(tp.id, v);
+      } catch (e) {
+        console.error(e); // ex.: nome já existe (índice único) — mantém o antigo
+      }
+    }
+    await loadConversations();
+  };
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void commit(true);
+    } else if (e.key === "Escape") {
+      void commit(false);
+    }
+  });
+  input.addEventListener("blur", () => void commit(true));
+}
+
+async function deleteTopicUi(id: number) {
+  try {
+    await api.deleteTopic(id);
+  } catch (e) {
+    console.error(e);
+  }
+  if (state.activeTopicId === id) setActiveTopic(null);
+  await loadConversations();
+}
+
+/** Cria um tópico, opcionalmente atribui-lhe um chat, e entra em renomear no novo cabeçalho. */
+async function createTopicInteractive(assignConvId?: number) {
+  let id: number;
+  try {
+    id = await api.createTopic(uniqueTopicName(t("Novo tópico")));
+  } catch (e) {
+    console.error(e);
+    return;
+  }
+  if (assignConvId != null) {
+    try {
+      await api.setConversationTopic(assignConvId, id);
+    } catch (e) {
+      console.error(e);
+    }
+    if (state.currentConversationId === assignConvId) setActiveTopic(id);
+  }
+  await loadConversations();
+  const head = els.convList.querySelector<HTMLElement>(`.topic-head[data-topic-id="${id}"]`);
+  const nameEl = head?.querySelector<HTMLElement>(".topic-name");
+  const tp = state.topics.find((x) => x.id === id);
+  if (head && nameEl && tp) startTopicRename(tp, head, nameEl);
+}
+
+async function assignTopic(convId: number, topicId: number | null) {
+  try {
+    await api.setConversationTopic(convId, topicId);
+  } catch (e) {
+    console.error(e);
+  }
+  if (state.currentConversationId === convId) setActiveTopic(topicId);
+  await loadConversations();
+}
+
+/** Popover para mover uma conversa: (sem tópico) + tópicos existentes + novo tópico. */
+function openTopicMenu(anchor: HTMLElement, c: ConversationMeta) {
+  document.querySelector(".topic-menu")?.remove(); // só um aberto de cada vez
+  const menu = document.createElement("div");
+  menu.className = "topic-menu";
+  const addItem = (label: string, onClick: () => void, active = false) => {
+    const b = document.createElement("button");
+    b.className = "topic-menu-item" + (active ? " active" : "");
+    b.textContent = label;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      menu.remove();
+      onClick();
+    });
+    menu.appendChild(b);
+  };
+  addItem(t("(sem tópico)"), () => void assignTopic(c.id, null), c.topic_id == null);
+  for (const tp of state.topics) {
+    addItem(tp.name, () => void assignTopic(c.id, tp.id), c.topic_id === tp.id);
+  }
+  const sep = document.createElement("div");
+  sep.className = "topic-menu-sep";
+  menu.appendChild(sep);
+  addItem(t("Novo tópico…"), () => void createTopicInteractive(c.id));
+
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+  menu.style.top = `${Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8)}px`;
+  const close = (e: MouseEvent) => {
+    if (!menu.contains(e.target as Node)) {
+      menu.remove();
+      document.removeEventListener("mousedown", close);
+    }
+  };
+  setTimeout(() => document.addEventListener("mousedown", close), 0);
 }
 
 function startRename(c: ConversationMeta, row: HTMLElement, titleEl: HTMLElement) {
@@ -1899,7 +2156,13 @@ function startRename(c: ConversationMeta, row: HTMLElement, titleEl: HTMLElement
 }
 
 async function loadConversations() {
-  state.conversations = await api.listConversations();
+  const [convs, topics] = await Promise.all([api.listConversations(), api.listTopics()]);
+  state.conversations = convs;
+  state.topics = topics;
+  // O tópico ativo persistido pode já não existir (apagado) — limpa-o.
+  if (state.activeTopicId != null && !topics.some((t) => t.id === state.activeTopicId)) {
+    setActiveTopic(null);
+  }
   if (!els.convSearch.value.trim()) renderSidebar();
 }
 
@@ -1998,6 +2261,8 @@ async function selectConversation(id: number) {
   // Guarda de corrida: cliques rápidos disparam várias cargas; só a última vence.
   const seq = ++selectSeq;
   state.currentConversationId = id;
+  // O tópico ativo segue o chat aberto (as Sagas novas nascem nele).
+  setActiveTopic(state.conversations.find((c) => c.id === id)?.topic_id ?? null);
   renderSidebar(); // realce imediato na barra lateral
   const msgs = await api.getConversation(id);
   if (seq !== selectSeq) return;
@@ -2025,10 +2290,13 @@ async function selectConversation(id: number) {
   }
 }
 
-async function createConversation() {
+async function createConversation(topicId?: number | null) {
   if (state.busy) return;
   closeDrawers(); // ecrã estreito: nova Saga fecha a gaveta da lista
-  const id = await api.newConversation();
+  // Sem argumento → herda o tópico ativo (que segue o chat aberto); o "+" de um grupo passa o seu id.
+  const topic = topicId !== undefined ? topicId : state.activeTopicId;
+  const id = await api.newConversation(undefined, topic);
+  setActiveTopic(topic ?? null);
   state.currentConversationId = id;
   state.items = [];
   resetCompaction();
@@ -5441,7 +5709,10 @@ async function init() {
   document.querySelector("#btn-mem-refresh")!.addEventListener("click", refreshMemory);
   document.querySelector("#btn-compact")!.addEventListener("click", compactCurrentSaga);
   document.querySelector("#btn-clear-saga")!.addEventListener("click", clearCurrentSaga);
-  document.querySelector("#btn-new-chat")!.addEventListener("click", createConversation);
+  document.querySelector("#btn-new-chat")!.addEventListener("click", () => void createConversation());
+  document
+    .querySelector("#btn-new-topic")!
+    .addEventListener("click", () => void createTopicInteractive());
   els.convSearch.addEventListener("input", onSearch);
   document.querySelector("#btn-attach")!.addEventListener("click", () => els.fileInput.click());
   els.fileInput.addEventListener("change", onFilesSelected);

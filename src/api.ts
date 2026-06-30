@@ -179,6 +179,14 @@ export interface ConversationMeta {
   title: string;
   created_at: string;
   updated_at: string;
+  topic_id: number | null;
+}
+
+export interface Topic {
+  id: number;
+  name: string;
+  brief: string;
+  notes: string;
 }
 
 export interface Compaction {
@@ -319,11 +327,19 @@ export const api = {
   detectEmbedModel: () => invoke<string | null>("detect_embed_model"),
   listConversations: () => invoke<ConversationMeta[]>("list_conversations"),
   getConversation: (id: number) => invoke<StoredMessage[]>("get_conversation", { id }),
-  newConversation: (title?: string) =>
-    invoke<number>("new_conversation", { title: title ?? null }),
+  newConversation: (title?: string, topicId?: number | null) =>
+    invoke<number>("new_conversation", { title: title ?? null, topicId: topicId ?? null }),
   renameConversation: (id: number, title: string) =>
     invoke<void>("rename_conversation", { id, title }),
   deleteConversation: (id: number) => invoke<void>("delete_conversation", { id }),
+  listTopics: () => invoke<Topic[]>("list_topics"),
+  createTopic: (name: string) => invoke<number>("create_topic", { name }),
+  renameTopic: (id: number, name: string) => invoke<void>("rename_topic", { id, name }),
+  updateTopic: (id: number, brief: string, notes: string) =>
+    invoke<void>("update_topic", { id, brief, notes }),
+  deleteTopic: (id: number) => invoke<void>("delete_topic", { id }),
+  setConversationTopic: (conversationId: number, topicId: number | null) =>
+    invoke<void>("set_conversation_topic", { conversationId, topicId }),
   searchChats: (query: string) => invoke<SearchHit[]>("search_chats", { query }),
   conversationAccounting: (id: number) =>
     invoke<Accounting>("get_conversation_accounting", { id }),

@@ -13,6 +13,18 @@ pub struct ConversationMeta {
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
+    /// Tópico a que a conversa pertence (NULL = sem tópico).
+    pub topic_id: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct Topic {
+    pub id: i64,
+    pub name: String,
+    /// Brief partilhado por todos os chats do tópico (injetado no contexto — Fase 2).
+    pub brief: String,
+    /// Notas fixadas do tópico (também injetadas no contexto — Fase 2).
+    pub notes: String,
 }
 
 #[derive(Serialize)]
@@ -101,8 +113,25 @@ fn init(conn: &Connection) -> Result<()> {
             n        INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (ym, provider)
         );
+        CREATE TABLE IF NOT EXISTS topics (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT NOT NULL DEFAULT '' COLLATE NOCASE,
+            brief      TEXT NOT NULL DEFAULT '',
+            notes      TEXT NOT NULL DEFAULT '',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_topics_name ON topics(name COLLATE NOCASE);
         "#,
     )?;
+    // Migração: agrupar conversas por tópico (sem FK — o ALTER do SQLite não a adiciona;
+    // o SET NULL ao apagar um tópico é feito em código em delete_topic).
+    conn.execute(
+        "ALTER TABLE conversations ADD COLUMN topic_id INTEGER",
+        [],
+    )
+    .ok();
     // Migração: colunas de compactação na conversa (ignora erro se já existirem).
     conn.execute(
         "ALTER TABLE conversations ADD COLUMN compacted_summary TEXT NOT NULL DEFAULT ''",
@@ -188,17 +217,17 @@ pub fn search_messages(conn: &Connection, query: &str) -> Result<Vec<SearchHit>>
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
-pub fn create_conversation(conn: &Connection, title: &str) -> Result<i64> {
+pub fn create_conversation(conn: &Connection, title: &str, topic_id: Option<i64>) -> Result<i64> {
     conn.execute(
-        "INSERT INTO conversations (title) VALUES (?1)",
-        params![title],
+        "INSERT INTO conversations (title, topic_id) VALUES (?1, ?2)",
+        params![title, topic_id],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
 pub fn list_conversations(conn: &Connection) -> Result<Vec<ConversationMeta>> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC, id DESC",
+        "SELECT id, title, created_at, updated_at, topic_id FROM conversations ORDER BY updated_at DESC, id DESC",
     )?;
     let rows = stmt.query_map([], |r| {
         Ok(ConversationMeta {
@@ -206,9 +235,96 @@ pub fn list_conversations(conn: &Connection) -> Result<Vec<ConversationMeta>> {
             title: r.get(1)?,
             created_at: r.get(2)?,
             updated_at: r.get(3)?,
+            topic_id: r.get(4)?,
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+// ---- Tópicos (agrupar conversas) ----
+
+pub fn list_topics(conn: &Connection) -> Result<Vec<Topic>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, brief, notes FROM topics ORDER BY sort_order ASC, name COLLATE NOCASE ASC",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(Topic {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            brief: r.get(2)?,
+            notes: r.get(3)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Cria um tópico. Se já existir um com o mesmo nome (case-insensitive), devolve o id existente.
+pub fn create_topic(conn: &Connection, name: &str) -> Result<i64> {
+    let name = name.trim();
+    if let Some(id) = conn
+        .query_row(
+            "SELECT id FROM topics WHERE name = ?1 COLLATE NOCASE",
+            params![name],
+            |r| r.get::<_, i64>(0),
+        )
+        .ok()
+    {
+        return Ok(id);
+    }
+    conn.execute("INSERT INTO topics (name) VALUES (?1)", params![name])?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn rename_topic(conn: &Connection, id: i64, name: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE topics SET name = ?2, updated_at = datetime('now') WHERE id = ?1",
+        params![id, name.trim()],
+    )?;
+    Ok(())
+}
+
+pub fn update_topic(conn: &Connection, id: i64, brief: &str, notes: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE topics SET brief = ?2, notes = ?3, updated_at = datetime('now') WHERE id = ?1",
+        params![id, brief, notes],
+    )?;
+    Ok(())
+}
+
+/// Apaga um tópico — desagrupa os seus chats (topic_id = NULL), não os apaga.
+pub fn delete_topic(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE conversations SET topic_id = NULL WHERE topic_id = ?1",
+        params![id],
+    )?;
+    conn.execute("DELETE FROM topics WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn set_conversation_topic(conn: &Connection, conv_id: i64, topic_id: Option<i64>) -> Result<()> {
+    conn.execute(
+        "UPDATE conversations SET topic_id = ?2 WHERE id = ?1",
+        params![conv_id, topic_id],
+    )?;
+    Ok(())
+}
+
+/// Tópico de uma conversa (para injetar o brief no contexto — Fase 2).
+pub fn get_topic_for_conversation(conn: &Connection, conv_id: i64) -> Option<Topic> {
+    conn.query_row(
+        "SELECT t.id, t.name, t.brief, t.notes FROM topics t
+         JOIN conversations c ON c.topic_id = t.id WHERE c.id = ?1",
+        params![conv_id],
+        |r| {
+            Ok(Topic {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                brief: r.get(2)?,
+                notes: r.get(3)?,
+            })
+        },
+    )
+    .ok()
 }
 
 pub fn get_messages(conn: &Connection, conversation_id: i64) -> Result<Vec<StoredMessage>> {
@@ -599,7 +715,7 @@ pub fn find_or_create_conversation(conn: &Connection, title: &str) -> Result<i64
     ) {
         return Ok(id);
     }
-    create_conversation(conn, title)
+    create_conversation(conn, title, None)
 }
 
 pub fn rename_conversation(conn: &Connection, id: i64, title: &str) -> Result<()> {
