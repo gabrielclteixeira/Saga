@@ -155,6 +155,8 @@ pub enum StreamEvent {
         gen_ms: i64,
         /// Intenção classificada do pedido (camada reasoning): "shopping" | "general".
         intent: String,
+        /// Nível Think que REALMENTE correu (verify/debate só no chat local simples; senão degrada).
+        think_level: String,
         /// Concordância das amostras no modo "verify" (0–1). None fora do verify.
         confidence: Option<f32>,
         accounting: Accounting,
@@ -1446,6 +1448,11 @@ pub async fn send_message_stream(
     let mut clarify_out = 0u64;
     // Concordância das amostras no modo Think "verify" (None = sem verify).
     let mut turn_confidence: Option<f32> = None;
+    // Nível Think que realmente corre: verify/debate só no chat local simples; senão degrada a "think".
+    let mut think_used = match think_level.as_str() {
+        "verify" | "debate" => "think".to_string(),
+        other => other.to_string(),
+    };
     // Camada "reasoning": intenção do pedido (determinística). Alimenta o deep-research e a metadata.
     let turn_intent = crate::reasoning::classify_intent(
         messages
@@ -1735,11 +1742,13 @@ pub async fn send_message_stream(
                     {
                         Ok((resp, conf)) => {
                             turn_confidence = conf;
+                            think_used = "verify".to_string();
                             Ok(resp)
                         }
                         Err(e) => Err(e),
                     }
                 } else if think_level == "debate" {
+                    think_used = "debate".to_string();
                     let tx_t = channel.clone();
                     let on_tool = move |tool: &str, detail: &str| {
                         let _ = tx_t.send(StreamEvent::ToolStep {
@@ -2062,6 +2071,7 @@ pub async fn send_message_stream(
         cost_usd: cost,
         gen_ms,
         intent: turn_intent.as_str().to_string(),
+        think_level: think_used,
         confidence: turn_confidence,
         accounting: snapshot,
     });

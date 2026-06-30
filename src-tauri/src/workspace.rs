@@ -464,6 +464,47 @@ When the user asks for a PDF, report or document:
 Don't make up data; if information is missing, ask the user or clearly flag the gaps.
 "#;
 
+/// Reforça o uso das file tools do projeto (em vez de mandar copiar/colar). Triggers em pt e en.
+const FILES_SKILL: &str = r#"---
+name: project-files
+description: "Criar, editar ou apagar ficheiros num projeto. Triggers: criar ficheiro, cria o ficheiro, escreve o ficheiro, guarda o ficheiro, gravar ficheiro, edita o ficheiro, atualiza o ficheiro, apaga o ficheiro, novo ficheiro, gerar ficheiro, create file, edit file, save file, write file, delete file"
+---
+
+# Ficheiros do projeto
+
+Quando o utilizador pedir para CRIAR, EDITAR, GUARDAR ou APAGAR um ficheiro e tiveres as ferramentas
+de projeto (project_create / project_read / project_edit / project_delete):
+
+1. **USA as ferramentas.** Chama `project_create` (novo) ou `project_edit` (existente) com o caminho
+   relativo à raiz e o **conteúdo completo**; `project_delete` para apagar.
+2. **NUNCA** imprimas o ficheiro num bloco de código a pedir para copiar/colar, nem mandes "Export PDF" —
+   tens acesso direto à pasta. Fazer isso é uma falha.
+3. Confirma o caminho antes de gravar; cada gravação é confirmada pelo utilizador.
+
+Se NÃO tiveres estas ferramentas nesta conversa, explica que é preciso um projeto em "Edição confirmada"
+e a rota Claude (API) ou um modelo local com tool-calling — não inventes que não tens acesso ao disco.
+"#;
+
+const FILES_SKILL_EN: &str = r#"---
+name: project-files
+description: "Create, edit or delete files in a project. Triggers: create file, cria o ficheiro, edit file, save file, write file, delete file, criar ficheiro, guarda o ficheiro, edita o ficheiro, apaga o ficheiro, new file, generate file"
+---
+
+# Project files
+
+When the user asks to CREATE, EDIT, SAVE or DELETE a file and you have the project tools
+(project_create / project_read / project_edit / project_delete):
+
+1. **Use the tools.** Call `project_create` (new) or `project_edit` (existing) with the relative path
+   and the **full content**; `project_delete` to remove.
+2. **NEVER** print the file as a code block asking the user to copy/paste, and don't say "Export PDF" —
+   you have direct folder access. Doing that is a failure.
+3. Confirm the path before writing; every write is confirmed by the user.
+
+If you DON'T have these tools in this chat, explain that a project in "Confirmed edits" mode plus the
+Claude (API) route or a tool-calling local model is needed — don't claim you have no disk access.
+"#;
+
 const AGENT_ENGINEER_EN: &str = r#"---
 name: Software Engineer
 description: "Experienced developer: writes, reviews and explains code with rigor."
@@ -565,6 +606,20 @@ pub fn seed_defaults(root: &str, lang: &str) {
             // Re-traduz só se for um default não modificado.
             if (cur == PDF_SKILL || cur == PDF_SKILL_EN) && cur != pdf_want {
                 let _ = write_doc(root, "skill", "pdf", pdf_want);
+            }
+        }
+    }
+
+    // Skill "project-files" — reforça o uso das file tools (mesmo padrão da PDF).
+    let files_want = if en { FILES_SKILL_EN } else { FILES_SKILL };
+    let files_path = skills_dir(root).join("project-files").join("SKILL.md");
+    match fs::read_to_string(&files_path) {
+        Err(_) => {
+            let _ = write_doc(root, "skill", "project-files", files_want);
+        }
+        Ok(cur) => {
+            if (cur == FILES_SKILL || cur == FILES_SKILL_EN) && cur != files_want {
+                let _ = write_doc(root, "skill", "project-files", files_want);
             }
         }
     }

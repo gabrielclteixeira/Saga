@@ -249,6 +249,7 @@ export type StreamEvent =
       cost_usd: number;
       gen_ms: number;
       intent: string;
+      think_level: string;
       confidence: number | null;
       accounting: Accounting;
     };

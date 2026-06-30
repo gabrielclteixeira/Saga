@@ -2904,7 +2904,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
             reason: start?.reason ?? "",
             gen_ms: evt.gen_ms,
             intent: evt.intent,
-            thinkLevel: sendOpts.thinkLevel,
+            thinkLevel: evt.think_level, // o que REALMENTE correu (não só o selecionado)
             confidence: evt.confidence,
             accounting: evt.accounting,
           };
