@@ -87,7 +87,7 @@ const state: {
   plan: boolean;
   compactedSummary: string;
   compactedUpto: number; // id da última mensagem compactada (0 = sem compactação)
-  activeAgent: { name: string; system: string } | null;
+  activeAgent: { name: string; system: string; route: "local" | "claude"; model: string } | null;
   topics: Topic[];
   activeTopicId: number | null; // tópico onde nascem as Sagas novas (segue o chat aberto)
 } = {
@@ -402,6 +402,7 @@ app.innerHTML = `
                 <option value="debate">${t("Debater")}</option>
               </select>
             </label>
+            <label>${t("Modelo")} <input id="ws-agent-model" type="text" list="ollama-models" autocomplete="off" placeholder="${t("vazio = modelo ativo; cai no default se for apagado")}" /></label>
           </fieldset>
           <label id="ws-body-label">${t("Corpo (markdown)")}
             <textarea id="ws-content" rows="12" spellcheck="false" placeholder="${t("# Instruções…")}"></textarea>
@@ -2630,6 +2631,23 @@ function routeOptsFromMode(): SendOpts {
   return state.routeMode === "claude" ? { routeOverride: "claude" } : {};
 }
 
+/** Modelo fixado pelo agente ativo, se aplicável à rota efetiva. Local: valida instalados (fallback
+ *  ao default + aviso se foi apagado). Claude: passa o id tal como está. */
+async function agentModelOverride(effectiveRoute: "local" | "claude"): Promise<string | undefined> {
+  const a = state.activeAgent;
+  if (!a?.model || a.route !== effectiveRoute) return undefined;
+  if (a.route === "claude") return a.model; // ids Claude não são "instalados"
+  try {
+    const installed = await api.listOllamaModels();
+    const base = (x: string) => x.split(":")[0];
+    if (installed.some((m) => m === a.model || base(m) === base(a.model))) return a.model;
+    showHint(t("Modelo '{m}' do agente não está instalado — a usar o default.", { m: a.model }));
+  } catch {
+    /* sem Ollama / lista falhou → usa o default */
+  }
+  return undefined;
+}
+
 /** Escalonamento para a cloud (Claude/OpenAI) está configurado? Se não, esconde tudo o que é Claude. */
 function cloudEnabled(): boolean {
   const s = state.settings;
@@ -2753,6 +2771,11 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   if (!sendOpts.routeOverride && cloudEnabled()) {
     if (sendOpts.subagents) sendOpts.routeOverride = "claude";
     else if (sendOpts.research && !canLocalSearch) sendOpts.routeOverride = "claude";
+  }
+  // Modelo fixado pelo agente → override (só se a rota efetiva for a do agente; valida instalados).
+  if (!sendOpts.modelOverride) {
+    const effRoute = sendOpts.routeOverride === "claude" ? "claude" : "local";
+    sendOpts.modelOverride = await agentModelOverride(effRoute);
   }
   // Estado de espera mostrado na bolha vazia (persistente entre re-renders) até chegar conteúdo.
   const localReasons =
@@ -3368,7 +3391,12 @@ async function setActiveAgent(name: string | null) {
   try {
     const raw = await api.readWorkspaceDoc("agent", name);
     const f = parseDocFields("agent", raw);
-    state.activeAgent = { name: f.name || name, system: f.body };
+    state.activeAgent = {
+      name: f.name || name,
+      system: f.body,
+      route: f.agentRoute === "claude" ? "claude" : "local",
+      model: f.agentModel || "",
+    };
     // Aplica as predefinições sugeridas pelo agente — só ativa o que é realmente utilizável
     // (🔎 corre no Ollama ou no Claude; subagentes precisam do Claude).
     const canSearch = state.settings?.local_provider === "ollama" || cloudEnabled();
@@ -4403,6 +4431,7 @@ interface DocFields {
   agentSubagents?: boolean;
   agentPlan?: boolean;
   agentThinkLevel?: ThinkLevel;
+  agentModel?: string;
 }
 
 const wsq = <T extends HTMLElement>(id: string) => document.querySelector<T>(id)!;
@@ -4477,6 +4506,7 @@ function parseDocFields(kind: WsKind, raw: string): DocFields {
       if (v === "verify" || v === "debate" || v === "think") return v;
       return truthy(fm["think"]) ? "think" : "off";
     })(),
+    agentModel: (fm["model"] ?? "").toString().trim(),
   };
 }
 
@@ -4501,6 +4531,10 @@ function assembleDoc(kind: WsKind, f: DocFields): string {
       `think: ${f.agentThinkLevel || "off"}`,
       `route: ${f.agentRoute === "claude" ? "claude" : "local"}`
     );
+    // Só escreve `model:` quando fixado (vazio = usa o modelo ativo).
+    if (f.agentModel && f.agentModel.trim()) {
+      lines.push(`model: ${f.agentModel.trim()}`);
+    }
   } else {
     lines.push(
       `description: "${esc(f.desc)}"`,
@@ -4524,6 +4558,7 @@ function fillEditorFields(f: Partial<DocFields>) {
   wsq<HTMLInputElement>("#ws-agent-subagents").checked = !!f.agentSubagents;
   wsq<HTMLInputElement>("#ws-agent-plan").checked = !!f.agentPlan;
   wsq<HTMLSelectElement>("#ws-agent-think-level").value = f.agentThinkLevel || "off";
+  wsq<HTMLInputElement>("#ws-agent-model").value = f.agentModel || "";
 }
 
 // Estado ativo/inativo do doc em edição — preservado no save (o toggle vive na lista, não no editor).
@@ -4545,6 +4580,7 @@ function readEditorFields(): DocFields {
     agentSubagents: wsq<HTMLInputElement>("#ws-agent-subagents").checked,
     agentPlan: wsq<HTMLInputElement>("#ws-agent-plan").checked,
     agentThinkLevel: wsq<HTMLSelectElement>("#ws-agent-think-level").value as ThinkLevel,
+    agentModel: wsq<HTMLInputElement>("#ws-agent-model").value.trim(),
   };
 }
 
@@ -6200,6 +6236,15 @@ async function init() {
     }
     // Aquece o modelo local logo no arranque → 1.ª resposta sem cold-start.
     warmLocalModel();
+    // Alimenta o datalist partilhado (#ollama-models) p/ o autocomplete do modelo no editor de agente.
+    api
+      .listOllamaModels()
+      .then((ms) => {
+        els.modelsList.innerHTML = ms
+          .map((m) => `<option value="${escapeHtml(m)}"></option>`)
+          .join("");
+      })
+      .catch(() => {});
   } catch (e) {
     console.error(e);
   } finally {
