@@ -75,8 +75,43 @@ pub struct ActionGate<'a> {
     pub approver: Option<&'a dyn Approver>,
 }
 
+/// Decisão do gate antes de executar uma tool.
+pub enum Gate {
+    /// Não executar — devolve este texto como resultado (pré-visualização dry-run ou recusa).
+    Blocked(String),
+    /// Pode executar; passa o `log_id` ao `finish` no fim.
+    Proceed(i64),
+}
+
 impl ActionGate<'_> {
-    fn insert(&self, tool: &str, params: &Value, status: &str, detail: &str, error: &str) -> i64 {
+    /// Aplica o gate de confirmação antes de uma tool. `needs_confirm` = a tool muta estado.
+    /// Partilhado pela rota Claude (Dispatcher) e pela rota local (web_agent) — fonte única.
+    pub async fn begin(&self, name: &str, params: &Value, needs_confirm: bool) -> Gate {
+        if needs_confirm {
+            match self.mode {
+                ConfirmMode::DryRun => {
+                    let preview = format!("[dry-run] {name} {params}");
+                    self.insert(name, params, "PREVIEW", &preview, "");
+                    return Gate::Blocked(preview);
+                }
+                ConfirmMode::Ask => {
+                    let preview = format!("{name} {params}");
+                    let approved = match self.approver {
+                        Some(a) => a.request(name, &preview).await,
+                        None => true,
+                    };
+                    if !approved {
+                        self.insert(name, params, "ERRO", "", "recusada pelo utilizador");
+                        return Gate::Blocked("ação recusada pelo utilizador".into());
+                    }
+                }
+                ConfirmMode::Off => {}
+            }
+        }
+        Gate::Proceed(self.insert(name, params, "EM_EXECUCAO", "", ""))
+    }
+
+    pub fn insert(&self, tool: &str, params: &Value, status: &str, detail: &str, error: &str) -> i64 {
         if let Some(db) = self.db {
             if let Ok(conn) = db.lock() {
                 return crate::store::insert_action(
@@ -94,7 +129,7 @@ impl ActionGate<'_> {
         0
     }
 
-    fn finish(&self, id: i64, status: &str, detail: &str, error: &str) {
+    pub fn finish(&self, id: i64, status: &str, detail: &str, error: &str) {
         if id == 0 {
             return;
         }
@@ -108,13 +143,18 @@ impl ActionGate<'_> {
 
 /// Ações que mutam estado e por isso passam pelo gate de confirmação.
 /// Leituras/navegação não pedem confirmação (mas são na mesma registadas).
-fn is_action(name: &str) -> bool {
+pub(crate) fn is_action(name: &str) -> bool {
     if name.starts_with("mcp__") {
         return true;
     }
     matches!(
         name,
-        "browser_click" | "browser_fill" | "save_workspace_doc" | "project_edit" | "project_create"
+        "browser_click"
+            | "browser_fill"
+            | "save_workspace_doc"
+            | "project_edit"
+            | "project_create"
+            | "project_delete"
     )
 }
 
@@ -159,8 +199,18 @@ impl Dispatcher<'_> {
         }
         // File tools do projeto (sandboxed à pasta; escritas passam pelo gate via is_action).
         if let Some(p) = &self.project {
-            if matches!(name, "project_tree" | "project_read" | "project_edit" | "project_create") {
+            if matches!(
+                name,
+                "project_tree" | "project_read" | "project_edit" | "project_create" | "project_delete"
+            ) {
                 use crate::tools::project;
+                if name == "project_delete" {
+                    let path = params.get("path").and_then(|x| x.as_str()).unwrap_or("");
+                    return Ok(match project::delete_file(&p.root, path) {
+                        Ok(_) => format!("apagado: {path}"),
+                        Err(e) => format!("ERRO: {e}"),
+                    });
+                }
                 return Ok(match name {
                     "project_tree" => {
                         let sub = params.get("subpath").and_then(|x| x.as_str()).unwrap_or("");
@@ -337,6 +387,11 @@ impl ToolHost for Dispatcher<'_> {
                     "description": "Cria um ficheiro novo no projeto (caminho relativo) com o conteúdo dado. O utilizador confirma antes de gravar.",
                     "input_schema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"] }
                 }));
+                arr.push(json!({
+                    "name": "project_delete",
+                    "description": "Apaga um ficheiro do projeto (caminho relativo). O utilizador confirma antes de apagar.",
+                    "input_schema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] }
+                }));
             }
         }
         Value::Array(arr)
@@ -371,7 +426,7 @@ impl ToolHost for Dispatcher<'_> {
             );
             if p.writable {
                 s.push_str(
-                    " Podes editar/criar com project_edit/project_create (cada gravação é confirmada pelo utilizador). Usa caminhos relativos à raiz.",
+                    " Podes editar/criar/apagar com project_edit/project_create/project_delete (cada ação é confirmada pelo utilizador). Usa caminhos relativos à raiz.",
                 );
             }
             s.push('\n');
@@ -384,32 +439,11 @@ impl ToolHost for Dispatcher<'_> {
     }
 
     async fn call(&mut self, name: &str, params: &Value) -> Result<String> {
-        // Gate de confirmação (só para ações).
-        if is_action(name) {
-            match self.gate.mode {
-                ConfirmMode::DryRun => {
-                    let preview = format!("[dry-run] {name} {params}");
-                    self.gate.insert(name, params, "PREVIEW", &preview, "");
-                    return Ok(preview);
-                }
-                ConfirmMode::Ask => {
-                    let preview = format!("{name} {params}");
-                    let approved = match self.gate.approver {
-                        Some(a) => a.request(name, &preview).await,
-                        None => true,
-                    };
-                    if !approved {
-                        self.gate
-                            .insert(name, params, "ERRO", "", "recusada pelo utilizador");
-                        return Ok("ação recusada pelo utilizador".into());
-                    }
-                }
-                ConfirmMode::Off => {}
-            }
-        }
-
-        // Regista início, executa, regista resultado.
-        let log_id = self.gate.insert(name, params, "EM_EXECUCAO", "", "");
+        // Gate de confirmação (só para ações) + registo início/fim no action_log.
+        let log_id = match self.gate.begin(name, params, is_action(name)).await {
+            Gate::Blocked(msg) => return Ok(msg),
+            Gate::Proceed(id) => id,
+        };
         let res = self.exec_raw(name, params).await;
         match &res {
             Ok(detail) => self.gate.finish(log_id, "OK", detail, ""),

@@ -1298,16 +1298,18 @@ pub async fn send_message_stream(
         .as_ref()
         .map(|t| t.permission_mode == "ask")
         .unwrap_or(false);
-    // As file tools só existem na rota Claude em modo API (o loop agêntico). Sabemos já se vão
-    // estar disponíveis neste turno — para o modelo não alucinar "sou uma IA sem acesso".
+    // Sabemos já se as file tools vão estar disponíveis neste turno — para o modelo não alucinar
+    // "sou uma IA sem acesso". Rota Claude (loop agêntico, API) OU rota local (Ollama, sem deep-research).
     let turn_has_image = messages
         .iter()
         .any(|m| m.attachments.iter().any(|a| a.kind == "image"));
+    let route_claude_now = route_override_eff.as_deref() == Some("claude");
     let project_tools_on = project_root.is_some()
-        && route_override_eff.as_deref() == Some("claude")
-        && settings.claude_mode == "api"
-        && settings.cloud_provider != "openai"
-        && !turn_has_image;
+        && !turn_has_image
+        && ((route_claude_now
+            && settings.claude_mode == "api"
+            && settings.cloud_provider != "openai")
+            || (!route_claude_now && settings.local_provider != "openai" && !research));
     let topic_ctx = topic.map(|tp| {
         let mut block = format!("## Tópico: {}", tp.name);
         let brief = tp.brief.trim();
@@ -1577,10 +1579,10 @@ pub async fn send_message_stream(
                 temperature: settings.ollama_temp_opt(),
                 num_predict: None,
             };
-            // 🔎 explícito (research) → pipeline FUNDAMENTADA (decompõe → pesquisa cada sub-pergunta
-            // → verifica → sintetiza). Pesquisa web passiva (sempre-ligada, sem 🔎) → loop leve.
-            // Sem pesquisa nenhuma, segue para o caminho de chat/visão direto (chat_stream) abaixo.
-            if settings.local_web_search || research {
+            // 🔎 explícito (research) → pipeline FUNDAMENTADA (decompõe → pesquisa → verifica → sintetiza).
+            // Pesquisa web passiva (sempre-ligada) OU projeto com pasta → loop leve (web_agent, com tools).
+            // Sem nada disto, segue para o chat/visão direto (chat_stream) abaixo.
+            if settings.local_web_search || research || project_root.is_some() {
                 let tx_t = channel.clone();
                 // Conta as pesquisas web feitas neste pedido (para o medidor de uso mensal).
                 let searches = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
@@ -1609,6 +1611,33 @@ pub async fn send_message_stream(
                     )
                     .await
                 } else {
+                    // Projeto (pasta): file tools com confirmação na rota local. Reusa o gate/Approver
+                    // da rota Claude (ask + action_log + cartão de aprovação no chat).
+                    let approver = ChannelApprover {
+                        channel: channel.clone(),
+                        state: state.inner(),
+                    };
+                    let mode = if project_writable && settings.confirm_mode == "off" {
+                        ConfirmMode::Ask
+                    } else {
+                        ConfirmMode::parse(&settings.confirm_mode)
+                    };
+                    let project_tools = project_root.as_ref().map(|root| {
+                        crate::tools::dispatch::ProjectTools {
+                            root: root.clone(),
+                            writable: project_writable,
+                        }
+                    });
+                    let gate = ActionGate {
+                        db: Some(&state.db),
+                        conversation_id,
+                        mode,
+                        approver: if mode == ConfirmMode::Ask {
+                            Some(&approver)
+                        } else {
+                            None
+                        },
+                    };
                     crate::web_agent::run(
                         &settings.ollama_endpoint,
                         &prepared.model,
@@ -1617,6 +1646,8 @@ pub async fn send_message_stream(
                         &prepared.full_messages,
                         &settings.workspace_dir,
                         &prepared.skills_applied,
+                        project_tools.as_ref(),
+                        Some(&gate),
                         gopts,
                         on_delta,
                         on_tool,

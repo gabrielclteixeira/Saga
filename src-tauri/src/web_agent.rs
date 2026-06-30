@@ -7,7 +7,8 @@ use serde_json::{json, Value};
 
 use crate::providers::ollama::{self, GenOpts};
 use crate::providers::{ChatMessage, LlmResponse};
-use crate::tools::web;
+use crate::tools::dispatch::{ActionGate, Gate, ProjectTools};
+use crate::tools::{project, web};
 
 const MAX_TURNS: usize = 5;
 
@@ -62,7 +63,30 @@ fn tools_schema(with_skill: bool) -> Value {
     Value::Array(arr)
 }
 
-/// `on_delta` recebe o texto final; `on_tool` recebe (nome, detalhe) de cada pesquisa.
+/// Schemas (formato Ollama) das file tools do projeto. Escrita (edit/create/delete) só se `writable`.
+fn project_schema(writable: bool) -> Vec<Value> {
+    let f = |name: &str, desc: &str, props: Value, req: Value| {
+        json!({ "type": "function", "function": { "name": name, "description": desc, "parameters": { "type": "object", "properties": props, "required": req } } })
+    };
+    let mut v = vec![
+        f("project_tree", "Lista a árvore de ficheiros da pasta do projeto. `subpath` (relativo, opcional) lista uma subpasta.",
+          json!({ "subpath": { "type": "string" } }), json!([])),
+        f("project_read", "Lê o conteúdo de um ficheiro do projeto (caminho relativo à raiz).",
+          json!({ "path": { "type": "string" } }), json!(["path"])),
+    ];
+    if writable {
+        v.push(f("project_edit", "Substitui o conteúdo completo de um ficheiro do projeto (caminho relativo). O utilizador confirma antes de gravar.",
+            json!({ "path": { "type": "string" }, "content": { "type": "string" } }), json!(["path", "content"])));
+        v.push(f("project_create", "Cria um ficheiro novo no projeto (caminho relativo) com o conteúdo dado. O utilizador confirma antes de gravar.",
+            json!({ "path": { "type": "string" }, "content": { "type": "string" } }), json!(["path", "content"])));
+        v.push(f("project_delete", "Apaga um ficheiro do projeto (caminho relativo). O utilizador confirma antes de apagar.",
+            json!({ "path": { "type": "string" } }), json!(["path"])));
+    }
+    v
+}
+
+/// `on_delta` recebe o texto final; `on_tool` recebe (nome, detalhe) de cada ação.
+/// `project`/`gate`: se houver projeto, expõe as file tools (escritas confirmadas pelo `gate`).
 #[allow(clippy::too_many_arguments)]
 pub async fn run<D, T>(
     endpoint: &str,
@@ -72,6 +96,8 @@ pub async fn run<D, T>(
     full_messages: &[ChatMessage],
     workspace_dir: &str,
     applied: &[String],
+    project: Option<&ProjectTools>,
+    gate: Option<&ActionGate<'_>>,
     opts: GenOpts,
     mut on_delta: D,
     mut on_tool: T,
@@ -99,6 +125,19 @@ where
             sys.push_str(&format!("- {}: {}\n", sk.name, sk.description));
         }
     }
+    if let Some(p) = project {
+        sys.push_str(
+            "\n\nProjeto: tens ferramentas de ficheiro — usa project_tree e project_read para explorar a pasta.",
+        );
+        if p.writable {
+            sys.push_str(
+                " Podes editar/criar/apagar com project_edit/project_create/project_delete (cada ação é confirmada pelo utilizador). Usa caminhos relativos à raiz.",
+            );
+        }
+        sys.push_str(
+            " Quando te pedirem para criar/editar/apagar um ficheiro, USA estas ferramentas — não mandes copiar/colar nem digas que não tens acesso ao disco.",
+        );
+    }
     let mut messages: Vec<Value> = vec![json!({ "role": "system", "content": sys })];
     messages.extend(full_messages.iter().map(|m| {
         // Preserva imagens anexadas (Ollama: campo `images` por mensagem) para modelos com visão.
@@ -114,7 +153,14 @@ where
             json!({ "role": m.role, "content": m.content, "images": imgs })
         }
     }));
-    let tools = tools_schema(!skills.is_empty());
+    let mut tools_arr = tools_schema(!skills.is_empty())
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    if let Some(p) = project {
+        tools_arr.extend(project_schema(p.writable));
+    }
+    let tools = Value::Array(tools_arr);
 
     let mut total_in = 0u64;
     let mut total_out = 0u64;
@@ -205,6 +251,78 @@ do motor em Modelos → Avançado. Não inventes resultados."
                     on_tool("skill", n);
                     crate::workspace::read_skill(workspace_dir, n)
                         .unwrap_or_else(|| format!("skill '{n}' não encontrada"))
+                }
+                "project_tree" => {
+                    let sub = args.get("subpath").and_then(|x| x.as_str()).unwrap_or("");
+                    on_tool("project_tree", sub);
+                    match project {
+                        Some(p) => {
+                            let root = if sub.trim().is_empty() {
+                                Some(p.root.clone())
+                            } else {
+                                project::resolve_in_root(&p.root, sub)
+                                    .map(|pp| pp.to_string_lossy().to_string())
+                            };
+                            match root {
+                                Some(r) => {
+                                    let t = project::tree_text(&r, 600);
+                                    if t.trim().is_empty() { "(vazio)".into() } else { t }
+                                }
+                                None => format!("caminho fora da pasta do projeto: {sub}"),
+                            }
+                        }
+                        None => "projeto indisponível".into(),
+                    }
+                }
+                "project_read" => {
+                    let path = args.get("path").and_then(|x| x.as_str()).unwrap_or("");
+                    on_tool("project_read", path);
+                    match project {
+                        Some(p) => {
+                            project::read_file(&p.root, path).unwrap_or_else(|e| format!("ERRO: {e}"))
+                        }
+                        None => "projeto indisponível".into(),
+                    }
+                }
+                "project_edit" | "project_create" | "project_delete" => {
+                    let path = args
+                        .get("path")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    on_tool(name, &path);
+                    match (project, gate) {
+                        (Some(p), Some(g)) if p.writable => {
+                            // Escrita confirmada pelo mesmo gate da rota Claude (ask + action_log).
+                            match g.begin(name, &args, true).await {
+                                Gate::Blocked(msg) => msg,
+                                Gate::Proceed(log_id) => {
+                                    let r = if name == "project_delete" {
+                                        project::delete_file(&p.root, &path)
+                                    } else {
+                                        let content =
+                                            args.get("content").and_then(|x| x.as_str()).unwrap_or("");
+                                        project::write_file(&p.root, &path, content)
+                                    };
+                                    match &r {
+                                        Ok(_) => {
+                                            g.finish(log_id, "OK", &path, "");
+                                            if name == "project_delete" {
+                                                format!("apagado: {path}")
+                                            } else {
+                                                format!("gravado: {path}")
+                                            }
+                                        }
+                                        Err(e) => {
+                                            g.finish(log_id, "ERRO", "", e);
+                                            format!("ERRO: {e}")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => "edição não permitida neste projeto (modo leitura)".into(),
+                    }
                 }
                 other => format!("ferramenta desconhecida: {other}"),
             };

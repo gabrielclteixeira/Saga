@@ -131,3 +131,15 @@ pub fn write_file(root: &str, rel: &str, content: &str) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| format!("não foi possível gravar {rel}: {e}"))?;
     Ok(())
 }
+
+/// Apaga um ficheiro dentro da pasta (não apaga pastas). Ação confirmada pelo gate.
+pub fn delete_file(root: &str, rel: &str) -> Result<(), String> {
+    let path = resolve_in_root(root, rel).ok_or_else(|| {
+        format!("caminho fora da pasta do projeto ou inválido: {rel}")
+    })?;
+    if path.is_dir() {
+        return Err(format!("{rel} é uma pasta — só apago ficheiros"));
+    }
+    std::fs::remove_file(&path).map_err(|e| format!("não foi possível apagar {rel}: {e}"))?;
+    Ok(())
+}

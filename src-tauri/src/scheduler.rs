@@ -223,6 +223,8 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
                 &messages,
                 &settings.workspace_dir,
                 &[],
+                None, // sem projeto/pasta nas automações
+                None, // sem gate (auto-executa)
                 gopts,
                 |d| buf.push_str(d),
                 |_t, _d| {},
