@@ -273,6 +273,7 @@ app.innerHTML = `
           <option value="technical">${t("Técnico")}</option>
         </select>
         <button type="button" class="ghost" id="artifact-pdf">${t("PDF")}</button>
+        <button type="button" class="ghost" id="artifact-save-project" hidden>${icon("folder")}<span>${t("Guardar no projeto")}</span></button>
         <button type="button" class="ghost" id="artifact-export">${t("Guardar")}</button>
         <button type="button" class="ghost" id="artifact-copy">${t("Copiar")}</button>
         <button type="button" class="icon-x" id="artifact-close" title="${t("Fechar")}" aria-label="${t("Fechar")}">${icon("x")}</button>
@@ -3575,6 +3576,10 @@ function openArtifact(a: Artifact) {
   artifactMode = a.kind === "code" ? "code" : "preview";
   els.artifactTitle.textContent = `${t(KIND_LABEL[a.kind])}` + (a.lang ? ` · ${a.lang}` : "");
   els.artifactPanel.hidden = false;
+  // "Guardar no projeto" só aparece quando a conversa é um projeto editável.
+  document
+    .querySelector("#artifact-save-project")
+    ?.toggleAttribute("hidden", !currentProjectTopic());
   renderArtifactBody();
 }
 
@@ -3599,6 +3604,45 @@ async function exportArtifact() {
     } catch (e) {
       alert(t("Falha a exportar: ") + e);
     }
+  }
+}
+
+/** O tópico-projeto (pasta + editável) da conversa atual, se houver. */
+function currentProjectTopic(): Topic | null {
+  const conv = state.conversations.find((c) => c.id === state.currentConversationId);
+  if (!conv || conv.topic_id == null) return null;
+  const tp = state.topics.find((t) => t.id === conv.topic_id);
+  return tp && tp.folder_path.trim() && tp.permission_mode === "ask" ? tp : null;
+}
+
+/** Grava o artefacto atual diretamente na pasta do projeto (escolhe o nome via diálogo nativo). */
+async function saveArtifactToProject() {
+  if (!artifactCurrent) return;
+  const tp = currentProjectTopic();
+  if (!tp) return;
+  const ext =
+    artifactCurrent.kind === "html"
+      ? "html"
+      : artifactCurrent.kind === "markdown"
+        ? "md"
+        : artifactCurrent.lang || "txt";
+  const root = tp.folder_path.replace(/[\\/]+$/, "");
+  const chosen = await save({
+    defaultPath: `${root}/${slugify(deriveDocTitle(artifactCurrent)) || "ficheiro"}.${ext}`,
+    title: t("Guardar no projeto"),
+  });
+  if (!chosen) return;
+  // Caminho relativo à pasta do projeto (o backend é sandboxed à pasta).
+  if (!chosen.startsWith(root)) {
+    showHint(t("Escolhe um local dentro da pasta do projeto."));
+    return;
+  }
+  const rel = chosen.slice(root.length).replace(/^[\\/]+/, "");
+  try {
+    await api.projectSaveFile(state.currentConversationId!, rel, artifactCurrent.code);
+    showHint(t("Guardado em {p}", { p: rel }));
+  } catch (e) {
+    showHint(t("Falha a guardar: ") + e);
   }
 }
 
@@ -6067,6 +6111,7 @@ async function init() {
     if (artifactCurrent) navigator.clipboard?.writeText(artifactCurrent.code);
   });
   document.querySelector("#artifact-export")!.addEventListener("click", exportArtifact);
+  document.querySelector("#artifact-save-project")!.addEventListener("click", () => void saveArtifactToProject());
   document.querySelector("#artifact-pdf")!.addEventListener("click", exportArtifactPdf);
   document.querySelector("#artifact-gallery")!.addEventListener("click", openGallery);
   document.querySelector("#btn-export-saga")!.addEventListener("click", exportSaga);

@@ -350,6 +350,8 @@ export const api = {
   deleteTopic: (id: number) => invoke<void>("delete_topic", { id }),
   setConversationTopic: (conversationId: number, topicId: number | null) =>
     invoke<void>("set_conversation_topic", { conversationId, topicId }),
+  projectSaveFile: (conversationId: number, path: string, content: string) =>
+    invoke<string>("project_save_file", { conversationId, path, content }),
   searchChats: (query: string) => invoke<SearchHit[]>("search_chats", { query }),
   conversationAccounting: (id: number) =>
     invoke<Accounting>("get_conversation_accounting", { id }),

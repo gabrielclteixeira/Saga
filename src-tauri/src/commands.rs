@@ -373,6 +373,38 @@ pub fn set_conversation_topic(
     store::set_conversation_topic(&conn, conversation_id, topic_id).map_err(|e| e.to_string())
 }
 
+/// Grava conteúdo (ex.: um artefacto gerado) na pasta do projeto da conversa — caminho relativo,
+/// sandboxed à pasta. Ação iniciada pelo utilizador (o clique é a confirmação); fica no action log.
+#[tauri::command]
+pub fn project_save_file(
+    state: State<AppState>,
+    conversation_id: i64,
+    path: String,
+    content: String,
+) -> Result<String, String> {
+    let conn = state.db.lock().unwrap();
+    let topic = store::get_topic_for_conversation(&conn, conversation_id)
+        .ok_or_else(|| "Esta conversa não pertence a um projeto.".to_string())?;
+    let root = topic.folder_path.trim();
+    if root.is_empty() {
+        return Err("O tópico não tem pasta de projeto.".into());
+    }
+    if topic.permission_mode != "ask" {
+        return Err("O projeto está em modo leitura — muda para 'Edição confirmada'.".into());
+    }
+    crate::tools::project::write_file(root, &path, &content)?;
+    let _ = store::insert_action(
+        &conn,
+        conversation_id,
+        "project_save_file",
+        &serde_json::json!({ "path": path }).to_string(),
+        "OK",
+        &path,
+        "",
+    );
+    Ok(path)
+}
+
 #[tauri::command]
 pub fn rename_conversation(state: State<AppState>, id: i64, title: String) -> Result<(), String> {
     let conn = state.db.lock().unwrap();
