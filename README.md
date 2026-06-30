@@ -248,14 +248,19 @@ of the verbose step label) · **live token streaming during Plan execution**.
   + file tools — so a Topic can later be **promoted** to a Project by attaching a folder. The side rail gains a
   topic filter/group and new Sagas inherit the active topic. Open: a chat in one topic vs many; whether topic
   memory is just a tagged slice of the existing memory store vs its own.
-- **Self-distilling playbooks** — the model watches a topic's chats and, when it spots something **replicable**
-  (a recurring procedure, a stable fact about the project, a workflow you keep re-explaining), **proposes a
-  playbook** — drafted via the existing *Generate with AI* path, scoped to that topic, surfaced for one-tap
-  **approve / edit before it's saved** (never written silently). Once saved it auto-applies to the other chats in
-  the same topic through the `active()` Workspace index. Builds on: the AI doc generator, per-topic/Project
+- **Self-distilling Workspace docs** (skills / playbooks / workflows) — the model watches a topic's chats and,
+  when it spots something **replicable**, proposes capturing it — **choosing the right type for the pattern**, not
+  always a playbook: a recurring **how-to you keep re-explaining** → a **playbook**; a stable piece of **domain
+  knowledge or a reusable technique/convention** → a **skill**; a repeated **multi-step task you actually run**
+  (search → read → format, or a fixed sequence of tool calls) → a **workflow**. Drafted via the existing *Generate
+  with AI* path, scoped to that topic, and surfaced for one-tap **approve / edit before it's saved** (never written
+  silently) — including the chance to **change the type** the model guessed. Once saved it auto-applies to the
+  other chats in the same topic through the `active()` Workspace index. (**Agents** stay user-authored — a persona
+  is a deliberate choice — though the distiller may *suggest* one.) Builds on: the AI doc generator, per-topic/Project
   scoping, and the per-item enable/disable toggles already in the Workspace. Open: the detection trigger
-  (end-of-Saga summary pass vs a cheap local-model classifier per turn vs an explicit "capture this as a playbook"
-  affordance); dedupe against existing playbooks; keep it **opt-in** so it never feels intrusive.
+  (end-of-Saga summary pass vs a cheap local-model classifier per turn vs an explicit "capture this" affordance);
+  the type-classification step (let the same generation pass pick the type); dedupe against existing docs of any
+  type; keep it **opt-in** so it never feels intrusive.
 - **Agentic Plan execution (v2)** — today Plan mode *generates* each step (reasoning/writing, optionally web-grounded);
   a v2 would let approved steps take **real actions** via the agentic tool loop (browser, workspace, MCP, files) on
   the Claude route, with per-step approval for risky ones.
