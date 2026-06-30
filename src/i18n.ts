@@ -75,6 +75,23 @@ const EN: Record<string, string> = {
   "Renomear tópico": "Rename topic",
   "Apagar tópico (mantém as conversas)": "Delete topic (keeps the conversations)",
   "Editar tópico (brief/notas)": "Edit topic (brief/notes)",
+  "Destilar tópico (capturar um padrão no Workspace)":
+    "Distill topic (capture a pattern into the Workspace)",
+  "Padrão detetado — clica para capturar": "Pattern detected — click to capture",
+  "Capturar no Workspace": "Capture into the Workspace",
+  "Skill — conhecimento/técnica reutilizável": "Skill — reusable knowledge/technique",
+  "Playbook — um how-to que repetes": "Playbook — a how-to you repeat",
+  "Workflow — tarefa multi-passo repetível": "Workflow — repeatable multi-step task",
+  "Conteúdo (markdown)": "Content (markdown)",
+  "Guardar no Workspace": "Save to Workspace",
+  "Voltar a gerar com este tipo": "Regenerate with this type",
+  "Descartar": "Discard",
+  "A destilar…": "Distilling…",
+  "Falha a destilar: ": "Failed to distill: ",
+  "Sem padrão claro para capturar neste tópico.":
+    "No clear pattern to capture in this topic.",
+  "Já existe um {kind} com este nome — substituir?":
+    "A {kind} with this name already exists — replace it?",
   "Brief (contexto partilhado)": "Brief (shared context)",
   "Ex.: objetivo do projeto, stack, links, convenções…":
     "E.g.: project goal, stack, links, conventions…",
@@ -324,6 +341,7 @@ const EN: Record<string, string> = {
     "Workflow — a runnable procedure: run it with /<name> and the agent follows the steps.",
   "Nome": "Name",
   "Descrição": "Description",
+  "Tipo": "Type",
   "Fechar editor": "Close editor",
   "ex.: uma skill que resume páginas web": "e.g. a skill that summarizes web pages",
   "nome-sem-espacos": "name-without-spaces",

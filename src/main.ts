@@ -21,6 +21,7 @@ import {
   type ChatResponse,
   type ConversationMeta,
   type Diagnostics,
+  type DistillProposal,
   type DocMeta,
   type McpServerConfig,
   type OllamaModel,
@@ -696,6 +697,29 @@ app.innerHTML = `
     </div>
   </dialog>
 
+  <dialog id="distill-dialog">
+    <div class="settings">
+      <h2>${t("Capturar no Workspace")}</h2>
+      <p class="distill-reason" id="distill-reason"></p>
+      <label>${t("Tipo")}
+        <select id="distill-type">
+          <option value="skill">${t("Skill — conhecimento/técnica reutilizável")}</option>
+          <option value="playbook">${t("Playbook — um how-to que repetes")}</option>
+          <option value="workflow">${t("Workflow — tarefa multi-passo repetível")}</option>
+        </select>
+      </label>
+      <label>${t("Nome")} <input id="distill-name" type="text" autocomplete="off" spellcheck="false" /></label>
+      <label>${t("Descrição")} <input id="distill-desc" type="text" autocomplete="off" /></label>
+      <label>${t("Conteúdo (markdown)")} <textarea id="distill-body" rows="12" spellcheck="false"></textarea></label>
+      <p class="wiz-hint" id="distill-status"></p>
+      <menu>
+        <button type="button" class="primary" id="distill-save">${t("Guardar no Workspace")}</button>
+        <button type="button" class="ghost" id="distill-redraft">${t("Voltar a gerar com este tipo")}</button>
+        <button type="button" class="ghost" id="distill-discard">${t("Descartar")}</button>
+      </menu>
+    </div>
+  </dialog>
+
   <dialog id="wizard-dialog">
     <div class="settings wizard">
       <div class="wiz-dots" id="wiz-dots"></div>
@@ -779,6 +803,7 @@ const els = {
   dialog: document.querySelector<HTMLDialogElement>("#settings-dialog")!,
   wizard: document.querySelector<HTMLDialogElement>("#wizard-dialog")!,
   topicDialog: document.querySelector<HTMLDialogElement>("#topic-dialog")!,
+  distillDialog: document.querySelector<HTMLDialogElement>("#distill-dialog")!,
   modelsList: document.querySelector<HTMLDataListElement>("#ollama-models")!,
   convList: document.querySelector<HTMLDivElement>("#conv-list")!,
   convSearch: document.querySelector<HTMLInputElement>("#conv-search")!,
@@ -2059,6 +2084,19 @@ function renderSidebar() {
       proj.title = t("Projeto: ") + topic.folder_path;
       head.append(proj);
     }
+    // Pílula passiva de destilação: o classificador detetou um padrão por capturar.
+    const hint = topic ? parseHint(topic) : null;
+    if (topic && hint) {
+      const pill = document.createElement("button");
+      pill.className = "topic-hint";
+      pill.innerHTML = icon("sparkles");
+      pill.title = t("Padrão detetado — clica para capturar") + (hint.reason ? `: ${hint.reason}` : "");
+      pill.addEventListener("click", (e) => {
+        e.stopPropagation();
+        void openDistillFor(topic.id, hint.type);
+      });
+      head.append(pill);
+    }
     head.append(count);
 
     if (topic) {
@@ -2070,6 +2108,15 @@ function renderSidebar() {
       add.addEventListener("click", (e) => {
         e.stopPropagation();
         void createConversation(topic.id);
+      });
+
+      const distill = document.createElement("button");
+      distill.className = "topic-act";
+      distill.innerHTML = icon("brain");
+      distill.title = t("Destilar tópico (capturar um padrão no Workspace)");
+      distill.addEventListener("click", (e) => {
+        e.stopPropagation();
+        void openDistillFor(topic.id);
       });
 
       const edit = document.createElement("button");
@@ -2099,7 +2146,7 @@ function renderSidebar() {
         void deleteTopicUi(topic.id);
       });
 
-      head.append(add, edit, ren, del);
+      head.append(add, distill, edit, ren, del);
     }
 
     group.appendChild(head);
@@ -2217,6 +2264,130 @@ async function saveTopicEditor() {
   els.topicDialog.close();
   editingTopicId = null;
   await loadConversations();
+}
+
+// ---- Self-distilling: propor um doc do Workspace a partir dos padrões de um tópico ----
+
+let distillTopicId: number | null = null;
+let distillFields: DocFields | null = null; // campos preservados do draft (triggers/route/etc.)
+
+/** Lê a dica de destilação pendente de um tópico (JSON do classificador passivo). */
+function parseHint(tp: Topic): { type: string; name: string; reason: string } | null {
+  const raw = (tp.distill_hint || "").trim();
+  if (!raw) return null;
+  try {
+    const h = JSON.parse(raw);
+    return { type: h.type || "playbook", name: h.name || "", reason: h.reason || "" };
+  } catch {
+    return null;
+  }
+}
+
+/** Corre a destilação (draft) de um tópico e abre a proposta. `typeHint` força o tipo. */
+async function openDistillFor(topicId: number, typeHint?: string) {
+  showHint(t("A destilar…"));
+  let p: DistillProposal;
+  try {
+    p = await api.distillTopic(topicId, true, typeHint, false);
+  } catch (e) {
+    alert(t("Falha a destilar: ") + e);
+    return;
+  }
+  if (!p.found) {
+    // Sem padrão → não abre nada; limpa a dica para não insistir.
+    await api.dismissDistillHint(topicId).catch(() => {});
+    await loadConversations();
+    alert(t("Sem padrão claro para capturar neste tópico."));
+    return;
+  }
+  const kind = (["skill", "playbook", "workflow"].includes(p.doc_type) ? p.doc_type : "playbook") as WsKind;
+  const fields = parseDocFields(kind, p.body);
+  // Nome/descrição do draft, com fallback ao palpite do classificador.
+  fields.name = (fields.name || p.name || "").trim();
+  if (!fields.desc) fields.desc = p.description || "";
+  fillDistillDialog(topicId, kind, fields, p.reason);
+}
+
+function fillDistillDialog(topicId: number, kind: WsKind, fields: DocFields, reason: string) {
+  distillTopicId = topicId;
+  distillFields = fields;
+  (document.querySelector("#distill-type") as HTMLSelectElement).value = kind;
+  (document.querySelector("#distill-name") as HTMLInputElement).value = fields.name || "";
+  (document.querySelector("#distill-desc") as HTMLInputElement).value = fields.desc || "";
+  (document.querySelector("#distill-body") as HTMLTextAreaElement).value = fields.body || "";
+  (document.querySelector("#distill-reason") as HTMLElement).textContent = reason || "";
+  (document.querySelector("#distill-status") as HTMLElement).textContent = "";
+  if (!els.distillDialog.open) els.distillDialog.showModal();
+}
+
+/** Volta a gerar o draft com o tipo atualmente selecionado. */
+async function redraftDistill() {
+  if (distillTopicId == null) return;
+  const kind = (document.querySelector("#distill-type") as HTMLSelectElement).value;
+  const status = document.querySelector("#distill-status") as HTMLElement;
+  status.textContent = t("A destilar…");
+  try {
+    const p = await api.distillTopic(distillTopicId, true, kind, false);
+    if (!p.found) {
+      status.textContent = t("Sem padrão claro para capturar neste tópico.");
+      return;
+    }
+    const k = (p.doc_type || kind) as WsKind;
+    const fields = parseDocFields(k, p.body);
+    fields.name = (fields.name || p.name || "").trim();
+    if (!fields.desc) fields.desc = p.description || "";
+    fillDistillDialog(distillTopicId, k, fields, p.reason);
+  } catch (e) {
+    status.textContent = "" + e;
+  }
+}
+
+/** Guarda a proposta como doc do Workspace, com âmbito do tópico. */
+async function saveDistill() {
+  if (distillTopicId == null || !distillFields) return;
+  const kind = (document.querySelector("#distill-type") as HTMLSelectElement).value as WsKind;
+  const name = (document.querySelector("#distill-name") as HTMLInputElement).value.trim();
+  const desc = (document.querySelector("#distill-desc") as HTMLInputElement).value.trim();
+  const body = (document.querySelector("#distill-body") as HTMLTextAreaElement).value;
+  if (!name) {
+    alert(t("Indica um nome (sem espaços)."));
+    return;
+  }
+  const topicName = state.topics.find((tp) => tp.id === distillTopicId)?.name || "";
+  // Dedupe: avisa se já existe um doc do mesmo tipo e nome (não bloqueia — pode ser atualizar).
+  try {
+    const idx = await api.getWorkspaceIndex();
+    const list = kind === "skill" ? idx.skills : kind === "workflow" ? idx.workflows : idx.playbooks;
+    if (list.some((d) => d.name.toLowerCase() === name.toLowerCase())) {
+      if (!confirm(t("Já existe um {kind} com este nome — substituir?", { kind }))) return;
+    }
+  } catch {
+    /* a verificação é só um aviso */
+  }
+  const fields: DocFields = { ...distillFields, name, desc, body, enabled: true, topic: topicName };
+  try {
+    await api.saveWorkspaceDoc(kind, name, assembleDoc(kind, fields));
+  } catch (e) {
+    alert(t("Falha a guardar: ") + e);
+    return;
+  }
+  await api.dismissDistillHint(distillTopicId).catch(() => {});
+  els.distillDialog.close();
+  distillTopicId = null;
+  distillFields = null;
+  await loadConversations();
+}
+
+/** Descarta a proposta e limpa a dica do tópico. */
+async function discardDistill() {
+  const id = distillTopicId;
+  els.distillDialog.close();
+  distillTopicId = null;
+  distillFields = null;
+  if (id != null) {
+    await api.dismissDistillHint(id).catch(() => {});
+    await loadConversations();
+  }
 }
 
 /** Cria um tópico, opcionalmente atribui-lhe um chat, e entra em renomear no novo cabeçalho. */
@@ -6146,6 +6317,9 @@ async function init() {
   document.querySelector("#topic-save")!.addEventListener("click", () => void saveTopicEditor());
   document.querySelector("#topic-cancel")!.addEventListener("click", () => els.topicDialog.close());
   document.querySelector("#topic-folder-pick")!.addEventListener("click", () => void pickTopicFolder());
+  document.querySelector("#distill-save")!.addEventListener("click", () => void saveDistill());
+  document.querySelector("#distill-redraft")!.addEventListener("click", () => void redraftDistill());
+  document.querySelector("#distill-discard")!.addEventListener("click", () => void discardDistill());
   document.querySelector("#topic-folder-clear")!.addEventListener("click", () => {
     editingFolder = "";
     renderTopicFolder();

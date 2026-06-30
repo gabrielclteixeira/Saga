@@ -524,6 +524,35 @@ body.dragging-conv {
 .topic-del:hover {
   color: var(--danger);
 }
+/* Pílula passiva de destilação: padrão detetado por capturar (sempre visível). */
+.topic-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px;
+}
+.topic-hint .ic {
+  width: 14px;
+  height: 14px;
+}
+.topic-hint:hover {
+  filter: brightness(1.25);
+}
+/* Razão da proposta de destilação (read-only, no topo do diálogo). */
+.distill-reason {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+.distill-reason:empty {
+  display: none;
+}
 /* Popover para mover uma conversa para um tópico */
 .topic-menu {
   position: fixed;

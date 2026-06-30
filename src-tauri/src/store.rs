@@ -29,6 +29,8 @@ pub struct Topic {
     pub folder_path: String,
     /// Permissão das file tools: "read" (só leitura) | "ask" (editar com confirmação).
     pub permission_mode: String,
+    /// Dica de destilação pendente (JSON `{type,name,reason}`) do classificador passivo; '' = nenhuma.
+    pub distill_hint: String,
 }
 
 #[derive(Serialize)]
@@ -153,6 +155,13 @@ fn init(conn: &Connection) -> Result<()> {
         [],
     )
     .ok();
+    // Migração: dica de destilação (self-distilling). JSON {type,name,reason} do classificador
+    // passivo que corre na compactação; '' = sem dica. Limpa quando o utilizador destila/dispensa.
+    conn.execute(
+        "ALTER TABLE topics ADD COLUMN distill_hint TEXT NOT NULL DEFAULT ''",
+        [],
+    )
+    .ok();
     // Migração: colunas de compactação na conversa (ignora erro se já existirem).
     conn.execute(
         "ALTER TABLE conversations ADD COLUMN compacted_summary TEXT NOT NULL DEFAULT ''",
@@ -266,7 +275,7 @@ pub fn list_conversations(conn: &Connection) -> Result<Vec<ConversationMeta>> {
 
 pub fn list_topics(conn: &Connection) -> Result<Vec<Topic>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, brief, notes, folder_path, permission_mode FROM topics ORDER BY sort_order ASC, name COLLATE NOCASE ASC",
+        "SELECT id, name, brief, notes, folder_path, permission_mode, distill_hint FROM topics ORDER BY sort_order ASC, name COLLATE NOCASE ASC",
     )?;
     let rows = stmt.query_map([], |r| {
         Ok(Topic {
@@ -276,6 +285,7 @@ pub fn list_topics(conn: &Connection) -> Result<Vec<Topic>> {
             notes: r.get(3)?,
             folder_path: r.get(4)?,
             permission_mode: r.get(5)?,
+            distill_hint: r.get(6)?,
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -342,7 +352,7 @@ pub fn set_conversation_topic(conn: &Connection, conv_id: i64, topic_id: Option<
 /// Tópico de uma conversa (para injetar o brief no contexto — Fase 2).
 pub fn get_topic_for_conversation(conn: &Connection, conv_id: i64) -> Option<Topic> {
     conn.query_row(
-        "SELECT t.id, t.name, t.brief, t.notes, t.folder_path, t.permission_mode FROM topics t
+        "SELECT t.id, t.name, t.brief, t.notes, t.folder_path, t.permission_mode, t.distill_hint FROM topics t
          JOIN conversations c ON c.topic_id = t.id WHERE c.id = ?1",
         params![conv_id],
         |r| {
@@ -353,10 +363,63 @@ pub fn get_topic_for_conversation(conn: &Connection, conv_id: i64) -> Option<Top
                 notes: r.get(3)?,
                 folder_path: r.get(4)?,
                 permission_mode: r.get(5)?,
+                distill_hint: r.get(6)?,
             })
         },
     )
     .ok()
+}
+
+/// Define a dica de destilação pendente do tópico (JSON `{type,name,reason}`).
+pub fn set_distill_hint(conn: &Connection, topic_id: i64, hint_json: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE topics SET distill_hint = ?2 WHERE id = ?1",
+        params![topic_id, hint_json],
+    )?;
+    Ok(())
+}
+
+/// Limpa a dica de destilação do tópico (após destilar ou dispensar).
+pub fn clear_distill_hint(conn: &Connection, topic_id: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE topics SET distill_hint = '' WHERE id = ?1",
+        params![topic_id],
+    )?;
+    Ok(())
+}
+
+/// Junta o texto recente das conversas de um tópico num único transcript (para destilação).
+/// Limita a `max_chars`, mantendo o fim (o mais recente). Salta mensagens de sistema.
+pub fn topic_transcript(conn: &Connection, topic_id: i64, max_chars: usize) -> Result<String> {
+    let mut stmt = conn.prepare(
+        "SELECT c.title, m.role, m.content
+         FROM messages m JOIN conversations c ON c.id = m.conversation_id
+         WHERE c.topic_id = ?1 AND m.role IN ('user','assistant')
+         ORDER BY c.id ASC, m.id ASC",
+    )?;
+    let rows = stmt.query_map(params![topic_id], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+        ))
+    })?;
+    let mut out = String::new();
+    let mut last_title = String::new();
+    for row in rows.flatten() {
+        let (title, role, content) = row;
+        if title != last_title {
+            out.push_str(&format!("\n### Saga: {title}\n"));
+            last_title = title;
+        }
+        out.push_str(&format!("{role}: {content}\n"));
+    }
+    // Mantém o fim (o mais recente) se exceder o limite.
+    if out.chars().count() > max_chars {
+        let start = out.chars().count() - max_chars;
+        out = format!("…\n{}", out.chars().skip(start).collect::<String>());
+    }
+    Ok(out)
 }
 
 pub fn get_messages(conn: &Connection, conversation_id: i64) -> Result<Vec<StoredMessage>> {

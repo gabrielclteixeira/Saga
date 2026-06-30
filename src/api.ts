@@ -193,6 +193,16 @@ export interface Topic {
   notes: string;
   folder_path: string;
   permission_mode: string; // "read" | "ask"
+  distill_hint: string; // JSON {type,name,reason} de uma dica de destilação pendente; "" = nenhuma
+}
+
+export interface DistillProposal {
+  found: boolean;
+  doc_type: string; // "skill" | "playbook" | "workflow"
+  name: string;
+  description: string;
+  reason: string;
+  body: string;
 }
 
 export interface Compaction {
@@ -353,6 +363,20 @@ export const api = {
   deleteTopic: (id: number) => invoke<void>("delete_topic", { id }),
   setConversationTopic: (conversationId: number, topicId: number | null) =>
     invoke<void>("set_conversation_topic", { conversationId, topicId }),
+  distillTopic: (
+    topicId: number,
+    draft: boolean,
+    typeHint?: string,
+    useCloud = false
+  ) =>
+    invoke<DistillProposal>("distill_topic", {
+      topicId,
+      draft,
+      typeHint: typeHint ?? null,
+      useCloud,
+    }),
+  dismissDistillHint: (topicId: number) =>
+    invoke<void>("dismiss_distill_hint", { topicId }),
   projectSaveFile: (conversationId: number, path: string, content: string) =>
     invoke<string>("project_save_file", { conversationId, path, content }),
   searchChats: (query: string) => invoke<SearchHit[]>("search_chats", { query }),

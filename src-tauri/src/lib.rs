@@ -163,6 +163,8 @@ pub fn run() {
             commands::update_topic,
             commands::delete_topic,
             commands::set_conversation_topic,
+            commands::distill_topic,
+            commands::dismiss_distill_hint,
             commands::project_save_file,
             commands::search_chats,
             commands::get_conversation_accounting,

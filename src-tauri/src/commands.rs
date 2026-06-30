@@ -375,6 +375,221 @@ pub fn set_conversation_topic(
     store::set_conversation_topic(&conn, conversation_id, topic_id).map_err(|e| e.to_string())
 }
 
+// ---- Self-distilling (destilar padrões de um tópico em docs do workspace) ----
+
+/// Proposta de destilação: um padrão replicável detetado nas conversas de um tópico,
+/// pronto a rever e guardar como skill | playbook | workflow.
+#[derive(Serialize)]
+pub struct DistillProposal {
+    /// Há algo que valha a pena capturar?
+    pub found: bool,
+    /// Tipo sugerido: "skill" | "playbook" | "workflow".
+    pub doc_type: String,
+    pub name: String,
+    pub description: String,
+    /// Uma frase a explicar o padrão (mostrada na proposta, read-only).
+    pub reason: String,
+    /// Markdown gerado (com frontmatter quando aplicável) — abre no editor via parseDocFields.
+    pub body: String,
+}
+
+/// Extrai o primeiro objeto JSON `{...}` balanceado de um texto (o modelo local às vezes
+/// embrulha o JSON em texto ou cercas). Devolve `None` se não houver.
+fn extract_json_object(s: &str) -> Option<String> {
+    let start = s.find('{')?;
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut esc = false;
+    for (i, c) in s[start..].char_indices() {
+        match c {
+            _ if esc => esc = false,
+            '\\' if in_str => esc = true,
+            '"' => in_str = !in_str,
+            '{' if !in_str => depth += 1,
+            '}' if !in_str => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(s[start..start + i + 1].to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Lista os nomes dos docs já existentes (e ativos) num tópico, para o modelo não os repetir.
+fn existing_doc_names(dir: &str, topic: &str) -> Vec<String> {
+    let idx = crate::workspace::index(dir).active(Some(topic));
+    idx.skills
+        .iter()
+        .chain(idx.playbooks.iter())
+        .chain(idx.workflows.iter())
+        .map(|d| d.name.clone())
+        .collect()
+}
+
+/// Classificador: lê o transcript do tópico e decide se há UM padrão replicável e de que tipo.
+/// Devolve `(type, name, reason)` ou `None`. Tolerante a JSON sujo do modelo local.
+async fn classify_pattern(
+    settings: &Settings,
+    topic: &str,
+    transcript: &str,
+    existing: &[String],
+) -> Option<(String, String, String)> {
+    if transcript.trim().is_empty() {
+        return None;
+    }
+    let avoid = if existing.is_empty() {
+        "(nenhum)".to_string()
+    } else {
+        existing.join(", ")
+    };
+    let sys = "És um destilador de conhecimento da Saga. Lês conversas de um tópico e decides se há UM \
+padrão replicável que valha a pena guardar como documento reutilizável do workspace.\n\
+Tipos:\n\
+- skill: conhecimento durável, técnica ou convenção reutilizável (dispara por palavras-chave numa conversa futura).\n\
+- playbook: um how-to/procedimento que o utilizador volta a explicar.\n\
+- workflow: uma tarefa multi-passo repetível (sequência fixa de passos/ferramentas).\n\
+Responde APENAS com JSON, sem texto à volta:\n\
+{\"found\": true|false, \"type\": \"skill\"|\"playbook\"|\"workflow\", \"name\": \"<slug-curto-sem-espacos>\", \"reason\": \"<uma frase>\"}\n\
+Se nada for claramente replicável, responde {\"found\": false}. Sê exigente — não inventes padrões.";
+    let instruction = format!(
+        "Tópico: {topic}\nDocs que JÁ existem (não repitas): {avoid}\n\nConversas:\n{transcript}"
+    );
+    let raw = run_doc_gen(settings, sys, instruction, false).await.ok()?;
+    let json = extract_json_object(&raw)?;
+    let v: serde_json::Value = serde_json::from_str(&json).ok()?;
+    if !v.get("found").and_then(|f| f.as_bool()).unwrap_or(false) {
+        return None;
+    }
+    let ty = v.get("type").and_then(|x| x.as_str()).unwrap_or("playbook");
+    let ty = match ty {
+        "skill" | "playbook" | "workflow" => ty,
+        _ => "playbook",
+    }
+    .to_string();
+    let name = v
+        .get("name")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let reason = v
+        .get("reason")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    Some((ty, name, reason))
+}
+
+/// Destila um tópico: deteta um padrão replicável e (em modo `draft`) redige o doc para revisão.
+/// `type_hint` força o tipo (quando o utilizador o muda na proposta) e salta o classificador.
+#[tauri::command]
+pub async fn distill_topic(
+    state: State<'_, AppState>,
+    topic_id: i64,
+    draft: bool,
+    type_hint: Option<String>,
+    use_cloud: bool,
+) -> Result<DistillProposal, String> {
+    let settings = state.settings.lock().unwrap().clone();
+    let (topic_name, transcript) = {
+        let conn = state.db.lock().unwrap();
+        let name = store::list_topics(&conn)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|t| t.id == topic_id)
+            .map(|t| t.name)
+            .ok_or_else(|| "Tópico não encontrado.".to_string())?;
+        let tr = store::topic_transcript(&conn, topic_id, 8000).map_err(|e| e.to_string())?;
+        (name, tr)
+    };
+    if transcript.trim().is_empty() {
+        return Ok(DistillProposal {
+            found: false,
+            doc_type: String::new(),
+            name: String::new(),
+            description: String::new(),
+            reason: String::new(),
+            body: String::new(),
+        });
+    }
+    let existing = existing_doc_names(&settings.workspace_dir, &topic_name);
+
+    // Tipo + nome + razão. Com `type_hint` saltamos o classificador (já sabemos o tipo).
+    let (kind, suggested_name, reason) = match type_hint.as_deref() {
+        Some(t) if !t.trim().is_empty() => (t.trim().to_string(), String::new(), String::new()),
+        _ => match classify_pattern(&settings, &topic_name, &transcript, &existing).await {
+            Some(x) => x,
+            None => {
+                return Ok(DistillProposal {
+                    found: false,
+                    doc_type: String::new(),
+                    name: String::new(),
+                    description: String::new(),
+                    reason: String::new(),
+                    body: String::new(),
+                })
+            }
+        },
+    };
+
+    // Só classificar (pílula passiva): devolve sem redigir o corpo.
+    if !draft {
+        return Ok(DistillProposal {
+            found: true,
+            doc_type: kind,
+            name: suggested_name,
+            description: String::new(),
+            reason,
+            body: String::new(),
+        });
+    }
+
+    // Redigir o doc a partir das conversas, com âmbito do tópico.
+    let avoid = if existing.is_empty() {
+        "(nenhum)".to_string()
+    } else {
+        existing.join(", ")
+    };
+    let name_hint = if suggested_name.is_empty() {
+        String::new()
+    } else {
+        format!("Nome sugerido: {suggested_name}.\n")
+    };
+    let topic_line = if kind == "playbook" {
+        String::new()
+    } else {
+        format!("Inclui no frontmatter a linha `topic: {topic_name}`.\n")
+    };
+    let instruction = format!(
+        "Com base nestas conversas do tópico '{topic_name}', escreve o {kind} reutilizável que \
+captura o padrão. {name_hint}{topic_line}Não repitas estes docs já existentes: {avoid}.\n\nConversas:\n{transcript}"
+    );
+    let body = run_doc_gen(&settings, doc_gen_sys(&kind), instruction, use_cloud).await?;
+    let (fm_name, fm_desc) = crate::workspace::parse_frontmatter(&body);
+    let name = fm_name
+        .filter(|n| !n.trim().is_empty())
+        .unwrap_or(suggested_name);
+    Ok(DistillProposal {
+        found: true,
+        doc_type: kind,
+        name,
+        description: fm_desc.unwrap_or_default(),
+        reason,
+        body,
+    })
+}
+
+/// Dispensa a dica de destilação pendente de um tópico (clica no "✕" da pílula).
+#[tauri::command]
+pub fn dismiss_distill_hint(state: State<AppState>, topic_id: i64) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    store::clear_distill_hint(&conn, topic_id).map_err(|e| e.to_string())
+}
+
 /// Grava conteúdo (ex.: um artefacto gerado) na pasta do projeto da conversa — caminho relativo,
 /// sandboxed à pasta. Ação iniciada pelo utilizador (o clique é a confirmação); fica no action log.
 #[tauri::command]
@@ -510,11 +725,42 @@ pub async fn compact_conversation(
         let conn = state.db.lock().unwrap();
         store::set_compaction(&conn, id, &summary, upto).map_err(|e| e.to_string())?;
     }
+    // Gancho passivo de destilação: a compactação já correu o modelo sobre o transcript, por isso
+    // aproveitamos para detetar (barato) um padrão replicável no tópico e pousar uma dica discreta.
+    // Falhas são silenciosas — nunca partem a compactação.
+    distill_hint_pass(&state, id).await;
     Ok(CompactResult {
         summary,
         upto,
         messages_compacted: cut,
     })
+}
+
+/// Corre o classificador de destilação sobre o tópico da conversa `conv_id` e, se encontrar um
+/// padrão novo (nome ainda não existe no tópico), grava a dica no tópico (para a pílula passiva).
+/// Best-effort: qualquer falha é ignorada.
+async fn distill_hint_pass(state: &State<'_, AppState>, conv_id: i64) {
+    let settings = state.settings.lock().unwrap().clone();
+    let (topic_id, topic_name, transcript) = {
+        let conn = state.db.lock().unwrap();
+        let Some(topic) = store::get_topic_for_conversation(&conn, conv_id) else {
+            return;
+        };
+        let tr = store::topic_transcript(&conn, topic.id, 8000).unwrap_or_default();
+        (topic.id, topic.name, tr)
+    };
+    let existing = existing_doc_names(&settings.workspace_dir, &topic_name);
+    if let Some((ty, name, reason)) =
+        classify_pattern(&settings, &topic_name, &transcript, &existing).await
+    {
+        // Nome já coberto neste tópico → não vale a pena incomodar.
+        if !name.is_empty() && existing.iter().any(|e| e.eq_ignore_ascii_case(&name)) {
+            return;
+        }
+        let hint = serde_json::json!({ "type": ty, "name": name, "reason": reason }).to_string();
+        let conn = state.db.lock().unwrap();
+        let _ = store::set_distill_hint(&conn, topic_id, &hint);
+    }
 }
 
 /// Escreve `content` no caminho dado (usado para exportar artefactos/Sagas; o caminho
@@ -534,29 +780,31 @@ fn strip_fences(s: &str) -> String {
     t.to_string()
 }
 
-/// Gera um documento de workspace (skill | playbook | workflow) a partir de uma descrição,
-/// usando o provider configurado (preferindo o cloud). Devolve o markdown.
-#[tauri::command]
-pub async fn generate_doc(
-    state: State<'_, AppState>,
-    kind: String,
-    instruction: String,
-    use_cloud: bool,
-) -> Result<String, String> {
-    let settings = state.settings.lock().unwrap().clone();
-    let sys = match kind.as_str() {
+/// System prompt para gerar um documento do workspace de um dado tipo. Partilhado por
+/// `generate_doc` e pela destilação (`distill_topic`).
+fn doc_gen_sys(kind: &str) -> &'static str {
+    match kind {
         "skill" => "Escreve uma SKILL.md para a Saga. Formato EXATO:\n---\nname: <slug-sem-espacos>\ndescription: \"<uma frase sobre quando usar>. Triggers: <palavras/expressões que ativam>\"\n---\n\n# <título>\n<instruções claras, passo a passo, em markdown>\n\nResponde APENAS com o markdown final — sem cercas de código nem comentários.",
         "workflow" => "Escreve um workflow em markdown para a Saga. Formato EXATO:\n---\nname: <slug-sem-espacos>\ndescription: \"<o que faz>\"\nargument-hint: <que argumentos espera>\nroute: <local|claude — usa 'claude' SÓ se precisar de browser/MCP; senão 'local'>\n---\n\n<procedimento passo-a-passo; usa $ARGUMENTS onde os argumentos do utilizador entram>\n\nResponde APENAS com o markdown final — sem cercas nem comentários.",
         "agent" => "Escreve um agente (persona) em markdown para a Saga. Formato EXATO:\n---\nname: <Nome legível>\ndescription: \"<uma frase sobre o que faz>\"\ntools: <true|false>\nresearch: <true|false>\nsubagents: <true|false>\nroute: <local|claude>\n---\n\n<system prompt na 2.ª pessoa (\"És um…\"): define o papel, o estilo e as regras de comportamento do agente>\n\nResponde APENAS com o markdown final — sem cercas de código nem comentários.",
         _ => "Escreve um playbook em markdown simples (sem frontmatter): um título e um procedimento reutilizável e claro. Responde APENAS com o markdown — sem cercas nem comentários.",
-    };
+    }
+}
+
+/// Corre uma geração de uma só passagem (system + user) no provider configurado.
+/// Local-first: só tenta o cloud se `use_cloud` e mesmo aí cai para o local se o cloud falhar.
+/// Devolve o texto já sem cercas de código.
+async fn run_doc_gen(
+    settings: &Settings,
+    sys: &str,
+    instruction: String,
+    use_cloud: bool,
+) -> Result<String, String> {
     let messages = vec![
         ChatMessage { role: "system".into(), content: sys.into(), attachments: Vec::new() },
         ChatMessage { role: "user".into(), content: instruction, attachments: Vec::new() },
     ];
     let max = settings.claude_max_tokens.max(2048);
-    // Local-first: por defeito gera no modelo local. Só tenta o cloud se o utilizador pedir
-    // explicitamente (use_cloud) — e mesmo aí cai para o local se o cloud falhar.
     let cloud = if !use_cloud {
         None
     } else if settings.cloud_provider == "openai" && !settings.openai_cloud_key.trim().is_empty() {
@@ -584,6 +832,19 @@ pub async fn generate_doc(
     };
     let text = resp.map_err(|e| e.to_string())?.text;
     Ok(strip_fences(&text))
+}
+
+/// Gera um documento de workspace (skill | playbook | workflow) a partir de uma descrição,
+/// usando o provider configurado (preferindo o cloud). Devolve o markdown.
+#[tauri::command]
+pub async fn generate_doc(
+    state: State<'_, AppState>,
+    kind: String,
+    instruction: String,
+    use_cloud: bool,
+) -> Result<String, String> {
+    let settings = state.settings.lock().unwrap().clone();
+    run_doc_gen(&settings, doc_gen_sys(&kind), instruction, use_cloud).await
 }
 
 /// Semeia os defaults do workspace (skill pdf + agentes) no idioma da UI. Idempotente:
