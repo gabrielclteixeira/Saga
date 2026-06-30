@@ -1369,7 +1369,8 @@ mark.find-current {
 .think-caret {
   display: inline-flex;
   align-items: center;
-  margin-left: 1px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
   opacity: 0.7;
 }
 .think-caret .ic {
