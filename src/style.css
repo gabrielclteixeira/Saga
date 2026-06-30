@@ -1346,6 +1346,10 @@ mark.find-current {
   font-size: 12px;
   cursor: pointer;
 }
+.route-mode button:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
 .route-mode button.active {
   background: var(--bg-3);
   color: var(--text);
