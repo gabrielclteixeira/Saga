@@ -6024,11 +6024,16 @@ async function init() {
   els.routeModeBar.querySelectorAll<HTMLButtonElement>("button[data-mode]").forEach((btn) => {
     btn.addEventListener("click", () => setRouteMode((btn.dataset.mode as "local" | "claude") ?? "local"));
   });
-  // Chip Think (seta inline): clicar abre o menu de níveis; escolher um nível aplica-o.
+  // Chip Think: a seta (inline) abre o menu de níveis; o resto do chip alterna off↔native think.
   const thinkMenu = document.querySelector<HTMLElement>("#think-menu")!;
   document.querySelector("#btn-think")!.addEventListener("click", (e) => {
     e.stopPropagation();
-    thinkMenu.toggleAttribute("hidden");
+    if ((e.target as HTMLElement).closest(".think-caret")) {
+      thinkMenu.toggleAttribute("hidden");
+    } else {
+      thinkMenu.setAttribute("hidden", "");
+      setThinkLevel(state.thinkLevel === "off" ? "think" : "off");
+    }
   });
   thinkMenu.querySelectorAll<HTMLButtonElement>("[data-level]").forEach((b) =>
     b.addEventListener("click", () => {
