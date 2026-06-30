@@ -286,6 +286,7 @@ const EN: Record<string, string> = {
   "Escalar para": "Escalate to",
   "Ferramentas (web, ficheiros)": "Tools (web, files)",
   "Pesquisa aprofundada": "Deep research",
+  "Pensamento estendido (Think)": "Extended thinking (Think)",
   "System prompt (markdown)": "System prompt (markdown)",
   "És um… (define o papel, o estilo e as regras do agente)":
     "You are a… (define the agent's role, style and rules)",

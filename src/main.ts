@@ -381,6 +381,8 @@ app.innerHTML = `
             <label class="ws-check"><input type="checkbox" id="ws-agent-tools" /> ${t("Ferramentas (web, ficheiros)")}</label>
             <label class="ws-check"><input type="checkbox" id="ws-agent-research" /> ${t("Pesquisa aprofundada")}</label>
             <label class="ws-check"><input type="checkbox" id="ws-agent-subagents" /> ${t("Subagentes")}</label>
+            <label class="ws-check"><input type="checkbox" id="ws-agent-plan" /> ${t("Plano")}</label>
+            <label class="ws-check"><input type="checkbox" id="ws-agent-think" /> ${t("Pensamento estendido (Think)")}</label>
           </fieldset>
           <label id="ws-body-label">${t("Corpo (markdown)")}
             <textarea id="ws-content" rows="12" spellcheck="false" placeholder="${t("# Instruções…")}"></textarea>
@@ -3295,9 +3297,16 @@ function applyComposerToggles() {
 }
 
 // ---- Picker de agente (persona) no composer ----
-function setToggle(which: "research" | "subagents" | "thinking", on: boolean) {
+function setToggle(which: "research" | "subagents" | "thinking" | "plan", on: boolean) {
   state[which] = on;
-  const id = which === "thinking" ? "#btn-think" : which === "research" ? "#btn-research" : "#btn-subagents";
+  const id =
+    which === "thinking"
+      ? "#btn-think"
+      : which === "research"
+        ? "#btn-research"
+        : which === "plan"
+          ? "#btn-plan"
+          : "#btn-subagents";
   document.querySelector(id)?.classList.toggle("active", on);
 }
 
@@ -3323,6 +3332,9 @@ async function setActiveAgent(name: string | null) {
     setRouteMode(f.agentRoute === "claude" && cloudEnabled() ? "claude" : "local");
     setToggle("research", !!f.agentResearch && canSearch);
     setToggle("subagents", !!f.agentSubagents && cloudEnabled());
+    setToggle("plan", !!f.agentPlan);
+    // Pensamento estendido é Claude API — só liga se o cloud estiver configurado.
+    setToggle("thinking", !!f.agentThink && cloudEnabled());
     updateAgentChip();
     showHint(t("Agente ativo: {n}", { n: state.activeAgent.name }));
     if (state.research) maybeWarnSearch(); // avisa se faltar chave de pesquisa
@@ -4304,6 +4316,8 @@ interface DocFields {
   agentTools?: boolean;
   agentResearch?: boolean;
   agentSubagents?: boolean;
+  agentPlan?: boolean;
+  agentThink?: boolean;
 }
 
 const wsq = <T extends HTMLElement>(id: string) => document.querySelector<T>(id)!;
@@ -4371,6 +4385,8 @@ function parseDocFields(kind: WsKind, raw: string): DocFields {
     agentTools: truthy(fm["tools"]),
     agentResearch: truthy(fm["research"]),
     agentSubagents: truthy(fm["subagents"]),
+    agentPlan: truthy(fm["plan"]),
+    agentThink: truthy(fm["think"]),
   };
 }
 
@@ -4391,6 +4407,8 @@ function assembleDoc(kind: WsKind, f: DocFields): string {
       `tools: ${f.agentTools ? "true" : "false"}`,
       `research: ${f.agentResearch ? "true" : "false"}`,
       `subagents: ${f.agentSubagents ? "true" : "false"}`,
+      `plan: ${f.agentPlan ? "true" : "false"}`,
+      `think: ${f.agentThink ? "true" : "false"}`,
       `route: ${f.agentRoute === "claude" ? "claude" : "local"}`
     );
   } else {
@@ -4414,6 +4432,8 @@ function fillEditorFields(f: Partial<DocFields>) {
   wsq<HTMLInputElement>("#ws-agent-tools").checked = !!f.agentTools;
   wsq<HTMLInputElement>("#ws-agent-research").checked = !!f.agentResearch;
   wsq<HTMLInputElement>("#ws-agent-subagents").checked = !!f.agentSubagents;
+  wsq<HTMLInputElement>("#ws-agent-plan").checked = !!f.agentPlan;
+  wsq<HTMLInputElement>("#ws-agent-think").checked = !!f.agentThink;
 }
 
 // Estado ativo/inativo do doc em edição — preservado no save (o toggle vive na lista, não no editor).
@@ -4433,6 +4453,8 @@ function readEditorFields(): DocFields {
     agentTools: wsq<HTMLInputElement>("#ws-agent-tools").checked,
     agentResearch: wsq<HTMLInputElement>("#ws-agent-research").checked,
     agentSubagents: wsq<HTMLInputElement>("#ws-agent-subagents").checked,
+    agentPlan: wsq<HTMLInputElement>("#ws-agent-plan").checked,
+    agentThink: wsq<HTMLInputElement>("#ws-agent-think").checked,
   };
 }
 
