@@ -222,6 +222,7 @@ app.innerHTML = `
       <pre class="mem" id="mem-preview">—</pre>
       <button class="ghost" id="btn-mem-refresh">${t("Atualizar pré-visualização")}</button>
     </aside>
+    <div class="drawer-scrim" id="drawer-scrim" aria-hidden="true"></div>
   </main>
 
 
@@ -1993,6 +1994,7 @@ function resetCompaction() {
 async function selectConversation(id: number) {
   // Bloqueia só quando há um cartão à espera de resposta (não durante streaming normal).
   if (awaitingPrompt) return;
+  closeDrawers(); // ecrã estreito: escolher uma conversa fecha a gaveta da lista
   // Guarda de corrida: cliques rápidos disparam várias cargas; só a última vence.
   const seq = ++selectSeq;
   state.currentConversationId = id;
@@ -2025,6 +2027,7 @@ async function selectConversation(id: number) {
 
 async function createConversation() {
   if (state.busy) return;
+  closeDrawers(); // ecrã estreito: nova Saga fecha a gaveta da lista
   const id = await api.newConversation();
   state.currentConversationId = id;
   state.items = [];
@@ -5231,8 +5234,23 @@ const CENTER_VIEWS: Record<string, HTMLDialogElement> = {
   models: modelsDialog,
 };
 
+// ---- Gavetas em ecrã estreito (painel/lista flutuam por cima do chat) ----
+const mqPanelDrawer = window.matchMedia("(max-width: 1080px)");
+const mqSidebarDrawer = window.matchMedia("(max-width: 840px)");
+function closeDrawers() {
+  els.layout.classList.remove("drawer-panel", "drawer-sidebar");
+}
+/** Alterna uma gaveta; só uma fica aberta de cada vez. */
+function toggleDrawer(name: "panel" | "sidebar") {
+  const cls = `drawer-${name}`;
+  const open = els.layout.classList.contains(cls);
+  closeDrawers();
+  els.layout.classList.toggle(cls, !open);
+}
+
 /** Mostra uma vista no centro (ou o chat, se null/"sagas"). */
 function showView(view: string | null) {
+  closeDrawers(); // mudar de vista fecha qualquer gaveta aberta
   const inView = view !== null && view !== "sagas";
   for (const [name, el] of Object.entries(CENTER_VIEWS)) el.open = name === view;
   const chat = document.querySelector<HTMLElement>(".chat")!;
@@ -5348,7 +5366,10 @@ function wireWorkspaceUi() {
       else if (v === "activity") openActivity();
       else if (v === "automations") openAutomations();
       else if (v === "models") openModels();
-      else showView(null); // "sagas" → volta ao chat
+      // "sagas": se já estamos nas Sagas e o ecrã é estreito, alterna a gaveta da lista;
+      // senão volta ao chat.
+      else if (mqSidebarDrawer.matches && b.classList.contains("active")) toggleDrawer("sidebar");
+      else showView(null);
     })
   );
 }
@@ -5421,10 +5442,26 @@ async function init() {
     els.layout.classList.toggle("panel-collapsed", collapsed);
     localStorage.setItem("saga.panelCollapsed", collapsed ? "1" : "0");
   };
-  document.querySelector("#panel-collapse")!.addEventListener("click", () => setPanel(true));
-  document.querySelector("#btn-panel")!.addEventListener("click", () =>
-    setPanel(!els.layout.classList.contains("panel-collapsed"))
-  );
+  // Ecrã estreito: o painel é uma gaveta sobreposta; largo: colapsa/expande a coluna (persistido).
+  document.querySelector("#panel-collapse")!.addEventListener("click", () => {
+    if (mqPanelDrawer.matches) els.layout.classList.remove("drawer-panel");
+    else setPanel(true);
+  });
+  document.querySelector("#btn-panel")!.addEventListener("click", () => {
+    if (mqPanelDrawer.matches) toggleDrawer("panel");
+    else setPanel(!els.layout.classList.contains("panel-collapsed"));
+  });
+  document.querySelector("#drawer-scrim")!.addEventListener("click", closeDrawers);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && els.layout.matches(".drawer-panel, .drawer-sidebar")) closeDrawers();
+  });
+  // Ao alargar para lá de cada breakpoint, fecha a gaveta que deixou de fazer sentido.
+  mqPanelDrawer.addEventListener("change", (e) => {
+    if (!e.matches) closeDrawers();
+  });
+  mqSidebarDrawer.addEventListener("change", (e) => {
+    if (!e.matches) els.layout.classList.remove("drawer-sidebar");
+  });
   setPanel(localStorage.getItem("saga.panelCollapsed") === "1");
   document.querySelector("#wiz-next")!.addEventListener("click", () => void wizNext());
   document.querySelector("#wiz-back")!.addEventListener("click", () => void wizGoTo(wizStep - 1));

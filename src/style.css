@@ -153,6 +153,7 @@ body {
   display: grid;
   grid-template-columns: 60px 220px 1fr 320px;
   min-height: 0;
+  position: relative; /* âncora para as gavetas (sidebar/panel) em ecrã estreito */
 }
 .layout.panel-collapsed {
   grid-template-columns: 60px 220px 1fr 0;
@@ -1126,7 +1127,8 @@ mark.find-current {
 /* Seletor de rota (Auto/Local/Claude) acima do composer */
 .route-mode {
   display: flex;
-  gap: 4px;
+  flex-wrap: wrap; /* chips quebram linha em vez de serem cortados quando o chat estreita */
+  gap: 6px 4px;
   padding: 8px 14px 12px;
 }
 .route-mode button {
@@ -1152,7 +1154,8 @@ mark.find-current {
 .route-mode .composer-toggles {
   margin-left: auto;
   display: flex;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 6px 4px;
 }
 .route-mode .chip-toggle.active {
   border-color: var(--claude);
@@ -2159,6 +2162,8 @@ dialog::backdrop {
   padding: 8px 4px;
   background: var(--bg-3);
   border-right: 1px solid var(--border);
+  position: relative;
+  z-index: 42; /* acima do scrim das gavetas — o rail mantém-se sempre utilizável */
 }
 .rail-btn {
   display: flex;
@@ -3711,5 +3716,93 @@ input[type="checkbox"]:disabled {
   .caravel-loader .cl-wave-b,
   .caravel-loader .cl-foam {
     animation: none;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Resposta a ecrã estreito — colapso progressivo + gavetas sobrepostas.
+   • ≤1080px: o painel de tokens sai da grelha e passa a gaveta (à direita).
+   • ≤840px:  a lista de conversas também passa a gaveta (à direita do rail).
+   As gavetas flutuam por cima do chat (não roubam coluna); um scrim escurece o
+   fundo e fecha-as ao clicar. O JS (matchMedia) alterna .drawer-panel /
+   .drawer-sidebar e torna o #btn-panel e o rail "Sagas" sensíveis à largura.
+   ────────────────────────────────────────────────────────────────────────── */
+.drawer-scrim {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 39;
+  background: rgba(8, 18, 33, 0.45);
+}
+
+@media (max-width: 1080px) {
+  /* O painel deixa de ocupar coluna. */
+  .layout,
+  .layout.panel-collapsed {
+    grid-template-columns: 60px 220px 1fr 0;
+  }
+  /* Gaveta à direita: presente mesmo se "colapsado", mas fora do ecrã até abrir. */
+  .layout.panel-collapsed .panel {
+    display: block;
+  }
+  .panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(320px, 86vw);
+    z-index: 40;
+    transform: translateX(100%);
+    transition: transform 0.18s ease;
+    border-left: 1px solid var(--border);
+  }
+  .layout.drawer-panel .panel {
+    transform: none;
+    box-shadow: -10px 0 28px rgba(0, 0, 0, 0.28);
+  }
+  .layout.drawer-panel .drawer-scrim {
+    display: block;
+  }
+  /* Nas vistas do rail o painel nunca aparece (re-afirma sobre as regras acima). */
+  .layout.viewing .panel {
+    display: none;
+  }
+}
+
+@media (max-width: 840px) {
+  /* A lista de conversas também sai da grelha. */
+  .layout,
+  .layout.panel-collapsed,
+  .layout.viewing {
+    grid-template-columns: 60px 0 1fr 0;
+  }
+  /* Gaveta à direita do rail; fora do ecrã (para lá do rail) até abrir. */
+  .sidebar {
+    position: absolute;
+    top: 0;
+    left: 60px;
+    bottom: 0;
+    width: min(260px, 80vw);
+    z-index: 41;
+    transform: translateX(calc(-100% - 60px));
+    transition: transform 0.18s ease;
+  }
+  .layout.drawer-sidebar .sidebar {
+    transform: none;
+    box-shadow: 10px 0 28px rgba(0, 0, 0, 0.28);
+  }
+  .layout.drawer-sidebar .drawer-scrim {
+    display: block;
+  }
+  /* As estatísticas do topo cedem espaço para o topbar não transbordar. */
+  .topbar .mini {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .sidebar {
+    transition: none;
   }
 }
