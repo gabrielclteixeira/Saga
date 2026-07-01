@@ -242,6 +242,23 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
     dot / (na.sqrt() * nb.sqrt())
 }
 
+/// Concordância média entre N amostras: média do cosseno par-a-par dos seus embeddings, em [0,1].
+/// `None` se houver menos de 2 amostras. Partilhado por `think::self_consistency` (concordância de
+/// respostas completas) e `clarify::assumption_divergence` (concordância de suposições).
+pub fn pairwise_agreement(embs: &[Vec<f32>]) -> Option<f32> {
+    if embs.len() < 2 {
+        return None;
+    }
+    let (mut total, mut n) = (0.0f32, 0u32);
+    for i in 0..embs.len() {
+        for j in (i + 1)..embs.len() {
+            total += cosine(&embs[i], &embs[j]);
+            n += 1;
+        }
+    }
+    (n > 0).then(|| (total / n as f32).clamp(0.0, 1.0))
+}
+
 pub async fn chat(
     endpoint: &str,
     model: &str,
@@ -567,5 +584,30 @@ pub async fn delete_model(endpoint: &str, name: &str) -> Result<()> {
         Ok(())
     } else {
         Err(anyhow!("Ollama recusou apagar '{name}': {}", resp2.status()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pairwise_agreement_identical_vectors_is_high() {
+        let embs = vec![vec![1.0, 0.0, 0.0], vec![1.0, 0.0, 0.0], vec![1.0, 0.0, 0.0]];
+        let a = pairwise_agreement(&embs).unwrap();
+        assert!(a > 0.99, "esperava concordância ~1.0, veio {a}");
+    }
+
+    #[test]
+    fn pairwise_agreement_orthogonal_vectors_is_low() {
+        let embs = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
+        let a = pairwise_agreement(&embs).unwrap();
+        assert!(a < 0.01, "esperava concordância ~0.0, veio {a}");
+    }
+
+    #[test]
+    fn pairwise_agreement_needs_at_least_two() {
+        assert_eq!(pairwise_agreement(&[]), None);
+        assert_eq!(pairwise_agreement(&[vec![1.0, 0.0]]), None);
     }
 }

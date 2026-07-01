@@ -153,8 +153,10 @@ fn exemplar_cache() -> &'static Mutex<HashMap<String, Vec<(bool, Vec<f32>)>>> {
     EXEMPLAR_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Classifica `q` pelo centróide (média) mais próximo: vago vs específico. Puro → testável sem rede.
-fn nearest_centroid_vague(exemplars: &[(bool, Vec<f32>)], q: &[f32]) -> Option<bool> {
+/// Classifica `q` pelo centróide (média) mais próximo — vago vs específico — e devolve também a
+/// margem entre as duas similaridades (`|sim_vague - sim_specific|`): baixa margem = fronteira
+/// incerta mesmo dentro da L2, o sinal que decide se vale a pena pagar a L3. Puro → testável sem rede.
+fn centroid_margin(exemplars: &[(bool, Vec<f32>)], q: &[f32]) -> Option<(bool, f32)> {
     let centroid = |want_vague: bool| -> Vec<f32> {
         let mut sum: Vec<f32> = Vec::new();
         let mut n = 0u32;
@@ -182,7 +184,9 @@ fn nearest_centroid_vague(exemplars: &[(bool, Vec<f32>)], q: &[f32]) -> Option<b
     if cv.is_empty() || cs.is_empty() {
         return None;
     }
-    Some(ollama::cosine(q, &cv) > ollama::cosine(q, &cs))
+    let sim_vague = ollama::cosine(q, &cv);
+    let sim_specific = ollama::cosine(q, &cs);
+    Some((sim_vague > sim_specific, (sim_vague - sim_specific).abs()))
 }
 
 /// Resolve qual modelo usar para embeddings (cache de processo): o override `embed_model` se estiver
@@ -216,11 +220,9 @@ pub(crate) fn is_embed_model_name(name: &str) -> bool {
     l.contains("embed") || l.contains("bge") || l.contains("minilm") || l.contains("e5") || l.contains("gte")
 }
 
-/// L2 (embeddings): para os casos fronteira, a mensagem é vaga? Usa um modelo de embeddings instalado
-/// (auto-detetado; os modelos de chat não embutem). Embute os exemplos (cache por modelo) e a `task`, e
-/// compara centróides. `None` se não houver modelo de embeddings ou se falharem → chamador trata como vago.
-/// Cache negativa: um modelo que falhe é marcado para não voltar a martelar o `/api/embed` (ex.: 501/404).
-pub async fn embedding_vague(settings: &Settings, task: &str) -> Option<bool> {
+/// Como `embedding_vague`, mas também devolve a margem da L2 (ver `centroid_margin`) — a L3
+/// (`assumption_divergence`) só vale a pena quando esta margem for baixa.
+pub async fn embedding_vague_margin(settings: &Settings, task: &str) -> Option<(bool, f32)> {
     let endpoint = &settings.ollama_endpoint;
     let model = resolve_embed_model(settings).await?;
     let model = model.as_str();
@@ -247,7 +249,15 @@ pub async fn embedding_vague(settings: &Settings, task: &str) -> Option<bool> {
         }
     };
     let q = ollama::embed(endpoint, model, &[task]).await.ok()?.into_iter().next()?;
-    nearest_centroid_vague(&exemplars, &q)
+    centroid_margin(&exemplars, &q)
+}
+
+/// L2 (embeddings): para os casos fronteira, a mensagem é vaga? Usa um modelo de embeddings instalado
+/// (auto-detetado; os modelos de chat não embutem). Embute os exemplos (cache por modelo) e a `task`, e
+/// compara centróides. `None` se não houver modelo de embeddings ou se falharem → chamador trata como vago.
+/// Cache negativa: um modelo que falhe é marcado para não voltar a martelar o `/api/embed` (ex.: 501/404).
+pub async fn embedding_vague(settings: &Settings, task: &str) -> Option<bool> {
+    embedding_vague_margin(settings, task).await.map(|(v, _)| v)
 }
 
 /// Gera 1-3 perguntas de esclarecimento por EXTRAÇÃO de slots em falta. Devolve vazio quando já há
@@ -311,6 +321,57 @@ pub fn default_questions() -> Vec<String> {
     ]
 }
 
+/// Margem da L2 (ver `centroid_margin`) abaixo da qual o centróide mais próximo ganhou "por pouco"
+/// — o mesmo cenário fronteiriço que levou à L2, mas sem confiança adicional. Só aqui vale a pena
+/// pagar a L3 (uma amostragem extra do modelo).
+const L2_MARGIN_LOW_CONFIDENCE: f32 = 0.05;
+/// Nº de suposições amostradas na L3 — self-consistency da SUPOSIÇÃO (uma frase), não da resposta
+/// completa (mais barato que `think::self_consistency`, que sintetiza uma resposta inteira).
+const ASSUMPTION_SAMPLES: usize = 3;
+const ASSUMPTION_TEMPS: [f32; ASSUMPTION_SAMPLES] = [0.3, 0.6, 0.9];
+/// Concordância (cosseno par-a-par) acima da qual as suposições convergem o suficiente para NÃO
+/// perguntar, mesmo que a L1/L2 tenham marcado "vago". Valor de partida — a calibrar com
+/// `log::info!("[clarify] L3 …")` em tráfego real antes de expor isto como afinável na UI.
+const ASSUMPTION_AGREEMENT_HIGH: f32 = 0.80;
+const ASSUMPTION_PROMPT: &str = "Numa frase curta, que suposição farias para responderes a este \
+pedido SEM pedir mais esclarecimentos? Responde APENAS com a suposição, nada mais.";
+
+/// L3 (self-consistency da suposição): amostra `ASSUMPTION_SAMPLES` suposições curtas a
+/// temperaturas diferentes e mede a concordância entre elas (embeddings do modelo de embeddings,
+/// cosseno par-a-par via `ollama::pairwise_agreement`). `None` se faltar modelo de embeddings ou a
+/// amostragem falhar — falha aberta: o chamador mantém o veredito da L2 nesse caso.
+async fn assumption_divergence(
+    settings: &Settings,
+    model: &str,
+    messages: &[ChatMessage],
+    base_opts: GenOpts,
+    total_in: &mut u64,
+    total_out: &mut u64,
+) -> Option<f32> {
+    let embed_model = resolve_embed_model(settings).await?;
+    let msgs = with_instruction(&lean_for_draft(messages), ASSUMPTION_PROMPT);
+    let mut samples: Vec<String> = Vec::new();
+    for temp in ASSUMPTION_TEMPS {
+        let opts = GenOpts { num_predict: Some(60), temperature: Some(temp), ..base_opts };
+        if let Ok(r) =
+            ollama::chat_stream(&settings.ollama_endpoint, model, &msgs, opts, false, |_| {}, |_| {}).await
+        {
+            *total_in += r.input_tokens;
+            *total_out += r.output_tokens;
+            let t = r.text.trim();
+            if !t.is_empty() {
+                samples.push(t.to_string());
+            }
+        }
+    }
+    if samples.len() < 2 {
+        return None;
+    }
+    let refs: Vec<&str> = samples.iter().map(|s| s.as_str()).collect();
+    let embs = ollama::embed(&settings.ollama_endpoint, &embed_model, &refs).await.ok()?;
+    ollama::pairwise_agreement(&embs)
+}
+
 /// Cascata de clarificação para o CHAT, conforme o nível (`off|light|medium|high`). Vazio = não perguntar.
 /// A (gate determinístico, `specificity`) filtra barato; B (modelo, `clarifying_questions`) gera/veta nos
 /// níveis medium/high. O planner mantém o seu próprio caminho (A-force) — isto é só do chat.
@@ -358,11 +419,34 @@ pub async fn gate(
         return default_questions();
     }
 
-    // medium / high: A→B. Borderline confirma-se pela L2 (ou, sem L2 instalado, deixa o B decidir).
+    // medium / high: A→B. Borderline confirma-se pela L2 (ou, sem L2 instalado, deixa o B decidir);
+    // em `high` na rota local, se a própria L2 estiver por pouco (margem baixa), a L3 desempata por
+    // self-consistency da suposição — só rota local: a API não expõe `temperature` para amostrar
+    // com diversidade controlada.
     let candidate = match spec {
         Specificity::Clear => false,
         Specificity::Vague => true,
-        Specificity::Borderline => embedding_vague(settings, &task).await.unwrap_or(true),
+        Specificity::Borderline => {
+            let l2 = embedding_vague_margin(settings, &task).await;
+            let l2_verdict = l2.map(|(v, _)| v).unwrap_or(true);
+            let low_margin = l2.map(|(_, m)| m < L2_MARGIN_LOW_CONFIDENCE).unwrap_or(false);
+            if level == "high" && !use_api && low_margin {
+                match assumption_divergence(settings, model, messages, opts, total_in, total_out).await {
+                    Some(agreement) => {
+                        let margin = l2.map(|(_, m)| m).unwrap_or(0.0);
+                        log::info!("[clarify] L3 margin={margin:.3} agreement={agreement:.3}");
+                        if agreement >= ASSUMPTION_AGREEMENT_HIGH {
+                            false // suposições convergem → não vale a pena perguntar
+                        } else {
+                            l2_verdict
+                        }
+                    }
+                    None => l2_verdict,
+                }
+            } else {
+                l2_verdict
+            }
+        }
     };
     log::info!("[clarify] chat level={level} spec={spec:?} bias={bias} candidate={candidate}");
     if !candidate {
@@ -453,7 +537,31 @@ mod tests {
             (false, vec![0.0, 1.0]),
             (false, vec![0.1, 0.9]),
         ];
-        assert_eq!(nearest_centroid_vague(&exemplars, &[1.0, 0.05]), Some(true));
-        assert_eq!(nearest_centroid_vague(&exemplars, &[0.05, 1.0]), Some(false));
+        assert_eq!(centroid_margin(&exemplars, &[1.0, 0.05]).map(|(v, _)| v), Some(true));
+        assert_eq!(centroid_margin(&exemplars, &[0.05, 1.0]).map(|(v, _)| v), Some(false));
+    }
+
+    #[test]
+    fn centroid_margin_is_high_when_clearly_closer_to_one_side() {
+        let exemplars = vec![
+            (true, vec![1.0, 0.0]),
+            (true, vec![0.9, 0.1]),
+            (false, vec![0.0, 1.0]),
+            (false, vec![0.1, 0.9]),
+        ];
+        let (vague, margin) = centroid_margin(&exemplars, &[1.0, 0.0]).unwrap();
+        assert!(vague);
+        assert!(margin > 0.5, "esperava margem alta para um ponto claramente vago, veio {margin}");
+    }
+
+    #[test]
+    fn centroid_margin_is_low_near_the_boundary() {
+        let exemplars = vec![
+            (true, vec![1.0, 0.0]),
+            (false, vec![0.0, 1.0]),
+        ];
+        // Equidistante dos dois centróides → margem ~0, o gatilho da L3.
+        let (_, margin) = centroid_margin(&exemplars, &[1.0, 1.0]).unwrap();
+        assert!(margin < 0.01, "esperava margem ~0 no meio do caminho, veio {margin}");
     }
 }

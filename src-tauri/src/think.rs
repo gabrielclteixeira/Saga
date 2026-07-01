@@ -29,17 +29,6 @@ fn wire(messages: &[ChatMessage]) -> Vec<Value> {
         .collect()
 }
 
-fn cosine(a: &[f32], b: &[f32]) -> f32 {
-    let dot: f32 = a.iter().zip(b).map(|(x, y)| x * y).sum();
-    let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let nb: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if na == 0.0 || nb == 0.0 {
-        0.0
-    } else {
-        dot / (na * nb)
-    }
-}
-
 /// Concordância média (cosseno par-a-par dos embeddings das amostras). None se indisponível.
 async fn agreement(endpoint: &str, model: &str, cands: &[String]) -> Option<f32> {
     if cands.len() < 2 {
@@ -47,17 +36,7 @@ async fn agreement(endpoint: &str, model: &str, cands: &[String]) -> Option<f32>
     }
     let refs: Vec<&str> = cands.iter().map(|s| s.as_str()).collect();
     let embs = ollama::embed(endpoint, model, &refs).await.ok()?;
-    if embs.len() < 2 {
-        return None;
-    }
-    let (mut total, mut n) = (0.0f32, 0u32);
-    for i in 0..embs.len() {
-        for j in (i + 1)..embs.len() {
-            total += cosine(&embs[i], &embs[j]);
-            n += 1;
-        }
-    }
-    (n > 0).then(|| (total / n as f32).clamp(0.0, 1.0))
+    ollama::pairwise_agreement(&embs)
 }
 
 /// Self-consistency: amostra `samples` respostas (temperaturas variadas), mede a concordância e
