@@ -505,6 +505,84 @@ If you DON'T have these tools in this chat, explain that a project in "Confirmed
 Claude (API) route or a tool-calling local model is needed — don't claim you have no disk access.
 "#;
 
+/// Playbook de exemplo — sem frontmatter (padrão normal de playbooks), só um procedimento.
+const MEETING_NOTES_PLAYBOOK: &str = r#"# Notas de reunião
+
+Procedimento para transformar apontamentos soltos de uma reunião num resumo estruturado.
+
+Quando o utilizador colar notas em bruto de uma reunião (ou pedir para organizar notas de reunião):
+
+1. Identifica participantes, data e objetivo a partir do texto; se não estiverem explícitos,
+   pergunta ou assume "não indicado" em vez de inventar.
+2. Estrutura a saída em quatro secções fixas:
+   - **Decisões** — o que ficou decidido, em frases curtas e afirmativas.
+   - **Ações** — cada tarefa com responsável e prazo (se mencionados; senão "a definir").
+   - **Pontos em aberto** — questões discutidas sem conclusão.
+   - **Próximos passos** — o que acontece a seguir.
+3. Não inventes participantes, prazos ou decisões que não estejam nas notas — assinala o que for
+   ambíguo em vez de adivinhar.
+4. Mantém a linguagem direta; resume, não repitas o texto em bruto.
+
+Isto é um exemplo de playbook: copia, adapta ou apaga conforme precisares.
+"#;
+
+const MEETING_NOTES_PLAYBOOK_EN: &str = r#"# Meeting notes
+
+Procedure for turning raw meeting notes into a structured summary.
+
+When the user pastes raw notes from a meeting (or asks to organize meeting notes):
+
+1. Identify participants, date and goal from the text; if they're not explicit, ask or assume
+   "not stated" instead of making them up.
+2. Structure the output into four fixed sections:
+   - **Decisions** — what was decided, as short affirmative sentences.
+   - **Actions** — each task with an owner and deadline (if mentioned; otherwise "TBD").
+   - **Open questions** — points discussed without a conclusion.
+   - **Next steps** — what happens next.
+3. Don't invent participants, deadlines or decisions that aren't in the notes — flag what's
+   ambiguous instead of guessing.
+4. Keep the language direct; summarize, don't repeat the raw text.
+
+This is a playbook example: copy, adapt or delete it as you need.
+"#;
+
+/// Workflow de exemplo — com frontmatter (padrão normal de workflows), usa $ARGUMENTS.
+const RESEARCH_SUMMARIZE_WORKFLOW: &str = r#"---
+name: research-summarize
+description: "Pesquisa um tema na web e devolve um resumo com fontes."
+argument-hint: o tema ou pergunta a investigar
+route: local
+---
+
+1. Pesquisa "$ARGUMENTS" na web (usa a ferramenta de pesquisa disponível); lê pelo menos 2-3
+   resultados relevantes, não só os títulos.
+2. Cruza a informação entre as fontes; se se contradisserem, diz isso em vez de escolher uma
+   ao acaso.
+3. Escreve um resumo direto (poucos parágrafos ou uma lista, conforme o tema) com o que está
+   confirmado.
+4. Termina sempre com uma lista de fontes (título + URL) que usaste.
+
+Isto é um exemplo de workflow: copia, adapta ou apaga conforme precisares.
+"#;
+
+const RESEARCH_SUMMARIZE_WORKFLOW_EN: &str = r#"---
+name: research-summarize
+description: "Searches the web for a topic and returns a summary with sources."
+argument-hint: the topic or question to research
+route: local
+---
+
+1. Search "$ARGUMENTS" on the web (use whatever search tool is available); read at least 2-3
+   relevant results, not just the titles.
+2. Cross-check the information across sources; if they contradict each other, say so instead
+   of picking one at random.
+3. Write a direct summary (a few paragraphs or a list, depending on the topic) of what's
+   confirmed.
+4. Always end with a list of sources (title + URL) you used.
+
+This is a workflow example: copy, adapt or delete it as you need.
+"#;
+
 const AGENT_ENGINEER_EN: &str = r#"---
 name: Software Engineer
 description: "Experienced developer: writes, reviews and explains code with rigor."
@@ -620,6 +698,38 @@ pub fn seed_defaults(root: &str, lang: &str) {
         Ok(cur) => {
             if (cur == FILES_SKILL || cur == FILES_SKILL_EN) && cur != files_want {
                 let _ = write_doc(root, "skill", "project-files", files_want);
+            }
+        }
+    }
+
+    // Playbook de exemplo — mostra o formato (sem frontmatter) e um procedimento real.
+    let mn_want = if en { MEETING_NOTES_PLAYBOOK_EN } else { MEETING_NOTES_PLAYBOOK };
+    let mn_path = playbooks_dir(root).join("meeting-notes.md");
+    match fs::read_to_string(&mn_path) {
+        Err(_) => {
+            let _ = write_doc(root, "playbook", "meeting-notes", mn_want);
+        }
+        Ok(cur) => {
+            if (cur == MEETING_NOTES_PLAYBOOK || cur == MEETING_NOTES_PLAYBOOK_EN) && cur != mn_want {
+                let _ = write_doc(root, "playbook", "meeting-notes", mn_want);
+            }
+        }
+    }
+
+    // Workflow de exemplo — mostra o formato (com frontmatter) e o padrão $ARGUMENTS.
+    let rs_want = if en {
+        RESEARCH_SUMMARIZE_WORKFLOW_EN
+    } else {
+        RESEARCH_SUMMARIZE_WORKFLOW
+    };
+    let rs_path = workflows_dir(root).join("research-summarize.md");
+    match fs::read_to_string(&rs_path) {
+        Err(_) => {
+            let _ = write_doc(root, "workflow", "research-summarize", rs_want);
+        }
+        Ok(cur) => {
+            if (cur == RESEARCH_SUMMARIZE_WORKFLOW || cur == RESEARCH_SUMMARIZE_WORKFLOW_EN) && cur != rs_want {
+                let _ = write_doc(root, "workflow", "research-summarize", rs_want);
             }
         }
     }

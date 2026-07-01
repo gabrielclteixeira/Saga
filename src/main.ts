@@ -332,6 +332,12 @@ app.innerHTML = `
       </fieldset>
 
       <fieldset>
+        <legend>${t("Ajuda")}</legend>
+        <button type="button" class="ghost" id="btn-replay-tour">${t("Rever tour")}</button>
+        <p class="wiz-hint">${t("Mostra outra vez as dicas rápidas sobre o rail, a rota, o Workspace e as Automações.")}</p>
+      </fieldset>
+
+      <fieldset>
         <legend>${t("Sistema")}</legend>
         <label class="ws-check"><input type="checkbox" id="set-autostart" /> ${t("Iniciar com o sistema")}</label>
         <p class="wiz-hint">${t("Mantém as automações agendadas a correr. Fechar a janela com automações ativas envia o Saga para a bandeja do sistema.")}</p>
@@ -771,6 +777,10 @@ app.innerHTML = `
         <div id="wiz-ollama-panel">
           <div class="wiz-status" id="wiz-ollama-status">${t("A verificar…")}</div>
           <div id="wiz-rec" class="wiz-rec" hidden></div>
+          <div id="wiz-embed" class="wiz-embed" hidden>
+            <span>${t("Opcional: instala um modelo de embeddings pequeno (nomic-embed-text) para a Saga detetar melhor perguntas vagas.")}</span>
+            <button type="button" class="ghost" id="wiz-embed-install">${icon("download")} ${t("Instalar")}</button>
+          </div>
           <details class="wiz-manual">
             <summary>${t("Configuração manual")}</summary>
             <label>${t("Endpoint")} <input id="w_ollama_endpoint" type="text" /></label>
@@ -3314,6 +3324,11 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
       showHint(
         t("O modelo de visão não carregou no Ollama. Escolhe outro em Modelos → Modelo de visão (ex.: gemma4).")
       );
+    } else if (
+      state.settings?.local_provider === "ollama" &&
+      /connection refused|ECONNREFUSED|failed to connect/i.test(String(e))
+    ) {
+      showHint(t("O Ollama não parece estar a correr — inicia-o e tenta outra vez, ou muda para Claude em Definições."));
     }
   } finally {
     if (viewing()) {
@@ -4517,6 +4532,18 @@ async function runWizardTest() {
   } catch (e) {
     console.error(e);
   }
+  void checkWizEmbed();
+}
+
+/** Esconde a oferta de instalar um modelo de embeddings se já houver um instalado/configurado. */
+async function checkWizEmbed() {
+  const box = document.querySelector<HTMLElement>("#wiz-embed");
+  if (!box) return;
+  try {
+    box.hidden = !!(await api.detectEmbedModel());
+  } catch {
+    box.hidden = true;
+  }
 }
 
 /** Caminho LM Studio do wizard: guarda as settings e lista os modelos carregados (sem diagnostics do Ollama). */
@@ -4622,9 +4649,9 @@ async function finishWizard() {
   maybeMiniTour();
 }
 
-/** Mini-tour: 1–2 dicas curtas apontando ao rail e ao composer (uma só vez). */
-function maybeMiniTour() {
-  if (localStorage.getItem("saga.tourDone") === "1") return;
+/** Mini-tour: dicas curtas apontando ao rail, à rota, ao Workspace, às Automações e ao composer. */
+function maybeMiniTour(force = false) {
+  if (!force && localStorage.getItem("saga.tourDone") === "1") return;
   localStorage.setItem("saga.tourDone", "1");
   const tip = (anchorSel: string, text: string, place: "right" | "top") =>
     new Promise<void>((resolve) => {
@@ -4651,6 +4678,17 @@ function maybeMiniTour() {
     });
   void (async () => {
     await tip("#rail", t("Aqui ficam os Modelos, Workspace e Automações."), "right");
+    await tip("#route-mode", t("Muda aqui entre modelo Local e Claude, turno a turno."), "top");
+    await tip(
+      "[data-view=\"workspace\"]",
+      t("Workspace: skills, playbooks e workflows que o modelo pode usar."),
+      "right"
+    );
+    await tip(
+      "[data-view=\"automations\"]",
+      t("Automações: agenda um workflow para correr sozinho, sem abrires o chat."),
+      "right"
+    );
     await tip("#composer", t("Escreve a tua pergunta aqui. Boa viagem!"), "top");
   })();
 }
@@ -6766,6 +6804,9 @@ async function init() {
       b.addEventListener("click", () => setWizBackend(b.dataset.backend as "ollama" | "lmstudio"))
     );
   document.querySelector("#wiz-lm-refresh")?.addEventListener("click", () => void runWizardLmTest());
+  document.querySelector("#wiz-embed-install")!.addEventListener("click", () => {
+    void pullModelUi("nomic-embed-text").then(() => checkWizEmbed());
+  });
   document.querySelector("#wiz-skip")!.addEventListener("click", (e) => {
     e.preventDefault();
     void finishWizard();
@@ -6839,6 +6880,10 @@ async function init() {
   new ResizeObserver(() => reflowArtifactControls()).observe(els.artifactPanel);
   document.querySelector("#btn-export-saga")!.addEventListener("click", exportSaga);
   document.querySelector("#btn-check-update")!.addEventListener("click", checkForUpdates);
+  document.querySelector("#btn-replay-tour")!.addEventListener("click", () => {
+    els.dialog.close();
+    maybeMiniTour(true);
+  });
   document.querySelector("#set-autostart")!.addEventListener("change", (e) => {
     const on = (e.target as HTMLInputElement).checked;
     api.setAutostart(on).catch((err) => {

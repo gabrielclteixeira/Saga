@@ -1965,6 +1965,26 @@ mark.find-current {
   padding: 12px;
   background: var(--bg);
 }
+.wiz-embed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.wiz-embed button {
+  flex-shrink: 0;
+  margin-top: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 .wiz-choice {
   display: grid;
   grid-template-columns: 1fr 1fr;
