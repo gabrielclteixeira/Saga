@@ -824,7 +824,7 @@ async fn run_doc_gen(
     } else if settings.cloud_provider == "claude" && settings.claude_mode == "api" && !settings.claude_api_key.trim().is_empty() {
         Some(providers::claude_api::messages(&settings.claude_api_key, &settings.claude_model, max, &messages, false).await)
     } else if settings.cloud_provider == "claude" && settings.claude_mode == "cli" {
-        Some(providers::claude_cli::run(&settings.claude_cli_path, &settings.claude_model, &messages, &[]).await)
+        Some(providers::claude_cli::run(&settings.claude_cli_path, &settings.claude_model, &messages, &[], None).await)
     } else {
         None
     };
@@ -1660,11 +1660,14 @@ pub async fn send_message_stream(
         .iter()
         .any(|m| m.attachments.iter().any(|a| a.kind == "image"));
     let route_claude_now = route_override_eff.as_deref() == Some("claude");
+    // Modo CLI (subscrição) também tem tools de projeto agora (Read/Glob/Grep sempre;
+    // Write/Edit se o tópico for editável — ver providers::claude_cli::run), por isso conta
+    // como "tools on" tal como a API.
     let project_tools_on = project_root.is_some()
         && !turn_has_image
         && ((route_claude_now
-            && settings.claude_mode == "api"
-            && settings.cloud_provider != "openai")
+            && settings.cloud_provider != "openai"
+            && (settings.claude_mode == "api" || settings.claude_mode == "cli"))
             || (!route_claude_now && settings.local_provider != "openai" && !research));
     let topic_ctx = topic.map(|tp| {
         let mut block = format!("## Tópico: {}", tp.name);
@@ -1685,7 +1688,16 @@ pub async fn send_message_stream(
                     "\n\n## Projeto (pasta): {folder}\nÁrvore de ficheiros (parcial):\n{tree}"
                 ));
             }
-            if project_tools_on {
+            if project_tools_on && route_claude_now && settings.claude_mode == "cli" {
+                // Modo CLI: as tools reais (Read/Glob/Grep/Write/Edit) e o texto sobre confirmação
+                // (ou falta dela) são injetados por providers::claude_cli::run via
+                // --append-system-prompt — aqui só confirmamos que existem, sem repetir detalhes
+                // que podem ficar desatualizados nos dois sítios.
+                block.push_str(
+                    "\n\nTens ferramentas de ficheiro nesta pasta (Read/Glob/Grep sempre; Write/Edit se o \
+                     projeto estiver em 'Edição confirmada') — usa-as, não inventes que não tens acesso.",
+                );
+            } else if project_tools_on {
                 block.push_str(
                     "\n\nTens ferramentas de ficheiro neste projeto: usa project_tree e project_read para explorar, e project_edit/project_create para gravar (cada gravação é confirmada pelo utilizador). Usa caminhos relativos à pasta.",
                 );
@@ -1697,7 +1709,7 @@ pub async fn send_message_stream(
                     "ler sob demanda"
                 };
                 block.push_str(&format!(
-                    "\n\n[IMPORTANTE] Tens a árvore acima como contexto, mas NESTA conversa NÃO tens ferramentas para aceder aos ficheiros. Para {extra} ficheiros do projeto, diz ao utilizador para enviar na rota \"Claude\" (com o Claude em modo API) — só aí o agente tem acesso ao sistema de ficheiros. NÃO afirmes que és uma IA sem acesso a ficheiros nem mandes copiar/colar para um ficheiro manualmente; explica esta condição concreta.",
+                    "\n\n[IMPORTANTE] Tens a árvore acima como contexto, mas NESTA conversa NÃO tens ferramentas para aceder aos ficheiros. Para {extra} ficheiros do projeto, diz ao utilizador para enviar na rota \"Claude\" (API ou CLI) — só aí o agente tem acesso ao sistema de ficheiros. NÃO afirmes que és uma IA sem acesso a ficheiros nem mandes copiar/colar para um ficheiro manualmente; explica esta condição concreta.",
                 ));
             }
         }
@@ -2294,6 +2306,7 @@ pub async fn send_message_stream(
                     &prepared.model,
                     &prepared.full_messages,
                     &cli_tools,
+                    project_root.as_ref().map(|r| (r.as_str(), project_writable)),
                 )
                 .await;
                 if let Ok(ref resp) = r {

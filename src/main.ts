@@ -692,7 +692,7 @@ app.innerHTML = `
             <option value="ask">${t("Edição confirmada (o agente pode gravar, com aprovação)")}</option>
           </select>
         </label>
-        <p class="wiz-hint">${t("Anexar uma pasta dá a árvore ao contexto. Em 'Leitura' o agente não escreve ficheiros de todo (mas continuas a poder guardar manualmente, ex. num artefacto). Em 'Edição confirmada' o modelo local (Ollama) ou o Claude (modo API) também podem criar/editar, sempre com confirmação de cada gravação.")}</p>
+        <p class="wiz-hint">${t("Anexar uma pasta dá a árvore ao contexto. Em 'Leitura' o agente não escreve ficheiros de todo (mas continuas a poder guardar manualmente, ex. num artefacto). Em 'Edição confirmada': no modelo local (Ollama) e no Claude em modo API, cada gravação pede a tua confirmação; no Claude em modo CLI (subscrição), as escritas ficam pré-autorizadas para a sessão — sem confirmar ficheiro a ficheiro.")}</p>
       </fieldset>
 
       <menu>

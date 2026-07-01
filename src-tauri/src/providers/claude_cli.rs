@@ -82,6 +82,7 @@ pub async fn run(
     model: &str,
     messages: &[ChatMessage],
     allowed_tools: &[&str],
+    project: Option<(&str, bool)>,
 ) -> Result<LlmResponse> {
     // Imagens vão para ficheiros temporários referenciados no prompt (a CLI lê-as via Read).
     let tmp_dir = std::env::temp_dir().join("saga-cli-images");
@@ -108,10 +109,50 @@ pub async fn run(
         "--model".into(),
         model,
     ];
+
+    // Projeto anexado ao tópico: dá à CLI acesso à pasta via --add-dir + as tools nativas dela
+    // (Read/Glob/Grep sempre; Write/Edit só se o tópico estiver em "Edição confirmada"). Isto NÃO
+    // passa pelo ActionGate da rota API — em modo headless (-p) não há como pausar a meio para
+    // pedir confirmação por ficheiro, por isso a escrita fica pré-autorizada para a sessão inteira
+    // (decisão explícita do utilizador, não um atalho silencioso).
+    let mut sys_extra = String::new();
+    if let Some((root, writable)) = project {
+        args.push("--add-dir".into());
+        args.push(root.to_string());
+        for t in ["Read", "Glob", "Grep"] {
+            if !tools.iter().any(|x| x == t) {
+                tools.push(t.into());
+            }
+        }
+        if writable {
+            for t in ["Write", "Edit"] {
+                if !tools.iter().any(|x| x == t) {
+                    tools.push(t.into());
+                }
+            }
+            sys_extra = format!(
+                "Tens acesso de leitura E escrita à pasta do projeto ({root}) — usa Read/Glob/Grep para explorar \
+                 e Write/Edit para criar/editar ficheiros. IMPORTANTE: neste modo (CLI/subscrição) as escritas \
+                 NÃO pedem confirmação individual ao utilizador — foram pré-autorizadas para esta sessão. Sê \
+                 cauteloso: lê um ficheiro antes de o reescreveres, e confirma verbalmente o que vais gravar."
+            );
+        } else {
+            sys_extra = format!(
+                "Tens acesso de LEITURA à pasta do projeto ({root}) via Read/Glob/Grep — NÃO tens Write/Edit \
+                 (o projeto está em modo 'Leitura'). Se pedirem para criares/editares um ficheiro, diz \
+                 claramente que precisas que mudem o tópico para 'Edição confirmada' nas definições — nunca \
+                 inventes limitações da rota nem mandes copiar/colar."
+            );
+        }
+    }
     if !tools.is_empty() {
         // Autoriza ferramentas da CLI em modo headless (senão pede permissão).
         args.push("--allowedTools".into());
         args.push(tools.join(","));
+    }
+    if !sys_extra.is_empty() {
+        args.push("--append-system-prompt".into());
+        args.push(sys_extra);
     }
 
     // Command é síncrono — corre num thread de blocking para não travar o runtime async.

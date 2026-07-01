@@ -343,6 +343,7 @@ pub async fn handle(messages: &[ChatMessage], settings: &Settings) -> Result<Out
                     &p.model,
                     &p.full_messages,
                     &[],
+                    None,
                 )
                 .await?
             }

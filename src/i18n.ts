@@ -106,8 +106,8 @@ const EN: Record<string, string> = {
     "Read (the agent only reads the folder — no writes at all)",
   "Edição confirmada (o agente pode gravar, com aprovação)":
     "Confirmed edits (the agent can save, with approval)",
-  "Anexar uma pasta dá a árvore ao contexto. Em 'Leitura' o agente não escreve ficheiros de todo (mas continuas a poder guardar manualmente, ex. num artefacto). Em 'Edição confirmada' o modelo local (Ollama) ou o Claude (modo API) também podem criar/editar, sempre com confirmação de cada gravação.":
-    "Attaching a folder adds the file tree to the context. In 'Read' the agent never writes files (but you can still save manually, e.g. from an artifact). In 'Confirmed edits' the local model (Ollama) or Claude (API mode) can also create/edit, always confirming every write.",
+  "Anexar uma pasta dá a árvore ao contexto. Em 'Leitura' o agente não escreve ficheiros de todo (mas continuas a poder guardar manualmente, ex. num artefacto). Em 'Edição confirmada': no modelo local (Ollama) e no Claude em modo API, cada gravação pede a tua confirmação; no Claude em modo CLI (subscrição), as escritas ficam pré-autorizadas para a sessão — sem confirmar ficheiro a ficheiro.":
+    "Attaching a folder adds the file tree to the context. In 'Read' the agent never writes files (but you can still save manually, e.g. from an artifact). In 'Confirmed edits': on the local model (Ollama) and on Claude in API mode, every write asks for your confirmation; on Claude in CLI (subscription) mode, writes are pre-authorized for the session — without confirming file by file.",
   "Projeto: ": "Project: ",
   "Escreve uma mensagem…": "Type a message…",
   "Enviar": "Send",
