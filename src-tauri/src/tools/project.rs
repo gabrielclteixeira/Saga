@@ -114,6 +114,37 @@ pub fn list_files(root: &str, max: usize) -> Vec<String> {
     out
 }
 
+/// Estado (tamanho, data de modificação) de cada ficheiro da pasta — para detetar o que uma
+/// chamada externa (a CLI, com as suas próprias tools) mudou, comparando um "antes" com um
+/// "depois". Não sabemos QUE tools a CLI chamou (corre fora do Dispatcher do Saga), mas sabemos
+/// o que ficou diferente no disco — suficiente para um rasto no Action Log.
+pub fn snapshot(root: &str, max: usize) -> std::collections::HashMap<String, (u64, Option<std::time::SystemTime>)> {
+    let mut out = std::collections::HashMap::new();
+    for rel in list_files(root, max) {
+        if let Ok(meta) = std::fs::metadata(Path::new(root).join(&rel)) {
+            out.insert(rel, (meta.len(), meta.modified().ok()));
+        }
+    }
+    out
+}
+
+/// Compara dois snapshots e devolve os caminhos que mudaram, com "(novo)"/"(editado)" anexado.
+pub fn diff_snapshots(
+    before: &std::collections::HashMap<String, (u64, Option<std::time::SystemTime>)>,
+    after: &std::collections::HashMap<String, (u64, Option<std::time::SystemTime>)>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for (path, stats) in after {
+        match before.get(path) {
+            None => out.push(format!("{path} (novo)")),
+            Some(prev) if prev != stats => out.push(format!("{path} (editado)")),
+            _ => {}
+        }
+    }
+    out.sort();
+    out
+}
+
 fn walk_files(base: &Path, dir: &Path, out: &mut Vec<String>, max: usize, depth: usize) {
     if depth > 6 || out.len() >= max {
         return;

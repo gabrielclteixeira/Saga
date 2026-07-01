@@ -2349,6 +2349,17 @@ pub async fn send_message_stream(
                 if subagents {
                     cli_tools.push("Task");
                 }
+                // Modo CLI corre fora do Dispatcher do Saga (a própria CLI usa as suas tools
+                // nativas) — não há eventos de tool-call para registar. Em vez disso, comparamos
+                // a pasta antes/depois: é a única forma de saber o que mudou e deixar um rasto
+                // no Action Log (ver tools/project::{snapshot,diff_snapshots}).
+                let write_snapshot = if project_writable {
+                    project_root
+                        .as_ref()
+                        .map(|r| crate::tools::project::snapshot(r, 500))
+                } else {
+                    None
+                };
                 let r = providers::claude_cli::run(
                     &settings.claude_cli_path,
                     &prepared.model,
@@ -2357,6 +2368,22 @@ pub async fn send_message_stream(
                     project_root.as_ref().map(|r| (r.as_str(), project_writable)),
                 )
                 .await;
+                if let (Some(before), Some(root)) = (&write_snapshot, &project_root) {
+                    let after = crate::tools::project::snapshot(root, 500);
+                    let changed = crate::tools::project::diff_snapshots(before, &after);
+                    if !changed.is_empty() {
+                        let conn = state.db.lock().unwrap();
+                        let _ = store::insert_action(
+                            &conn,
+                            conversation_id,
+                            "claude_cli_write",
+                            &serde_json::json!({ "files": changed }).to_string(),
+                            "OK",
+                            &changed.join(", "),
+                            "",
+                        );
+                    }
+                }
                 if let Ok(ref resp) = r {
                     let _ = channel.send(StreamEvent::Delta {
                         text: resp.text.clone(),
