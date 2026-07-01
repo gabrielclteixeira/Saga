@@ -712,8 +712,17 @@ const EN: Record<string, string> = {
   "Percebi": "Got it",
   "Aqui ficam os Modelos, Workspace e Automações.":
     "Models, Workspace and Automations live here.",
+  "Muda aqui entre modelo Local e Claude, turno a turno.":
+    "Switch here between Local and Claude, turn by turn.",
+  "Workspace: skills, playbooks e workflows que o modelo pode usar.":
+    "Workspace: skills, playbooks and workflows the model can use.",
+  "Automações: agenda um workflow para correr sozinho, sem abrires o chat.":
+    "Automations: schedule a workflow to run on its own, without opening the chat.",
   "Escreve a tua pergunta aqui. Boa viagem!":
     "Type your question here. Bon voyage!",
+  "Rever tour": "Replay tour",
+  "Mostra outra vez as dicas rápidas sobre o rail, a rota, o Workspace e as Automações.":
+    "Show the quick tips again — the rail, the route, Workspace and Automations.",
   "Resume este artigo: <cola um link>": "Summarize this article: <paste a link>",
   "Escreve um e-mail breve a recusar uma reunião":
     "Write a short email declining a meeting",
@@ -796,4 +805,35 @@ const EN: Record<string, string> = {
   "Aprovar": "Approve",
   // Placeholders técnicos
   "ex.: gpt-4o": "e.g. gpt-4o",
+  // First-time experience: instalar embed model, dica de ligação recusada
+  "Opcional: instala um modelo de embeddings pequeno (nomic-embed-text) para a Saga detetar melhor perguntas vagas.":
+    "Optional: install a small embedding model (nomic-embed-text) so Saga can better detect vague questions.",
+  "O Ollama não parece estar a correr — inicia-o e tenta outra vez, ou muda para Claude em Definições.":
+    "Ollama doesn't seem to be running — start it and try again, or switch to Claude in Settings.",
+  // Guardar em memória ao apagar uma Saga
+  "Apagar esta Saga?": "Delete this Saga?",
+  "Assunto (para a memória)": "Subject (for memory)",
+  "Guardar em memória e apagar": "Save to memory and delete",
+  "Só apagar": "Just delete",
+  // Smart Saga
+  "Perguntar antes de pesquisar (Smart Saga)": "Ask before searching (Smart Saga)",
+  "No chat normal (fora do Plan mode), quando o pedido parece precisar de dados atuais e ainda não tens 🔎/pasta/ferramentas ligadas, pergunta antes de responder de cabeça ou pesquisar às escondas.":
+    "In normal chat (outside Plan mode), when a request seems to need current data and you don't have 🔎/folder/tools on yet, asks before answering from memory or searching behind your back.",
+  "Pesquisar na web?": "Search the web?",
+  "Não, responde assim": "No, answer as-is",
+  "Sim, pesquisa": "Yes, search",
+  // Diálogos: fechar ao clicar fora, feedback de gravação
+  "Fechar sem guardar as alterações?": "Close without saving your changes?",
+  "{kind} \"{name}\" criado no Workspace.": "{kind} \"{name}\" created in the Workspace.",
+  "Subagentes: ferramentas disponíveis têm prioridade este turno — sem paralelismo.":
+    "Subagents: available tools take priority this turn — no parallelism.",
+  // Outras lacunas encontradas numa varredura de cobertura PT→EN
+  "PDF": "PDF",
+  "Ajuda": "Help",
+  "assunto": "subject",
+  "Nova skill": "New skill",
+  "Novo playbook": "New playbook",
+  "Novo workflow": "New workflow",
+  "Novo agente": "New agent",
+  "Correr agora": "Run now",
 };
