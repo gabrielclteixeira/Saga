@@ -297,6 +297,11 @@ do motor em Modelos → Avançado. Não inventes resultados."
                         .to_string();
                     on_tool(name, &path);
                     match (project, gate) {
+                        // project_create é só para ficheiros novos: se já existe, instrui a usar
+                        // project_edit em vez de sobrescrever às escondidas (evita o "copia à mão").
+                        (Some(p), _) if name == "project_create" && project::file_exists(&p.root, &path) => {
+                            format!("o ficheiro '{path}' já existe — usa project_edit para substituir o conteúdo (project_create é só para ficheiros novos)")
+                        }
                         (Some(p), Some(g)) if p.writable => {
                             // Escrita confirmada pelo mesmo gate da rota Claude (ask + action_log).
                             match g.begin(name, &args, true).await {

@@ -120,6 +120,11 @@ pub fn read_file(root: &str, rel: &str) -> Result<String, String> {
     }
 }
 
+/// Já existe um ficheiro neste caminho? (Para distinguir `project_create` de `project_edit`.)
+pub fn file_exists(root: &str, rel: &str) -> bool {
+    resolve_in_root(root, rel).map(|p| p.is_file()).unwrap_or(false)
+}
+
 /// Escreve/cria um ficheiro de texto dentro da pasta (cria pastas-pai). Ação confirmada pelo gate.
 pub fn write_file(root: &str, rel: &str, content: &str) -> Result<(), String> {
     let path = resolve_in_root(root, rel).ok_or_else(|| {

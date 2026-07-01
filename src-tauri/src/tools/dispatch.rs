@@ -426,7 +426,7 @@ impl ToolHost for Dispatcher<'_> {
             );
             if p.writable {
                 s.push_str(
-                    " Podes editar/criar/apagar com project_edit/project_create/project_delete (cada ação é confirmada pelo utilizador). Usa caminhos relativos à raiz.",
+                    " Podes editar/criar/apagar com project_edit/project_create/project_delete (cada ação é confirmada pelo utilizador). Usa caminhos relativos à raiz. project_create é só para ficheiros novos — se já existir, usa project_edit. Quando te pedirem para criar/editar um ficheiro, USA estas ferramentas — não mandes copiar/colar nem digas que não tens acesso ao disco.",
                 );
             }
             s.push('\n');
@@ -439,6 +439,19 @@ impl ToolHost for Dispatcher<'_> {
     }
 
     async fn call(&mut self, name: &str, params: &Value) -> Result<String> {
+        // `project_create` é só para ficheiros novos: se o ficheiro já existe, instrui o modelo a
+        // usar `project_edit` — antes do gate, para não pedir uma confirmação que ia sobrescrever
+        // às escondidas (senão o modelo desiste e manda copiar/colar à mão).
+        if name == "project_create" {
+            if let Some(p) = &self.project {
+                let path = params.get("path").and_then(|x| x.as_str()).unwrap_or("");
+                if crate::tools::project::file_exists(&p.root, path) {
+                    return Ok(format!(
+                        "o ficheiro '{path}' já existe — usa project_edit para substituir o conteúdo (project_create é só para ficheiros novos)"
+                    ));
+                }
+            }
+        }
         // Gate de confirmação (só para ações) + registo início/fim no action_log.
         let log_id = match self.gate.begin(name, params, is_action(name)).await {
             Gate::Blocked(msg) => return Ok(msg),
