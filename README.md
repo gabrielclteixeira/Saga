@@ -219,9 +219,28 @@ of the verbose step label) · **live token streaming during Plan execution** ·
 **topic-scoped Workspace docs** (a `topic:` frontmatter restricts a skill/playbook/workflow/agent to that topic's
 chats; empty = global — with a topic selector in the editor and a badge in the list) ·
 **Projects** (attach a folder to a topic → the model gets the **file tree** as context + **file tools**
-`project_tree`/`read`/`edit`/`create`/`delete` sandboxed to the folder, on **both the Claude API and the local
-Ollama route**, gated by per-write **confirmation** + action log; plus a **"Save to project"** button on artifacts
-and a seeded **project-files** skill that reinforces using the tools instead of paste-the-code) ·
+`project_tree`/`read`/`edit`/`create`/`delete` sandboxed to the folder, on the **Claude API route**, the
+**Claude CLI (subscription) route**, and the **local Ollama route** — CLI-mode writes are pre-authorized for the
+session, since headless mode can't pause for a per-file confirmation dialog the way the API route's
+**ActionGate** does, and leave an audit trail in the **Action Log** via before/after folder snapshots; a project
+in "Leitura" mode gets an honest **"this project is read-only"** message instead of a local model inventing
+route excuses; **"Save to project"** on any artifact works regardless of permission mode, since a manual,
+dialog-confirmed save isn't an autonomous write; a **live file explorer** (real filesystem watcher, collapsible
+tree) plus one-click **open folder**; per-turn **tool pruning** on the local route so `web_search`/`web_fetch`
+aren't offered when the message clearly doesn't need them; a seeded **project-files** skill that reinforces
+using the tools instead of paste-the-code) ·
+**self-distilling Workspace docs** (the model watches a topic's chats and, when it spots a replicable pattern,
+proposes capturing it as the right doc type — playbook / skill / workflow — drafted via the AI doc generator,
+scoped to the topic, and surfaced for **approve / edit before saving**, never silently; triggered by an explicit
+"Destilar" button or a passive pill from the compaction pass) ·
+**regenerate keeps history** (ChatGPT-style ‹previous/next› version cycling on any regenerated message instead
+of discarding the old response — works on any turn with alternates, not just the latest) ·
+**Stop button** (cancel an in-flight generation on any route while keeping the partial text already produced) ·
+**true per-conversation generation** (generating in one Saga no longer blocks the UI or actions in another;
+Claude generations run fully concurrent since they don't share local hardware, local generations queue —
+one at a time — since parallel Ollama requests compete for the same GPU/VRAM and get slower, not faster) ·
+**Claude CLI model discovery** (a refresh button drives the CLI interactively via a real PTY to list the
+models available on your subscription, for users without an API key) ·
 **local "Think" effort scale** (the Think chip becomes off → native → **verify** (self-consistency: sample N,
 measure agreement = confidence, synthesize) → **debate** (proponent → skeptic → judge), pickable per message and
 as an agent default) ·
@@ -245,25 +264,13 @@ Claude; plus a **model field on scheduled automations**) ·
 - **Code-sign & notarize installers** *(current focus)* — the updater is signed and auto-update is live; still
   pending is OS-level **code-signing + notarization** (Apple Developer ID / Windows Authenticode) to drop the
   "unknown publisher" warnings.
-- **Projects — auto mode & rollback** — Projects shipped (folder context + sandboxed file tools on both routes,
-  per-write confirmation). The remaining piece is an **auto** permission mode: after you **approve a plan**, the
-  agent runs the file edits unattended to the end (extending Plan mode's draft → approve → execute to real edits),
-  with the folder **snapshotted before the run** so **rollback** undoes the whole thing in one click. This is the
-  home for **Agentic Plan execution (v2)** below. Open: rollback via per-run shadow git (stash/commit) vs a
-  filesystem snapshot copy; how to combine the multi-step tool loop with the (currently separate) verify/debate.
-- **Self-distilling Workspace docs** (skills / playbooks / workflows) *(current focus)* — the model watches a topic's chats and,
-  when it spots something **replicable**, proposes capturing it — **choosing the right type for the pattern**, not
-  always a playbook: a recurring **how-to you keep re-explaining** → a **playbook**; a stable piece of **domain
-  knowledge or a reusable technique/convention** → a **skill**; a repeated **multi-step task you actually run**
-  (search → read → format, or a fixed sequence of tool calls) → a **workflow**. Drafted via the existing *Generate
-  with AI* path, scoped to that topic, and surfaced for one-tap **approve / edit before it's saved** (never written
-  silently) — including the chance to **change the type** the model guessed. Once saved it auto-applies to the
-  other chats in the same topic through the `active()` Workspace index. (**Agents** stay user-authored — a persona
-  is a deliberate choice — though the distiller may *suggest* one.) Builds on: the AI doc generator, per-topic/Project
-  scoping, and the per-item enable/disable toggles already in the Workspace. Open: the detection trigger
-  (end-of-Saga summary pass vs a cheap local-model classifier per turn vs an explicit "capture this" affordance);
-  the type-classification step (let the same generation pass pick the type); dedupe against existing docs of any
-  type; keep it **opt-in** so it never feels intrusive.
+- **Projects — auto mode & rollback** — Projects now cover all three routes (Claude API, Claude CLI, local
+  Ollama), with a live file explorer and an audit trail. The remaining piece is an **auto** permission mode: after
+  you **approve a plan**, the agent runs the file edits unattended to the end (extending Plan mode's draft →
+  approve → execute to real edits), with the folder **snapshotted before the run** so **rollback** undoes the
+  whole thing in one click. This is the home for **Agentic Plan execution (v2)** below. Open: rollback via
+  per-run shadow git (stash/commit) vs a filesystem snapshot copy; how to combine the multi-step tool loop with
+  the (currently separate) verify/debate.
 - **Save a Saga to memory on delete** — when you delete a chat, offer to **distil it into the model's memory**
   first (so the knowledge outlives the transcript) instead of losing it. If the Saga already belongs to a **topic**,
   pre-select that topic as the memory's scope (still editable); if it's **unassociated**, ask which topic/subject to
