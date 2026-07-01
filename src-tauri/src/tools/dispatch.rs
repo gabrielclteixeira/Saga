@@ -428,6 +428,10 @@ impl ToolHost for Dispatcher<'_> {
                 s.push_str(
                     " Podes editar/criar/apagar com project_edit/project_create/project_delete (cada ação é confirmada pelo utilizador). Usa caminhos relativos à raiz. project_create é só para ficheiros novos — se já existir, usa project_edit. REGRA ABSOLUTA: antes de project_edit (substitui o ficheiro INTEIRO), lê SEMPRE o ficheiro primeiro com project_read — o cabeçalho indica o tamanho (linhas · bytes); se for grande demais para o teu contexto, edita só o necessário em vez de reescrever às cegas. Quando te pedirem para criar/editar um ficheiro, USA estas ferramentas — não mandes copiar/colar nem digas que não tens acesso ao disco.",
                 );
+            } else {
+                s.push_str(
+                    " Este projeto está em modo SÓ-LEITURA — só tens project_tree/project_read, NÃO tens project_create/edit/delete. Se pedirem para criares/editares um ficheiro, diz CLARAMENTE que o projeto está em modo leitura e sugere mudar para 'Edição confirmada' nas definições do tópico. Nunca inventes limitações da rota nem mandes copiar/colar para outra rota.",
+                );
             }
             s.push('\n');
         }

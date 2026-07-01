@@ -141,10 +141,14 @@ where
             sys.push_str(
                 " REGRA ABSOLUTA: antes de project_edit (que substitui o ficheiro INTEIRO), lê SEMPRE o ficheiro primeiro com project_read — sem o ler, perdes o conteúdo que lá está. O project_read indica no topo o tamanho (linhas · bytes); se for grande demais para caber no teu contexto, não o reescrevas às cegas — edita só o necessário ou avisa o utilizador.",
             );
+            sys.push_str(
+                " Quando te pedirem para criar/editar/apagar um ficheiro, USA estas ferramentas — não mandes copiar/colar nem digas que não tens acesso ao disco.",
+            );
+        } else {
+            sys.push_str(
+                " Este projeto está em modo SÓ-LEITURA — só tens project_tree/project_read, NÃO tens project_create/edit/delete. Se pedirem para criares/editares um ficheiro, diz CLARAMENTE que o projeto está em modo leitura e sugere mudar para 'Edição confirmada' nas definições do tópico. Nunca inventes limitações da rota nem mandes copiar/colar para outra rota.",
+            );
         }
-        sys.push_str(
-            " Quando te pedirem para criar/editar/apagar um ficheiro, USA estas ferramentas — não mandes copiar/colar nem digas que não tens acesso ao disco.",
-        );
     }
     let mut messages: Vec<Value> = vec![json!({ "role": "system", "content": sys })];
     messages.extend(full_messages.iter().map(|m| {
