@@ -19,9 +19,10 @@ base nos resultados da pesquisa; se não encontrares, di-lo claramente. NUNCA in
 números nem factos. Se te pedirem um PDF/documento, NÃO procures um PDF na web — escreve o documento \
 num bloco ```markdown (aparece como artefacto) e diz ao utilizador para clicar em 'Export PDF'. Sê conciso.";
 
-fn tools_schema(with_skill: bool) -> Value {
-    let mut arr = vec![
-        json!({
+fn tools_schema(with_skill: bool, with_web: bool) -> Value {
+    let mut arr: Vec<Value> = Vec::new();
+    if with_web {
+        arr.push(json!({
             "type": "function",
             "function": {
                 "name": "web_search",
@@ -32,8 +33,8 @@ fn tools_schema(with_skill: bool) -> Value {
                     "required": ["query"]
                 }
             }
-        }),
-        json!({
+        }));
+        arr.push(json!({
             "type": "function",
             "function": {
                 "name": "web_fetch",
@@ -44,8 +45,8 @@ fn tools_schema(with_skill: bool) -> Value {
                     "required": ["url"]
                 }
             }
-        }),
-    ];
+        }));
+    }
     if with_skill {
         arr.push(json!({
             "type": "function",
@@ -165,7 +166,12 @@ where
             json!({ "role": m.role, "content": m.content, "images": imgs })
         }
     }));
-    let mut tools_arr = tools_schema(!skills.is_empty())
+    // Menos tools por turno para modelos locais pequenos (degradam com muitas tools em simultâneo):
+    // só oferece web_search/web_fetch quando o próprio turno parece precisar de pesquisa — não só
+    // porque a conversa tem a pesquisa web ligada. Fail-open: ambíguo mantém as tools de pesquisa.
+    let last_user_msg = full_messages.last().map(|m| m.content.as_str()).unwrap_or("");
+    let with_web = crate::clarify::wants_web(last_user_msg);
+    let mut tools_arr = tools_schema(!skills.is_empty(), with_web)
         .as_array()
         .cloned()
         .unwrap_or_default();

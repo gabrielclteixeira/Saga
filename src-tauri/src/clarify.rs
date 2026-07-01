@@ -81,6 +81,52 @@ pub fn specificity(task: &str, bias: i32) -> Specificity {
     }
 }
 
+/// Sinais de pesquisa/atualidade (PT+EN) — a tarefa provavelmente precisa de `web_search`/`web_fetch`.
+const WEB_SIGNALS: &[&str] = &[
+    "pesquisa", "pesquisar", "procura", "procurar", "hoje", "atual", "atuais", "notícia", "notícias",
+    "preço", "preços", "cotação", "tempo", "meteorologia", "previsão", "quanto custa", "quando é",
+    "quem é", "quem foi", "últimas", "recente", "recentes", "site", "página web", "url",
+    "search", "current", "latest", "news", "price", "weather", "forecast", "when is", "who is",
+];
+
+/// Sinais de operação de ficheiro/projeto — a tarefa provavelmente NÃO precisa de pesquisar a web.
+const FILE_SIGNALS: &[&str] = &[
+    "ficheiro", "arquivo", "pasta", "projeto", "cria", "criar", "edita", "editar", "grava", "gravar",
+    "guarda", "guardar", "atualiza", "atualizar", "file", "folder", "create", "edit", "save", "write",
+    "update",
+];
+
+/// A mensagem contém um token com "pinta" de extensão de ficheiro (`cv.html`, `main.py`) — evita
+/// falsos positivos em decimais/preços ("3.5", "€19.99") exigindo que a parte antes do ponto não
+/// seja só dígitos.
+fn has_file_extension(lower: &str) -> bool {
+    lower.split_whitespace().any(|w| {
+        let w = w.trim_matches(|c: char| !c.is_alphanumeric() && c != '.');
+        match w.rfind('.') {
+            Some(pos) if pos > 0 => {
+                let (base, ext) = w.split_at(pos);
+                let ext = &ext[1..];
+                !base.chars().all(|c| c.is_ascii_digit())
+                    && (1..=5).contains(&ext.len())
+                    && ext.chars().all(|c| c.is_ascii_alphabetic())
+            }
+            _ => false,
+        }
+    })
+}
+
+/// Heurística determinística e barata (L1, mesmo espírito de `specificity`): este turno precisa
+/// mesmo de `web_search`/`web_fetch`, ou é claramente uma operação de ficheiro/projeto? Usada para
+/// não oferecer tools de pesquisa irrelevantes a modelos locais pequenos, que degradam com muitas
+/// tools simultâneas. **Fail-open**: qualquer ambiguidade (nenhum sinal forte, ou os dois lados
+/// presentes) devolve `true` — nunca esconde `web_search` por engano.
+pub fn wants_web(task: &str) -> bool {
+    let lower = task.to_lowercase();
+    let has_web = WEB_SIGNALS.iter().any(|s| lower.contains(s));
+    let has_file = FILE_SIGNALS.iter().any(|s| lower.contains(s)) || has_file_extension(&lower);
+    !(has_file && !has_web)
+}
+
 /// Exemplos curados (bilingue) para a L2: o centróide dos vagos vs dos específicos no espaço de
 /// embeddings classifica os casos fronteira. Não precisa de treino — só de cosseno.
 const EXEMPLARS: &[(&str, bool)] = &[
@@ -366,6 +412,36 @@ mod tests {
         assert_eq!(specificity(q, 0), Specificity::Borderline);
         assert_eq!(specificity(q, 2), Specificity::Clear); // 1 + 2 = 3 → Clear
         assert_eq!(specificity(q, -1), Specificity::Vague); // 1 - 1 = 0 → Vague
+    }
+
+    #[test]
+    fn wants_web_true_for_search_and_current_events() {
+        assert!(wants_web("qual é o preço do Bitcoin hoje"));
+        assert!(wants_web("what's the weather like tomorrow"));
+        assert!(wants_web("pesquisa as últimas notícias sobre Portugal"));
+    }
+
+    #[test]
+    fn wants_web_false_for_clear_file_requests() {
+        assert!(!wants_web("cria o cv_preview.html com este conteúdo"));
+        assert!(!wants_web("edita o ficheiro main.py e corrige o bug"));
+        assert!(!wants_web("guarda isto na pasta do projeto"));
+    }
+
+    #[test]
+    fn wants_web_fails_open_when_both_or_neither_signal() {
+        // Ambos os sinais → mantém web (pode precisar de pesquisar para escrever o ficheiro).
+        assert!(wants_web("pesquisa o preço atual do Bitcoin e grava num ficheiro relatorio.md"));
+        // Nenhum sinal → mantém web por omissão (fail-open).
+        assert!(wants_web("bom dia, tudo bem?"));
+    }
+
+    #[test]
+    fn file_extension_ignores_decimals_and_prices() {
+        assert!(!wants_web("cria um ficheiro cv.html")); // tem sinal de ficheiro explícito também
+        assert!(has_file_extension("cria o cv_preview.html"));
+        assert!(!has_file_extension("custa 3.5 euros"));
+        assert!(!has_file_extension("são €19.99"));
     }
 
     #[test]
