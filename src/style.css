@@ -3976,6 +3976,16 @@ input[type="checkbox"]:disabled {
   color: var(--local);
   flex-shrink: 0;
 }
+.hint-toast-danger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-color: var(--danger);
+}
+.hint-toast-danger .ic {
+  color: var(--danger);
+  flex-shrink: 0;
+}
 /* Banner "atualização pronta — reiniciar". */
 .update-ready {
   position: fixed;

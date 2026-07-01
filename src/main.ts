@@ -155,6 +155,7 @@ const ICON_PATHS: Record<string, string> = {
   info: `<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>`,
   list: `<line x1="10" y1="6" x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="10" y1="18" x2="20" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/>`,
   x: `<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>`,
+  alert: `<path d="M12 3L2 21h20L12 3z"/><line x1="12" y1="9" x2="12" y2="14"/><line x1="12" y1="17.5" x2="12.01" y2="17.5"/>`,
 };
 function icon(name: string): string {
   const p = ICON_PATHS[name];
@@ -580,8 +581,8 @@ app.innerHTML = `
           </label>
           <p class="wiz-hint" id="hub-claude-refresh-hint" hidden></p>
           <label id="hub-claude-custom-wrap" hidden>${t("Modelo (ID)")} <input id="hub-claude-model" type="text" /></label>
-          <label>${t("Caminho da CLI")} <input id="hub-claude-cli" type="text" /></label>
-          <label>${t("API key")} <input id="hub-claude-key" type="password" /></label>
+          <label id="hub-claude-cli-wrap">${t("Caminho da CLI")} <input id="hub-claude-cli" type="text" /></label>
+          <label id="hub-claude-key-wrap">${t("API key")} <input id="hub-claude-key" type="password" /></label>
           <label>${t("Max tokens")} <input id="hub-claude-maxtok" type="number" min="256" /></label>
         </div>
         <div class="field-group" id="hub-openai-cloud-fields" hidden>
@@ -2489,14 +2490,14 @@ async function openDistillFor(topicId: number, typeHint?: string) {
   try {
     p = await api.distillTopic(topicId, true, typeHint, false);
   } catch (e) {
-    alert(t("Falha a destilar: ") + e);
+    showError(t("Falha a destilar: ") + e);
     return;
   }
   if (!p.found) {
     // Sem padrão → não abre nada; limpa a dica para não insistir.
     await api.dismissDistillHint(topicId).catch(() => {});
     await loadConversations();
-    alert(t("Sem padrão claro para capturar neste tópico."));
+    showError(t("Sem padrão claro para capturar neste tópico."));
     return;
   }
   const kind = (["skill", "playbook", "workflow"].includes(p.doc_type) ? p.doc_type : "playbook") as WsKind;
@@ -2549,7 +2550,7 @@ async function saveDistill() {
   const desc = (document.querySelector("#distill-desc") as HTMLInputElement).value.trim();
   const body = (document.querySelector("#distill-body") as HTMLTextAreaElement).value;
   if (!name) {
-    alert(t("Indica um nome (sem espaços)."));
+    showError(t("Indica um nome (sem espaços)."));
     return;
   }
   const topicName = state.topics.find((tp) => tp.id === distillTopicId)?.name || "";
@@ -2567,7 +2568,7 @@ async function saveDistill() {
   try {
     await api.saveWorkspaceDoc(kind, name, assembleDoc(kind, fields));
   } catch (e) {
-    alert(t("Falha a guardar: ") + e);
+    showError(t("Falha a guardar: ") + e);
     return;
   }
   await api.dismissDistillHint(distillTopicId).catch(() => {});
@@ -3040,7 +3041,7 @@ async function compactCurrentSaga() {
     state.compactedUpto = r.upto;
     renderMessages();
   } catch (e) {
-    alert(t("Falha a compactar: ") + e);
+    showError(t("Falha a compactar: ") + e);
   } finally {
     btn.disabled = false;
     btn.textContent = orig;
@@ -3059,7 +3060,7 @@ async function clearCurrentSaga() {
     renderMessages();
     renderAccounting(await api.conversationAccounting(id));
   } catch (e) {
-    alert(t("Falha a limpar: ") + e);
+    showError(t("Falha a limpar: ") + e);
   }
 }
 
@@ -4000,7 +4001,7 @@ function autoGrow() {
 /** Toast transitório (avisos não-bloqueantes). `iconName` (opcional, ex. "check") destaca
  * confirmações positivas — sem emojis, sempre `icon()`, conforme o resto da UI. */
 let hintTimer: number | undefined;
-function showHint(msg: string, iconName?: string) {
+function showHint(msg: string, iconName?: string, variant: "info" | "danger" = "info") {
   let el = document.querySelector<HTMLElement>("#hint-toast");
   if (!el) {
     el = document.createElement("div");
@@ -4009,12 +4010,18 @@ function showHint(msg: string, iconName?: string) {
     document.body.appendChild(el);
   }
   el.innerHTML = iconName ? `${icon(iconName)}<span>${escapeHtml(msg)}</span>` : escapeHtml(msg);
-  el.classList.toggle("hint-toast-icon", !!iconName);
+  el.classList.toggle("hint-toast-icon", !!iconName && variant === "info");
+  el.classList.toggle("hint-toast-danger", !!iconName && variant === "danger");
   el.hidden = false;
   if (hintTimer) clearTimeout(hintTimer);
   hintTimer = window.setTimeout(() => {
     if (el) el.hidden = true;
   }, 6000);
+}
+
+/** Toast de erro — mesma mecânica do showHint, mas com tom "danger". Substitui os antigos alert(). */
+function showError(msg: string) {
+  showHint(msg, "alert", "danger");
 }
 
 /** Avisa quando o 🔎 não vai realmente pesquisar localmente (setting off ou modelo sem tools). */
@@ -4327,7 +4334,7 @@ async function exportArtifact() {
     try {
       await api.exportFile(path, artifactCurrent.code);
     } catch (e) {
-      alert(t("Falha a exportar: ") + e);
+      showError(t("Falha a exportar: ") + e);
     }
   }
 }
@@ -4561,7 +4568,7 @@ async function exportSaga() {
   try {
     msgs = await api.getConversation(state.currentConversationId);
   } catch (e) {
-    alert(t("Falha a ler a Saga: ") + e);
+    showError(t("Falha a ler a Saga: ") + e);
     return;
   }
   const title =
@@ -4577,7 +4584,7 @@ async function exportSaga() {
     try {
       await api.exportFile(path, lines.join("\n"));
     } catch (e) {
-      alert(t("Falha a exportar: ") + e);
+      showError(t("Falha a exportar: ") + e);
     }
   }
 }
@@ -4617,7 +4624,8 @@ function renderDiagnostics(d: Diagnostics) {
     o.textContent = t("Ollama não detetado neste endpoint");
   }
   const c = document.querySelector("#wiz-claude-status")!;
-  c.className = "wiz-status " + (d.claude_ready ? "ok" : "bad");
+  // "off" é uma escolha válida (100% local), não um erro — só "cli"/"api" mal configurados usam "bad".
+  c.className = "wiz-status " + (d.claude_mode === "off" ? "" : d.claude_ready ? "ok" : "bad");
   c.textContent = d.claude_detail;
 }
 
@@ -4745,7 +4753,7 @@ async function finishWizard() {
     await api.saveSettings(next);
     state.settings = next;
   } catch (e) {
-    alert(t("Falha a guardar definições: ") + e);
+    showError(t("Falha a guardar definições: ") + e);
   }
   els.wizard.close();
   await refreshMemory();
@@ -4783,7 +4791,9 @@ function maybeMiniTour(force = false) {
   const tip = (anchorSel: string, text: string, place: "right" | "top") =>
     new Promise<void>((resolve) => {
       const anchor = document.querySelector<HTMLElement>(anchorSel);
-      if (!anchor) return resolve();
+      // Alvo ausente ou escondido (ex.: o toggle Local/Claude só aparece com Claude configurado) →
+      // salta o passo em vez de destacar uma caixa vazia/errada.
+      if (!anchor || anchor.hidden || anchor.offsetParent === null) return resolve();
       const r = anchor.getBoundingClientRect();
       positionTourScrim(scrim, r);
       const pop = document.createElement("div");
@@ -4806,7 +4816,7 @@ function maybeMiniTour(force = false) {
     });
   void (async () => {
     await tip("#rail", t("Aqui ficam os Modelos, Workspace e Automações."), "right");
-    await tip("#route-mode", t("Muda aqui entre modelo Local e Claude, turno a turno."), "top");
+    await tip("#route-pick", t("Muda aqui entre modelo Local e Claude, turno a turno."), "top");
     await tip(
       "[data-view=\"workspace\"]",
       t("Workspace: skills, playbooks e workflows que o modelo pode usar."),
@@ -5417,7 +5427,7 @@ async function editWsDoc(name: string) {
     applyDocKindFields();
     wsEditorOpen(true);
   } catch (e) {
-    alert(t("Falha a abrir: ") + e);
+    showError(t("Falha a abrir: ") + e);
   }
 }
 
@@ -5446,7 +5456,7 @@ async function genWsDoc() {
 async function saveWsDoc() {
   const f = readEditorFields();
   if (!f.name) {
-    alert(t("Indica um nome (sem espaços)."));
+    showError(t("Indica um nome (sem espaços)."));
     return;
   }
   try {
@@ -5454,7 +5464,7 @@ async function saveWsDoc() {
     wsEditorOpen(false);
     await renderWorkspaceList();
   } catch (e) {
-    alert(t("Falha a guardar: ") + e);
+    showError(t("Falha a guardar: ") + e);
   }
 }
 
@@ -5464,7 +5474,7 @@ async function delWsDoc(name: string) {
     await api.deleteWorkspaceDoc(wsKind, name);
     await renderWorkspaceList();
   } catch (e) {
-    alert(t("Falha a apagar: ") + e);
+    showError(t("Falha a apagar: ") + e);
   }
 }
 
@@ -5599,7 +5609,7 @@ async function toggleMcp(i: number, enabled: boolean) {
   try {
     await persistServers(next);
   } catch (e) {
-    alert(t("Falha: ") + e);
+    showError(t("Falha: ") + e);
   }
 }
 
@@ -5611,7 +5621,7 @@ async function delMcp(i: number) {
     await persistServers(next);
     renderMcpList();
   } catch (e) {
-    alert(t("Falha: ") + e);
+    showError(t("Falha: ") + e);
   }
 }
 
@@ -5805,7 +5815,7 @@ async function toggleSchedule(s: Schedule, enabled: boolean) {
     await api.updateSchedule(s.id, s.name, s.workflow_name, s.arguments, s.cron, enabled, s.model);
     await renderSchedules();
   } catch (e) {
-    alert(t("Falha: ") + e);
+    showError(t("Falha: ") + e);
   }
 }
 
@@ -5815,7 +5825,7 @@ async function delSchedule(id: number) {
     await api.deleteSchedule(id);
     await renderSchedules();
   } catch (e) {
-    alert(t("Falha: ") + e);
+    showError(t("Falha: ") + e);
   }
 }
 
@@ -6113,8 +6123,12 @@ function applyHubProviderFields() {
   if (lp === "openai") void renderLmInstalled(); // lista de descarregados do LM Studio
   document.querySelector("#hub-claude-fields")!.toggleAttribute("hidden", cp !== "claude");
   document.querySelector("#hub-openai-cloud-fields")!.toggleAttribute("hidden", cp !== "openai");
+  // Cada modo de ligação só usa um dos dois campos — não faz sentido mostrar a API key em modo CLI, nem vice-versa.
+  const claudeMode = hubSel("#hub-claude-mode").value;
+  document.querySelector("#hub-claude-cli-wrap")!.toggleAttribute("hidden", claudeMode !== "cli");
+  document.querySelector("#hub-claude-key-wrap")!.toggleAttribute("hidden", claudeMode !== "api");
   // Descobrir modelos pela CLI só faz sentido em modo CLI/subscrição (a API tem chave própria).
-  const isClaudeCli = cp === "claude" && hubSel("#hub-claude-mode").value === "cli";
+  const isClaudeCli = cp === "claude" && claudeMode === "cli";
   document.querySelector("#hub-claude-refresh-models")!.toggleAttribute("hidden", !isClaudeCli);
   const hint = document.querySelector<HTMLElement>("#hub-claude-refresh-hint")!;
   if (isClaudeCli) {
@@ -6229,7 +6243,7 @@ async function hubSave() {
       saveBtn.textContent = t("Guardar");
     }, 1600);
   } catch (e) {
-    alert(t("Falha a guardar: ") + e);
+    showError(t("Falha a guardar: ") + e);
   }
 }
 
@@ -6333,7 +6347,7 @@ async function deleteModelUi(name: string) {
     await api.deleteOllamaModel(name);
     await renderInstalled();
   } catch (e) {
-    alert(t("Falha a apagar: ") + e);
+    showError(t("Falha a apagar: ") + e);
   }
 }
 
@@ -6891,7 +6905,7 @@ async function init() {
   });
 
   document.querySelector("#btn-settings")!.addEventListener("click", () => {
-    els.dialog.showModal();
+    openSettingsDialog();
   });
   document.querySelector("#btn-mem-refresh")!.addEventListener("click", refreshMemory);
   document.querySelector("#btn-compact")!.addEventListener("click", compactCurrentSaga);
