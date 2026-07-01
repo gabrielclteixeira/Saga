@@ -289,6 +289,10 @@ export const api = {
   revertOllama: () => invoke<void>("revert_ollama_opt"),
   openLogs: () => invoke<void>("open_logs"),
   claudeCliModelsScratchDir: () => invoke<string>("claude_cli_models_scratch_dir"),
+  openProjectFolder: (topicId: number) => invoke<void>("open_project_folder", { topicId }),
+  listProjectFiles: (topicId: number) => invoke<string[]>("list_project_files", { topicId }),
+  readProjectFileRaw: (topicId: number, path: string) =>
+    invoke<string>("read_project_file_raw", { topicId, path }),
   refreshClaudeCliModels: () => invoke<ClaudeCliModelsResult>("refresh_claude_cli_models"),
   resetAccounting: () => invoke<Accounting>("reset_accounting"),
   getMemoryPreview: () => invoke<string>("get_memory_preview"),

@@ -101,6 +101,71 @@ fn walk(dir: &Path, prefix: &str, out: &mut String, count: &mut usize, max: usiz
     }
 }
 
+/// Lista os ficheiros (não pastas) da pasta do projeto — caminhos relativos, barras normais.
+/// Para a UI de pré-visualização (ver commands::list_project_files), não para o contexto do
+/// modelo. Ignora as mesmas pastas pesadas que `tree_text`; limitado a `max` entradas.
+pub fn list_files(root: &str, max: usize) -> Vec<String> {
+    let base = Path::new(root);
+    if !base.is_dir() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    walk_files(base, base, &mut out, max, 0);
+    out
+}
+
+fn walk_files(base: &Path, dir: &Path, out: &mut Vec<String>, max: usize, depth: usize) {
+    if depth > 6 || out.len() >= max {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut entries: Vec<_> = rd.flatten().collect();
+    entries.sort_by_key(|e| {
+        let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        (!is_dir, e.file_name())
+    });
+    for e in entries {
+        if out.len() >= max {
+            return;
+        }
+        let name = e.file_name().to_string_lossy().to_string();
+        let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        if is_dir {
+            if !PRUNE.contains(&name.as_str()) {
+                walk_files(base, &e.path(), out, max, depth + 1);
+            }
+            continue;
+        }
+        if let Ok(rel) = e.path().strip_prefix(base) {
+            out.push(rel.to_string_lossy().replace('\\', "/"));
+        }
+    }
+}
+
+/// Limite (bytes) para pré-visualização na UI — mais generoso que o do contexto do modelo, só
+/// para não travar a interface com um ficheiro gigante.
+const MAX_PREVIEW_BYTES: usize = 5_000_000;
+
+/// Lê o conteúdo bruto de um ficheiro (sem o cabeçalho de tamanho de `read_file`, que é para o
+/// modelo) — para a pré-visualização de artefactos na UI.
+pub fn read_file_raw(root: &str, rel: &str) -> Result<String, String> {
+    let path = resolve_in_root(root, rel).ok_or_else(|| {
+        format!("caminho fora da pasta do projeto ou inválido: {rel}")
+    })?;
+    let bytes = std::fs::read(&path).map_err(|e| format!("não foi possível ler {rel}: {e}"))?;
+    if bytes.len() > MAX_PREVIEW_BYTES {
+        return Err(format!(
+            "{rel} é demasiado grande para pré-visualizar ({:.1} MB)",
+            bytes.len() as f64 / 1_000_000.0
+        ));
+    }
+    std::str::from_utf8(&bytes)
+        .map(|s| s.to_string())
+        .map_err(|_| format!("{rel} não é texto — a pré-visualização só suporta ficheiros de texto"))
+}
+
 /// Tamanho legível (B / KB / MB) — para o modelo aferir se o ficheiro cabe no contexto.
 fn human_bytes(n: usize) -> String {
     if n < 1024 {

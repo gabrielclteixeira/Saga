@@ -625,6 +625,54 @@ pub fn project_save_file(
     Ok(path)
 }
 
+/// Pasta de projeto de um tópico (por id, não por conversa) — usado pelas ações "Abrir pasta" e
+/// "Ficheiros do projeto" na sidebar, que não têm uma conversa aberta associada.
+fn topic_folder(conn: &Connection, topic_id: i64) -> Result<String, String> {
+    let topics = store::list_topics(conn).map_err(|e| e.to_string())?;
+    let folder = topics
+        .into_iter()
+        .find(|t| t.id == topic_id)
+        .map(|t| t.folder_path.trim().to_string())
+        .ok_or_else(|| "Tópico não encontrado.".to_string())?;
+    if folder.is_empty() {
+        return Err("Este tópico não tem pasta de projeto.".into());
+    }
+    Ok(folder)
+}
+
+/// Abre a pasta do projeto no explorador de ficheiros do SO ("ir à pasta rapidamente").
+#[tauri::command]
+pub fn open_project_folder(app: tauri::AppHandle, state: State<AppState>, topic_id: i64) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let folder = {
+        let conn = state.db.lock().unwrap();
+        topic_folder(&conn, topic_id)?
+    };
+    app.opener()
+        .open_path(folder, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+/// Lista os ficheiros da pasta do projeto (caminhos relativos) — para o diálogo de pré-visualização.
+#[tauri::command]
+pub fn list_project_files(state: State<AppState>, topic_id: i64) -> Result<Vec<String>, String> {
+    let folder = {
+        let conn = state.db.lock().unwrap();
+        topic_folder(&conn, topic_id)?
+    };
+    Ok(crate::tools::project::list_files(&folder, 500))
+}
+
+/// Lê o conteúdo bruto de um ficheiro do projeto — para abrir no painel de artefactos (preview).
+#[tauri::command]
+pub fn read_project_file_raw(state: State<AppState>, topic_id: i64, path: String) -> Result<String, String> {
+    let folder = {
+        let conn = state.db.lock().unwrap();
+        topic_folder(&conn, topic_id)?
+    };
+    crate::tools::project::read_file_raw(&folder, &path)
+}
+
 #[tauri::command]
 pub fn rename_conversation(state: State<AppState>, id: i64, title: String) -> Result<(), String> {
     let conn = state.db.lock().unwrap();

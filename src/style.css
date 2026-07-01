@@ -463,15 +463,24 @@ body.dragging-conv {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-/* Badge de projeto (pasta anexada) no cabeçalho do tópico. */
+/* Badge de projeto (pasta anexada) no cabeçalho do tópico — clicável, abre a pasta no SO. */
 .topic-proj {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
   color: var(--accent);
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px;
 }
 .topic-proj .ic {
   width: 13px;
   height: 13px;
+}
+.topic-proj:hover {
+  filter: brightness(1.25);
 }
 /* Editor: bloco do projeto (pasta + permissão). */
 .topic-project {
@@ -552,6 +561,38 @@ body.dragging-conv {
 }
 .distill-reason:empty {
   display: none;
+}
+/* Lista de ficheiros do projeto (diálogo de pré-visualização). */
+.project-files-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+}
+.project-files-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+  color: var(--text);
+  cursor: pointer;
+  word-break: break-all;
+}
+.project-files-list button:hover {
+  background: var(--bg-3);
 }
 /* Popover para mover uma conversa para um tópico */
 .topic-menu {

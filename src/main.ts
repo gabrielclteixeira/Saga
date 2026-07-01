@@ -725,6 +725,17 @@ app.innerHTML = `
     </div>
   </dialog>
 
+  <dialog id="project-files-dialog">
+    <div class="settings">
+      <h2 id="project-files-title">${t("Ficheiros do projeto")}</h2>
+      <p class="wiz-hint" id="project-files-status"></p>
+      <ul class="project-files-list" id="project-files-list"></ul>
+      <menu>
+        <button type="button" class="ghost" id="project-files-close">${t("Fechar")}</button>
+      </menu>
+    </div>
+  </dialog>
+
   <dialog id="wizard-dialog">
     <div class="settings wizard">
       <div class="wiz-dots" id="wiz-dots"></div>
@@ -809,6 +820,10 @@ const els = {
   wizard: document.querySelector<HTMLDialogElement>("#wizard-dialog")!,
   topicDialog: document.querySelector<HTMLDialogElement>("#topic-dialog")!,
   distillDialog: document.querySelector<HTMLDialogElement>("#distill-dialog")!,
+  projectFilesDialog: document.querySelector<HTMLDialogElement>("#project-files-dialog")!,
+  projectFilesList: document.querySelector<HTMLUListElement>("#project-files-list")!,
+  projectFilesStatus: document.querySelector<HTMLElement>("#project-files-status")!,
+  projectFilesTitle: document.querySelector<HTMLElement>("#project-files-title")!,
   modelsList: document.querySelector<HTMLDataListElement>("#ollama-models")!,
   convList: document.querySelector<HTMLDivElement>("#conv-list")!,
   convSearch: document.querySelector<HTMLInputElement>("#conv-search")!,
@@ -2115,12 +2130,17 @@ function renderSidebar() {
     count.textContent = String(convs.length);
 
     head.append(caret, name);
-    // Badge de projeto: o tópico tem uma pasta anexada (file tools).
+    // Badge de projeto: o tópico tem uma pasta anexada (file tools). Clicável — abre a pasta
+    // no explorador do SO ("ir à pasta rapidamente").
     if (topic && topic.folder_path) {
-      const proj = document.createElement("span");
+      const proj = document.createElement("button");
       proj.className = "topic-proj";
       proj.innerHTML = icon("folder");
-      proj.title = t("Projeto: ") + topic.folder_path;
+      proj.title = t("Projeto: {p} — clica para abrir a pasta", { p: topic.folder_path });
+      proj.addEventListener("click", (e) => {
+        e.stopPropagation();
+        api.openProjectFolder(topic.id).catch((err) => showHint(String(err)));
+      });
       head.append(proj);
     }
     // Pílula passiva de destilação: o classificador detetou um padrão por capturar.
@@ -2185,7 +2205,20 @@ function renderSidebar() {
         void deleteTopicUi(topic.id);
       });
 
-      head.append(add, distill, edit, ren, del);
+      const acts = [add, distill];
+      if (topic.folder_path) {
+        const preview = document.createElement("button");
+        preview.className = "topic-act";
+        preview.innerHTML = icon("eye");
+        preview.title = t("Pré-visualizar ficheiros do projeto");
+        preview.addEventListener("click", (e) => {
+          e.stopPropagation();
+          void openProjectFilesDialog(topic);
+        });
+        acts.push(preview);
+      }
+      acts.push(edit, ren, del);
+      head.append(...acts);
     }
 
     group.appendChild(head);
@@ -3861,6 +3894,56 @@ function renderArtifactBody() {
     pre.appendChild(codeEl);
     body.appendChild(pre);
     highlightWithin(pre);
+  }
+}
+
+/** Classifica um ficheiro do projeto pela extensão (mesmas categorias dos artefactos do chat). */
+function classifyByExtension(path: string): ArtifactKind {
+  const ext = (path.split(".").pop() || "").toLowerCase();
+  if (ext === "html" || ext === "htm") return "html";
+  if (ext === "md" || ext === "markdown") return "markdown";
+  if (ext === "mmd" || ext === "mermaid") return "mermaid";
+  return "code";
+}
+
+/** Lista os ficheiros da pasta do projeto do tópico; clicar num abre-o no painel de artefactos. */
+async function openProjectFilesDialog(topic: Topic) {
+  els.projectFilesTitle.textContent = t("Ficheiros do projeto: {p}", { p: topic.folder_path });
+  els.projectFilesList.innerHTML = "";
+  els.projectFilesStatus.textContent = t("A carregar…");
+  if (!els.projectFilesDialog.open) els.projectFilesDialog.showModal();
+  try {
+    const files = await api.listProjectFiles(topic.id);
+    els.projectFilesStatus.textContent = files.length
+      ? ""
+      : t("Pasta vazia (ou só tem subpastas ignoradas, como node_modules).");
+    for (const path of files) {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ghost";
+      btn.textContent = path;
+      btn.addEventListener("click", () => void previewProjectFile(topic, path));
+      li.appendChild(btn);
+      els.projectFilesList.appendChild(li);
+    }
+  } catch (e) {
+    els.projectFilesStatus.textContent = String(e);
+  }
+}
+
+/** Lê um ficheiro do projeto e abre-o no painel de artefactos (mesmo visor dos artefactos do chat). */
+async function previewProjectFile(topic: Topic, path: string) {
+  try {
+    const code = await api.readProjectFileRaw(topic.id, path);
+    openArtifact({ lang: path.split(".").pop() || "", code, kind: classifyByExtension(path) });
+    // "Guardar no projeto" não faz sentido aqui — o ficheiro já está gravado (é isto que estamos
+    // a pré-visualizar); esconder evita gravar por engano na pasta de OUTRO projeto se a conversa
+    // aberta neste momento pertencer a um tópico diferente.
+    document.querySelector("#artifact-save-project")?.setAttribute("hidden", "");
+    els.projectFilesDialog.close();
+  } catch (e) {
+    showHint(String(e));
   }
 }
 
@@ -6438,6 +6521,9 @@ async function init() {
   document.querySelector("#distill-save")!.addEventListener("click", () => void saveDistill());
   document.querySelector("#distill-redraft")!.addEventListener("click", () => void redraftDistill());
   document.querySelector("#distill-discard")!.addEventListener("click", () => void discardDistill());
+  document
+    .querySelector("#project-files-close")!
+    .addEventListener("click", () => els.projectFilesDialog.close());
   document.querySelector("#topic-folder-clear")!.addEventListener("click", () => {
     editingFolder = "";
     renderTopicFolder();
