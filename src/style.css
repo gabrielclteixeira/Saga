@@ -451,6 +451,7 @@ body.dragging-conv {
 }
 .topic-name {
   flex: 1;
+  min-width: 32px; /* nunca desaparece por completo — trunca com "…" em vez disso */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -2130,16 +2130,17 @@ function renderSidebar() {
     count.textContent = String(convs.length);
 
     head.append(caret, name);
-    // Badge de projeto: o tópico tem uma pasta anexada (file tools). Clicável — abre a pasta
-    // no explorador do SO ("ir à pasta rapidamente").
+    // Badge de projeto: o tópico tem uma pasta anexada (file tools). Clicável — abre um mini
+    // menu com "Abrir pasta" / "Ver ficheiros" (um só ícone para as duas ações — a linha do
+    // tópico já não tinha espaço para mais um ícone fixo).
     if (topic && topic.folder_path) {
       const proj = document.createElement("button");
       proj.className = "topic-proj";
       proj.innerHTML = icon("folder");
-      proj.title = t("Projeto: {p} — clica para abrir a pasta", { p: topic.folder_path });
+      proj.title = t("Projeto: {p}", { p: topic.folder_path });
       proj.addEventListener("click", (e) => {
         e.stopPropagation();
-        api.openProjectFolder(topic.id).catch((err) => showHint(String(err)));
+        openProjectMenu(proj, topic);
       });
       head.append(proj);
     }
@@ -2205,20 +2206,7 @@ function renderSidebar() {
         void deleteTopicUi(topic.id);
       });
 
-      const acts = [add, distill];
-      if (topic.folder_path) {
-        const preview = document.createElement("button");
-        preview.className = "topic-act";
-        preview.innerHTML = icon("eye");
-        preview.title = t("Pré-visualizar ficheiros do projeto");
-        preview.addEventListener("click", (e) => {
-          e.stopPropagation();
-          void openProjectFilesDialog(topic);
-        });
-        acts.push(preview);
-      }
-      acts.push(edit, ren, del);
-      head.append(...acts);
+      head.append(add, distill, edit, ren, del);
     }
 
     group.appendChild(head);
@@ -2598,6 +2586,41 @@ function openTopicMenu(anchor: HTMLElement, c: ConversationMeta) {
   sep.className = "topic-menu-sep";
   menu.appendChild(sep);
   addItem(t("Novo tópico…"), () => void createTopicInteractive(c.id));
+
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+  menu.style.top = `${Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8)}px`;
+  const close = (e: MouseEvent) => {
+    if (!menu.contains(e.target as Node)) {
+      menu.remove();
+      document.removeEventListener("mousedown", close);
+    }
+  };
+  setTimeout(() => document.addEventListener("mousedown", close), 0);
+}
+
+/** Menu do ícone de pasta do tópico: "Abrir pasta" / "Ver ficheiros" — um só ícone para as duas
+ * ações, para não sobrecarregar a linha do tópico com mais um botão fixo. */
+function openProjectMenu(anchor: HTMLElement, topic: Topic) {
+  document.querySelector(".topic-menu")?.remove();
+  const menu = document.createElement("div");
+  menu.className = "topic-menu";
+  const addItem = (label: string, onClick: () => void) => {
+    const b = document.createElement("button");
+    b.className = "topic-menu-item";
+    b.textContent = label;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      menu.remove();
+      onClick();
+    });
+    menu.appendChild(b);
+  };
+  addItem(t("Abrir pasta"), () => {
+    api.openProjectFolder(topic.id).catch((err) => showHint(String(err)));
+  });
+  addItem(t("Ver ficheiros"), () => void openProjectFilesDialog(topic));
 
   document.body.appendChild(menu);
   const r = anchor.getBoundingClientRect();
