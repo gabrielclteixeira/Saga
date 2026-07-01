@@ -241,6 +241,9 @@ export interface StoredMessage {
   tokens_saved: number;
   gen_ms: number;
   steps_json: string;
+  version_group_id: number;
+  version_count: number;
+  version_index: number;
 }
 
 export type PullEvent =
@@ -260,6 +263,9 @@ export type StreamEvent =
   | {
       kind: "Done";
       message_id: number;
+      version_group_id: number;
+      version_count: number;
+      version_index: number;
       input_tokens: number;
       output_tokens: number;
       tokens_saved: number;
@@ -362,6 +368,9 @@ export const api = {
     invoke<void>("respond_clarify", { id, answered, answers }),
   setMessageSteps: (messageId: number, steps: string[]) =>
     invoke<void>("set_message_steps", { messageId, steps }),
+  listMessageVersions: (messageId: number) =>
+    invoke<StoredMessage[]>("list_message_versions", { messageId }),
+  setActiveVersion: (messageId: number) => invoke<void>("set_active_version", { messageId }),
   detectEmbedModel: () => invoke<string | null>("detect_embed_model"),
   listConversations: () => invoke<ConversationMeta[]>("list_conversations"),
   getConversation: (id: number) => invoke<StoredMessage[]>("get_conversation", { id }),

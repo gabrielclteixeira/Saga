@@ -70,6 +70,11 @@ interface Item {
   thinking?: string;
   report?: boolean;
   plan?: { steps: { title: string; status: "pending" | "executing" | "searching" | "done" | "error" }[] };
+  /** Regenerar: grupo de versões desta mensagem, quantas existem e a posição desta (1-based).
+   * versionCount > 1 mostra o ciclo ‹anterior/seguinte› por baixo da mensagem. */
+  versionGroupId?: number;
+  versionCount?: number;
+  versionIndex?: number;
 }
 
 /** Nível de esforço de raciocínio (Think): off → nativo → self-consistency → debate. */
@@ -1285,6 +1290,12 @@ function renderMessagesInner() {
       }
     }
 
+    // Ciclo ‹anterior/seguinte› entre versões regeneradas — em qualquer mensagem do assistente
+    // com mais de uma versão, não só a última (podes ter regenerado um turno já antigo).
+    if (item.role === "assistant" && item.versionCount && item.versionCount > 1 && !state.busy) {
+      row.appendChild(buildVersionCycle(item));
+    }
+
     // Barra de ações: só na última resposta do assistente e fora de streaming.
     const isLast = index === state.items.length - 1;
     if (item.role === "assistant" && isLast && !state.busy && !item.error) {
@@ -1505,6 +1516,53 @@ function looksLikeUnfulfilledFileRequest(userText: string, steps: string[] | und
   const noun = /\b(ficheiro|arquivo|pasta|projeto|file)\b/;
   const ext = /\.[a-z]{1,5}\b/;
   return verb.test(lower) && (noun.test(lower) || ext.test(lower));
+}
+
+/** Setas ‹/› + indicador "2/3" por baixo de uma mensagem regenerada — troca a versão ativa sem
+ * gerar nada de novo (todas já estão na BD, ver store::set_active_version). */
+function buildVersionCycle(item: Item): HTMLDivElement {
+  const row = document.createElement("div");
+  row.className = "version-cycle";
+
+  const prev = document.createElement("button");
+  prev.type = "button";
+  prev.className = "ghost version-prev";
+  prev.innerHTML = icon("chevron");
+  prev.title = t("Versão anterior");
+  prev.disabled = (item.versionIndex ?? 1) <= 1;
+  prev.addEventListener("click", () => void cycleMessageVersion(item, -1));
+
+  const label = document.createElement("span");
+  label.textContent = `${item.versionIndex}/${item.versionCount}`;
+
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "ghost version-next";
+  next.innerHTML = icon("chevron");
+  next.title = t("Próxima versão");
+  next.disabled = (item.versionIndex ?? 1) >= (item.versionCount ?? 1);
+  next.addEventListener("click", () => void cycleMessageVersion(item, 1));
+
+  row.append(prev, label, next);
+  return row;
+}
+
+/** Ativa a versão vizinha (anterior/seguinte) de uma mensagem regenerada — muda só a flag
+ * `superseded` na BD; o conteúdo de todas as versões já lá está, não gera nada de novo. */
+async function cycleMessageVersion(item: Item, direction: 1 | -1) {
+  if (!item.id) return;
+  try {
+    const versions = await api.listMessageVersions(item.id);
+    const idx = versions.findIndex((v) => v.id === item.id);
+    if (idx < 0) return;
+    const target = versions[idx + direction];
+    if (!target) return;
+    await api.setActiveVersion(target.id);
+    Object.assign(item, storedToItem(target));
+    renderMessages();
+  } catch (e) {
+    showHint(String(e));
+  }
 }
 
 function buildActions(item: Item, index: number): HTMLDivElement {
@@ -2765,6 +2823,9 @@ function storedToItem(m: StoredMessage): Item {
       content: m.content,
       attachments,
       steps,
+      versionGroupId: m.version_group_id,
+      versionCount: m.version_count,
+      versionIndex: m.version_index,
       meta: {
         text: m.content,
         route: (m.route as "local" | "claude") || "local",
@@ -3206,6 +3267,9 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
           }
         } else if (evt.kind === "Done") {
           assistant.id = evt.message_id || assistant.id;
+          assistant.versionGroupId = evt.version_group_id;
+          assistant.versionCount = evt.version_count;
+          assistant.versionIndex = evt.version_index;
           assistant.meta = {
             text: assistant.content,
             route: start?.route ?? "local",

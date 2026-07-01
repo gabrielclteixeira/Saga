@@ -1581,6 +1581,40 @@ mark.find-current {
   border-color: var(--accent);
   color: var(--accent);
 }
+/* Ciclo ‹anterior/seguinte› entre versões regeneradas de uma mensagem. */
+.version-cycle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.version-cycle button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+}
+.version-cycle button:hover:not(:disabled) {
+  color: var(--text);
+}
+.version-cycle button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.version-cycle .ic {
+  width: 13px;
+  height: 13px;
+}
+.version-prev .ic {
+  transform: rotate(180deg);
+}
 /* Editar a própria mensagem (aparece ao passar o rato) */
 .msg.user .user-actions {
   visibility: hidden;

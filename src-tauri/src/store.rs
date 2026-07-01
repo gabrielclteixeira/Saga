@@ -49,6 +49,14 @@ pub struct StoredMessage {
     pub gen_ms: i64,
     /// Passos de ferramenta (breadcrumbs "usou skill X", "pesquisou Y") em JSON `["…"]`. '[]' = nenhum.
     pub steps_json: String,
+    /// Agrupa as versões de uma mensagem regenerada (todas partilham o mesmo valor). Uma
+    /// mensagem nunca regenerada é o seu próprio grupo (version_group_id == id).
+    pub version_group_id: i64,
+    /// Quantas versões existem neste grupo (1 = nunca regenerada).
+    pub version_count: i64,
+    /// Posição (1-based, cronológica) desta versão dentro do grupo — não necessariamente a
+    /// ativa; usada para o indicador "2/3" ao ciclar.
+    pub version_index: i64,
 }
 
 /// Abre (ou cria) a base de dados em `<config>/saga/saga.db` e garante o schema.
@@ -185,6 +193,20 @@ fn init(conn: &Connection) -> Result<()> {
         [],
     )
     .ok();
+    // Migração: versões de mensagem (regenerar deixa de apagar — marca a antiga "superseded" e
+    // liga a nova ao mesmo version_group_id, para o ciclo ‹anterior/seguinte› na UI).
+    conn.execute(
+        "ALTER TABLE messages ADD COLUMN superseded INTEGER NOT NULL DEFAULT 0",
+        [],
+    )
+    .ok();
+    conn.execute("ALTER TABLE messages ADD COLUMN version_group_id INTEGER", [])
+        .ok();
+    conn.execute(
+        "UPDATE messages SET version_group_id = id WHERE version_group_id IS NULL",
+        [],
+    )
+    .ok();
     // Migração: resultado da última execução de cada agendamento (estado + erro), para a vista de Automações.
     conn.execute(
         "ALTER TABLE schedules ADD COLUMN last_status TEXT NOT NULL DEFAULT ''",
@@ -233,7 +255,8 @@ pub fn search_messages(conn: &Connection, query: &str) -> Result<Vec<SearchHit>>
                 snippet(messages_fts, 0, '[', ']', '…', 10) AS snip
          FROM messages_fts f
          JOIN conversations c ON c.id = f.conversation_id
-         WHERE messages_fts MATCH ?1
+         JOIN messages m ON m.id = f.message_id
+         WHERE messages_fts MATCH ?1 AND m.superseded = 0
          ORDER BY rank
          LIMIT 50",
     )?;
@@ -394,7 +417,7 @@ pub fn topic_transcript(conn: &Connection, topic_id: i64, max_chars: usize) -> R
     let mut stmt = conn.prepare(
         "SELECT c.title, m.role, m.content
          FROM messages m JOIN conversations c ON c.id = m.conversation_id
-         WHERE c.topic_id = ?1 AND m.role IN ('user','assistant')
+         WHERE c.topic_id = ?1 AND m.role IN ('user','assistant') AND m.superseded = 0
          ORDER BY c.id ASC, m.id ASC",
     )?;
     let rows = stmt.query_map(params![topic_id], |r| {
@@ -422,31 +445,45 @@ pub fn topic_transcript(conn: &Connection, topic_id: i64, max_chars: usize) -> R
     Ok(out)
 }
 
+/// Colunas partilhadas por `get_messages` e `list_message_versions` — inclui as contagens de
+/// versão calculadas por subquery correlacionada (barato: só há >1 versão em mensagens
+/// regeneradas, e conversas são pequenas).
+const MESSAGE_COLUMNS: &str = "id, role, content, attachments_json, route, model, input_tokens, output_tokens, cost_usd, tokens_saved, gen_ms, steps_json, version_group_id,
+    (SELECT COUNT(*) FROM messages m2 WHERE m2.version_group_id = messages.version_group_id) AS version_count,
+    (SELECT COUNT(*) FROM messages m2 WHERE m2.version_group_id = messages.version_group_id AND m2.id <= messages.id) AS version_index";
+
+fn row_to_stored_message(r: &rusqlite::Row) -> rusqlite::Result<StoredMessage> {
+    Ok(StoredMessage {
+        id: r.get(0)?,
+        role: r.get(1)?,
+        content: r.get(2)?,
+        attachments_json: r.get(3)?,
+        route: r.get(4)?,
+        model: r.get(5)?,
+        input_tokens: r.get(6)?,
+        output_tokens: r.get(7)?,
+        cost_usd: r.get(8)?,
+        tokens_saved: r.get(9)?,
+        gen_ms: r.get(10)?,
+        steps_json: r.get(11)?,
+        version_group_id: r.get(12)?,
+        version_count: r.get(13)?,
+        version_index: r.get(14)?,
+    })
+}
+
 pub fn get_messages(conn: &Connection, conversation_id: i64) -> Result<Vec<StoredMessage>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, role, content, attachments_json, route, model, input_tokens, output_tokens, cost_usd, tokens_saved, gen_ms, steps_json
-         FROM messages WHERE conversation_id = ?1 ORDER BY id ASC",
-    )?;
-    let rows = stmt.query_map(params![conversation_id], |r| {
-        Ok(StoredMessage {
-            id: r.get(0)?,
-            role: r.get(1)?,
-            content: r.get(2)?,
-            attachments_json: r.get(3)?,
-            route: r.get(4)?,
-            model: r.get(5)?,
-            input_tokens: r.get(6)?,
-            output_tokens: r.get(7)?,
-            cost_usd: r.get(8)?,
-            tokens_saved: r.get(9)?,
-            gen_ms: r.get(10)?,
-            steps_json: r.get(11)?,
-        })
-    })?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {MESSAGE_COLUMNS}
+         FROM messages WHERE conversation_id = ?1 AND superseded = 0 ORDER BY id ASC"
+    ))?;
+    let rows = stmt.query_map(params![conversation_id], |r| row_to_stored_message(r))?;
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
-/// Insere uma mensagem e atualiza o `updated_at` da conversa.
+/// Insere uma mensagem e atualiza o `updated_at` da conversa. `version_group_id`: `Some(g)` liga
+/// esta mensagem a um grupo de versões já existente (regenerar); `None` deixa-a ser o seu
+/// próprio grupo (COALESCE abaixo, depois de sabermos o id atribuído).
 #[allow(clippy::too_many_arguments)]
 pub fn append_message(
     conn: &Connection,
@@ -460,17 +497,23 @@ pub fn append_message(
     output_tokens: i64,
     cost_usd: f64,
     tokens_saved: i64,
+    version_group_id: Option<i64>,
 ) -> Result<i64> {
     conn.execute(
         "INSERT INTO messages
-           (conversation_id, role, content, attachments_json, route, model, input_tokens, output_tokens, cost_usd, tokens_saved)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+           (conversation_id, role, content, attachments_json, route, model, input_tokens, output_tokens, cost_usd, tokens_saved, version_group_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             conversation_id, role, content, attachments_json, route, model,
-            input_tokens, output_tokens, cost_usd, tokens_saved
+            input_tokens, output_tokens, cost_usd, tokens_saved, version_group_id
         ],
     )?;
     let message_id = conn.last_insert_rowid();
+    // Sem grupo dado (mensagem nova, não regenerada): torna-se o seu próprio grupo.
+    conn.execute(
+        "UPDATE messages SET version_group_id = COALESCE(version_group_id, id) WHERE id = ?1",
+        params![message_id],
+    )?;
     // Índice de pesquisa.
     conn.execute(
         "INSERT INTO messages_fts(content, conversation_id, message_id) VALUES (?1, ?2, ?3)",
@@ -502,20 +545,33 @@ pub fn set_message_steps(conn: &Connection, message_id: i64, steps_json: &str) -
     Ok(())
 }
 
-/// Mantém as primeiras `keep` mensagens da conversa e apaga as restantes
+/// Mantém as primeiras `keep` mensagens VISÍVEIS da conversa e apaga as restantes — incluindo
+/// quaisquer versões "superseded" ligadas a essas mensagens (regenerações antigas de um turno
+/// que está a ser descartado não ficam órfãs). `keep` conta só mensagens ativas, para bater
+/// certo com o `index` do frontend (que só vê a lista já filtrada).
 /// (usado ao editar uma mensagem do utilizador: trunca a partir dela).
 pub fn truncate_conversation(conn: &Connection, conversation_id: i64, keep: i64) -> Result<()> {
-    let mut stmt = conn.prepare(
-        "SELECT id FROM messages WHERE conversation_id = ?1 ORDER BY id ASC LIMIT -1 OFFSET ?2",
-    )?;
-    let ids: Vec<i64> = stmt
-        .query_map(params![conversation_id, keep], |r| r.get(0))?
-        .filter_map(|r| r.ok())
-        .collect();
-    for id in ids {
-        conn.execute("DELETE FROM messages WHERE id = ?1", params![id])?;
-        conn.execute("DELETE FROM messages_fts WHERE message_id = ?1", params![id])
-            .ok();
+    let cutoff: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM messages WHERE conversation_id = ?1 AND superseded = 0
+             ORDER BY id ASC LIMIT 1 OFFSET ?2",
+            params![conversation_id, keep],
+            |r| r.get(0),
+        )
+        .ok();
+    if let Some(cutoff) = cutoff {
+        let mut stmt = conn.prepare(
+            "SELECT id FROM messages WHERE conversation_id = ?1 AND id >= ?2",
+        )?;
+        let ids: Vec<i64> = stmt
+            .query_map(params![conversation_id, cutoff], |r| r.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        for id in ids {
+            conn.execute("DELETE FROM messages WHERE id = ?1", params![id])?;
+            conn.execute("DELETE FROM messages_fts WHERE message_id = ?1", params![id])
+                .ok();
+        }
     }
     conn.execute(
         "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?1",
@@ -567,22 +623,69 @@ pub fn clear_conversation(conn: &Connection, conversation_id: i64) -> Result<()>
     Ok(())
 }
 
-/// Apaga a última mensagem do assistente de uma conversa (usado ao regenerar).
-pub fn delete_last_assistant(conn: &Connection, conversation_id: i64) -> Result<()> {
-    let last_id: Option<i64> = conn
+/// Marca a última resposta do assistente como "superseded" em vez de a apagar (usado ao
+/// regenerar) — fica escondida da conversa e da pesquisa, mas continua na BD para o ciclo
+/// ‹anterior/seguinte›. Devolve o `version_group_id` a que a nova versão se deve juntar.
+pub fn supersede_last_assistant(conn: &Connection, conversation_id: i64) -> Result<Option<i64>> {
+    let last: Option<(i64, i64)> = conn
         .query_row(
-            "SELECT id FROM messages
-             WHERE conversation_id = ?1 AND role = 'assistant'
+            "SELECT id, version_group_id FROM messages
+             WHERE conversation_id = ?1 AND role = 'assistant' AND superseded = 0
              ORDER BY id DESC LIMIT 1",
             params![conversation_id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .ok();
-    if let Some(id) = last_id {
-        conn.execute("DELETE FROM messages WHERE id = ?1", params![id])?;
-        conn.execute("DELETE FROM messages_fts WHERE message_id = ?1", params![id])
-            .ok();
+    if let Some((id, version_group_id)) = last {
+        conn.execute("UPDATE messages SET superseded = 1 WHERE id = ?1", params![id])?;
+        Ok(Some(version_group_id))
+    } else {
+        Ok(None)
     }
+}
+
+/// (version_group_id, version_count, version_index) de uma mensagem — para anexar ao
+/// `StreamEvent::Done` da mensagem que acabou de ser gravada.
+pub fn version_info(conn: &Connection, message_id: i64) -> Result<(i64, i64, i64)> {
+    let version_group_id: i64 = conn.query_row(
+        "SELECT version_group_id FROM messages WHERE id = ?1",
+        params![message_id],
+        |r| r.get(0),
+    )?;
+    let version_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM messages WHERE version_group_id = ?1",
+        params![version_group_id],
+        |r| r.get(0),
+    )?;
+    let version_index: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM messages WHERE version_group_id = ?1 AND id <= ?2",
+        params![version_group_id, message_id],
+        |r| r.get(0),
+    )?;
+    Ok((version_group_id, version_count, version_index))
+}
+
+/// Todas as versões (ativa ou não) de um grupo, para a UI de ciclo ‹anterior/seguinte› — ao
+/// contrário de `get_messages`, não filtra `superseded`.
+pub fn list_message_versions(conn: &Connection, version_group_id: i64) -> Result<Vec<StoredMessage>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {MESSAGE_COLUMNS} FROM messages WHERE version_group_id = ?1 ORDER BY id ASC"
+    ))?;
+    let rows = stmt.query_map(params![version_group_id], |r| row_to_stored_message(r))?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Ativa uma versão específica dentro do seu grupo (desativa as outras). Ciclar entre versões é
+/// só isto — o conteúdo de todas já está na BD, não há geração nem cópia envolvida.
+pub fn set_active_version(conn: &Connection, version_group_id: i64, message_id: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE messages SET superseded = 1 WHERE version_group_id = ?1",
+        params![version_group_id],
+    )?;
+    conn.execute(
+        "UPDATE messages SET superseded = 0 WHERE id = ?1 AND version_group_id = ?2",
+        params![message_id, version_group_id],
+    )?;
     Ok(())
 }
 

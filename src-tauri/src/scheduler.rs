@@ -118,6 +118,7 @@ async fn run_schedule_inner(app: &AppHandle, sched: &Schedule) -> (String, Strin
             0,
             0.0,
             0,
+            None,
         );
         let aid = store::insert_action(
             &conn,
@@ -279,6 +280,7 @@ usando as ferramentas disponíveis e termina com um resumo curto.\n\n{body}",
             0,
             0.0,
             0,
+            None,
         );
         // Fecha a entrada do action_log (EM_EXECUCAO → OK/ERRO) para aparecer na Activity.
         let _ = store::update_action(

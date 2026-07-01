@@ -155,6 +155,8 @@ pub fn run() {
             commands::list_conversations,
             commands::get_conversation,
             commands::set_message_steps,
+            commands::list_message_versions,
+            commands::set_active_version,
             commands::new_conversation,
             commands::rename_conversation,
             commands::delete_conversation,

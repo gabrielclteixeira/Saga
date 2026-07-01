@@ -136,6 +136,8 @@ const EN: Record<string, string> = {
   "Debater": "Debate",
   "confiança": "confidence",
   "Regenerar": "Regenerate",
+  "Versão anterior": "Previous version",
+  "Próxima versão": "Next version",
   "Perguntar ao Claude": "Ask Claude",
   "Pedido de ficheiro sem gravação": "File request wasn't saved",
   "Tentar pela rota Claude": "Try via the Claude route",

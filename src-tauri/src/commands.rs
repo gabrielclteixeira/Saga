@@ -156,6 +156,12 @@ pub enum StreamEvent {
     Done {
         /// Id da mensagem do assistente gravada (para persistir os breadcrumbs de ferramentas). 0 = falhou.
         message_id: i64,
+        /// Grupo de versões desta mensagem (ver StoredMessage) — 0 se a gravação falhou.
+        version_group_id: i64,
+        /// Quantas versões existem neste grupo (1 = ainda não foi regenerada).
+        version_count: i64,
+        /// Posição desta versão no grupo (1-based).
+        version_index: i64,
         input_tokens: u64,
         output_tokens: u64,
         tokens_saved: u64,
@@ -320,6 +326,35 @@ pub fn set_message_steps(
     let json = serde_json::to_string(&steps).unwrap_or_else(|_| "[]".into());
     let conn = state.db.lock().unwrap();
     store::set_message_steps(&conn, message_id, &json).map_err(|e| e.to_string())
+}
+
+/// Todas as versões (regenerações) de uma mensagem, para o ciclo ‹anterior/seguinte›.
+#[tauri::command]
+pub fn list_message_versions(state: State<AppState>, message_id: i64) -> Result<Vec<StoredMessage>, String> {
+    let conn = state.db.lock().unwrap();
+    let version_group_id: i64 = conn
+        .query_row(
+            "SELECT version_group_id FROM messages WHERE id = ?1",
+            [message_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    store::list_message_versions(&conn, version_group_id).map_err(|e| e.to_string())
+}
+
+/// Ativa uma versão específica de uma mensagem regenerada (ciclar ‹/›) — troca só a flag
+/// `superseded`, sem gerar nem copiar nada.
+#[tauri::command]
+pub fn set_active_version(state: State<AppState>, message_id: i64) -> Result<(), String> {
+    let conn = state.db.lock().unwrap();
+    let version_group_id: i64 = conn
+        .query_row(
+            "SELECT version_group_id FROM messages WHERE id = ?1",
+            [message_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    store::set_active_version(&conn, version_group_id, message_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1675,10 +1710,12 @@ pub async fn send_message_stream(
 ) -> Result<(), String> {
     let settings = state.settings.lock().unwrap().clone();
 
+    // Regenerar: em vez de apagar a resposta anterior, marca-a "superseded" e liga a nova ao
+    // mesmo version_group_id — dá para ciclar entre versões em vez de perder a anterior.
+    let mut regen_version_group: Option<i64> = None;
     if regenerate {
-        // Regenerar: a mensagem do utilizador já existe; apaga a resposta anterior.
         let conn = state.db.lock().unwrap();
-        let _ = store::delete_last_assistant(&conn, conversation_id);
+        regen_version_group = store::supersede_last_assistant(&conn, conversation_id).unwrap_or(None);
     } else if let Some(last_user) = messages.iter().rev().find(|m| m.role == "user") {
         // Persistir a mensagem do utilizador (a última do histórico) + auto-título.
         let attachments_json =
@@ -1696,6 +1733,7 @@ pub async fn send_message_stream(
             0,
             0.0,
             0,
+            None,
         );
         let _ = store::maybe_autotitle(&conn, conversation_id, &last_user.content);
     }
@@ -2457,6 +2495,7 @@ pub async fn send_message_stream(
             let gen_ms = gen_start.elapsed().as_millis() as i64;
             let partial = acc_buf.lock().map(|g| g.clone()).unwrap_or_default();
             let mut mid = 0i64;
+            let mut version = (0i64, 1i64, 1i64);
             if !partial.trim().is_empty() {
                 let conn = state.db.lock().unwrap();
                 if let Ok(m) = store::append_message(
@@ -2471,14 +2510,19 @@ pub async fn send_message_stream(
                     0,
                     0.0,
                     prepared.tokens_saved as i64,
+                    regen_version_group,
                 ) {
                     let _ = store::set_message_gen_ms(&conn, m, gen_ms);
                     mid = m;
+                    version = store::version_info(&conn, m).unwrap_or((m, 1, 1));
                 }
             }
             let snapshot = state.accounting.lock().unwrap().clone();
             let _ = channel.send(StreamEvent::Done {
                 message_id: mid,
+                version_group_id: version.0,
+                version_count: version.1,
+                version_index: version.2,
                 input_tokens: 0,
                 output_tokens: 0,
                 tokens_saved: prepared.tokens_saved,
@@ -2553,6 +2597,7 @@ pub async fn send_message_stream(
 
     // Persistir a resposta do assistente (+ tempo de geração).
     let mut assistant_mid: i64 = 0;
+    let mut version = (0i64, 1i64, 1i64);
     {
         let conn = state.db.lock().unwrap();
         if let Ok(mid) = store::append_message(
@@ -2567,14 +2612,19 @@ pub async fn send_message_stream(
             response.output_tokens as i64,
             cost,
             prepared.tokens_saved as i64,
+            regen_version_group,
         ) {
             let _ = store::set_message_gen_ms(&conn, mid, gen_ms);
             assistant_mid = mid;
+            version = store::version_info(&conn, mid).unwrap_or((mid, 1, 1));
         }
     }
 
     let _ = channel.send(StreamEvent::Done {
         message_id: assistant_mid,
+        version_group_id: version.0,
+        version_count: version.1,
+        version_index: version.2,
         input_tokens: response.input_tokens,
         output_tokens: response.output_tokens,
         tokens_saved: prepared.tokens_saved,
