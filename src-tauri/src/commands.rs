@@ -610,9 +610,8 @@ pub fn project_save_file(
     if root.is_empty() {
         return Err("O tópico não tem pasta de projeto.".into());
     }
-    if topic.permission_mode != "ask" {
-        return Err("O projeto está em modo leitura — muda para 'Edição confirmada'.".into());
-    }
+    // Independente do permission_mode: o próprio clique + diálogo nativo de gravação já é a
+    // confirmação do utilizador, não uma escrita autónoma do agente.
     crate::tools::project::write_file(root, &path, &content)?;
     let _ = store::insert_action(
         &conn,

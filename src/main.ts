@@ -683,11 +683,11 @@ app.innerHTML = `
         </div>
         <label>${t("Acesso aos ficheiros")}
           <select id="topic-permission">
-            <option value="read">${t("Leitura (o agente lê a pasta)")}</option>
-            <option value="ask">${t("Edição confirmada (pede aprovação para gravar)")}</option>
+            <option value="read">${t("Leitura (o agente só lê a pasta — sem escrever nada)")}</option>
+            <option value="ask">${t("Edição confirmada (o agente pode gravar, com aprovação)")}</option>
           </select>
         </label>
-        <p class="wiz-hint">${t("Anexar uma pasta dá a árvore ao contexto; ler/editar ficheiros corre no modelo local (Ollama) ou no Claude (modo API), com confirmação de cada gravação.")}</p>
+        <p class="wiz-hint">${t("Anexar uma pasta dá a árvore ao contexto. Em 'Leitura' o agente não escreve ficheiros de todo (mas continuas a poder guardar manualmente, ex. num artefacto). Em 'Edição confirmada' o modelo local (Ollama) ou o Claude (modo API) também podem criar/editar, sempre com confirmação de cada gravação.")}</p>
       </fieldset>
 
       <menu>
@@ -3896,12 +3896,13 @@ async function exportArtifact() {
   }
 }
 
-/** O tópico-projeto (pasta + editável) da conversa atual, se houver. */
+/** O tópico-projeto (pasta anexada) da conversa atual, se houver. Independente do permission_mode:
+ * gravar manualmente via diálogo nativo é o próprio utilizador a confirmar, não uma escrita autónoma. */
 function currentProjectTopic(): Topic | null {
   const conv = state.conversations.find((c) => c.id === state.currentConversationId);
   if (!conv || conv.topic_id == null) return null;
   const tp = state.topics.find((t) => t.id === conv.topic_id);
-  return tp && tp.folder_path.trim() && tp.permission_mode === "ask" ? tp : null;
+  return tp && tp.folder_path.trim() ? tp : null;
 }
 
 /** Grava o artefacto atual diretamente na pasta do projeto (escolhe o nome via diálogo nativo). */
