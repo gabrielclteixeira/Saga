@@ -774,6 +774,33 @@ pub fn delete_conversation(state: State<AppState>, id: i64) -> Result<(), String
     store::delete_conversation(&conn, id).map_err(|e| e.to_string())
 }
 
+/// Destila uma Saga para uma nota em `memory_dir`, antes de a apagar (oferta do frontend no
+/// diálogo de apagar). `scope_hint` nomeia a nota — nome do tópico da conversa, ou um assunto
+/// livre escolhido pelo utilizador. Não apaga a conversa: isso é um passo separado do frontend,
+/// só chamado depois de esta chamada ter sucesso (para não perder a conversa se o resumo falhar).
+#[tauri::command]
+pub async fn distill_conversation_to_memory(
+    state: State<'_, AppState>,
+    conversation_id: i64,
+    scope_hint: String,
+) -> Result<String, String> {
+    let settings = state.settings.lock().unwrap().clone();
+    let transcript = {
+        let conn = state.db.lock().unwrap();
+        store::conversation_transcript(&conn, conversation_id).map_err(|e| e.to_string())?
+    };
+    let summary = router::summarize_conversation(&transcript, &settings)
+        .await
+        .ok_or_else(|| "Não foi possível resumir — verifica o modelo local.".to_string())?;
+    let hint = {
+        let h = scope_hint.trim();
+        if h.is_empty() { "conversa".to_string() } else { h.to_string() }
+    };
+    let note = format!("# {hint}\n\n{summary}\n");
+    memory::write_memory_note(&settings.memory_dir, &hint, &note).map_err(|e| e.to_string())?;
+    Ok(summary)
+}
+
 #[tauri::command]
 pub fn search_chats(state: State<AppState>, query: String) -> Result<Vec<SearchHit>, String> {
     let conn = state.db.lock().unwrap();

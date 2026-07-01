@@ -160,6 +160,7 @@ pub fn run() {
             commands::new_conversation,
             commands::rename_conversation,
             commands::delete_conversation,
+            commands::distill_conversation_to_memory,
             commands::list_topics,
             commands::create_topic,
             commands::rename_topic,

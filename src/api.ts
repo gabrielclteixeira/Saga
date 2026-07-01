@@ -379,6 +379,8 @@ export const api = {
   renameConversation: (id: number, title: string) =>
     invoke<void>("rename_conversation", { id, title }),
   deleteConversation: (id: number) => invoke<void>("delete_conversation", { id }),
+  distillConversationToMemory: (conversationId: number, scopeHint: string) =>
+    invoke<string>("distill_conversation_to_memory", { conversationId, scopeHint }),
   listTopics: () => invoke<Topic[]>("list_topics"),
   createTopic: (name: string) => invoke<number>("create_topic", { name }),
   renameTopic: (id: number, name: string) => invoke<void>("rename_topic", { id, name }),

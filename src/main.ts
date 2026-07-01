@@ -736,6 +736,19 @@ app.innerHTML = `
     </div>
   </dialog>
 
+  <dialog id="delete-conv-dialog">
+    <div class="settings">
+      <h2>${t("Apagar esta Saga?")}</h2>
+      <label>${t("Assunto (para a memória)")} <input id="delconv-scope" type="text" autocomplete="off" spellcheck="false" /></label>
+      <p class="wiz-hint" id="delconv-status"></p>
+      <menu>
+        <button type="button" class="primary" id="delconv-save-delete">${t("Guardar em memória e apagar")}</button>
+        <button type="button" class="ghost" id="delconv-only-delete">${t("Só apagar")}</button>
+        <button type="button" class="ghost" id="delconv-cancel">${t("Cancelar")}</button>
+      </menu>
+    </div>
+  </dialog>
+
   <dialog id="project-files-dialog">
     <div class="settings">
       <h2 id="project-files-title">${t("Ficheiros do projeto")}</h2>
@@ -835,6 +848,7 @@ const els = {
   wizard: document.querySelector<HTMLDialogElement>("#wizard-dialog")!,
   topicDialog: document.querySelector<HTMLDialogElement>("#topic-dialog")!,
   distillDialog: document.querySelector<HTMLDialogElement>("#distill-dialog")!,
+  deleteConvDialog: document.querySelector<HTMLDialogElement>("#delete-conv-dialog")!,
   projectFilesDialog: document.querySelector<HTMLDialogElement>("#project-files-dialog")!,
   projectFilesList: document.querySelector<HTMLUListElement>("#project-files-list")!,
   projectFilesStatus: document.querySelector<HTMLElement>("#project-files-status")!,
@@ -2142,7 +2156,7 @@ function convRow(c: ConversationMeta): HTMLElement {
   del.title = t("Apagar");
   del.addEventListener("click", (e) => {
     e.stopPropagation();
-    removeConversation(c.id);
+    void requestDeleteConversation(c);
   });
 
   row.append(title, move, ren, del);
@@ -2912,6 +2926,49 @@ async function createConversation(topicId?: number | null) {
   renderMessages();
   await loadConversations();
   renderAccounting(await api.conversationAccounting(id));
+}
+
+let deleteConvId: number | null = null;
+
+/** Ponto de entrada do botão apagar: sem conteúdo relevante apaga logo; senão oferece guardar em
+ * memória primeiro (âmbito pré-preenchido com o nome do tópico, se houver um). */
+async function requestDeleteConversation(c: ConversationMeta) {
+  let msgCount = 0;
+  try {
+    msgCount = (await api.getConversation(c.id)).length;
+  } catch {
+    /* falha a contar → trata como sem conteúdo relevante, não bloqueia o apagar */
+  }
+  if (msgCount < 2) {
+    await removeConversation(c.id);
+    return;
+  }
+  deleteConvId = c.id;
+  const inp = document.querySelector<HTMLInputElement>("#delconv-scope")!;
+  const topicName = c.topic_id != null ? state.topics.find((tp) => tp.id === c.topic_id)?.name ?? "" : "";
+  inp.value = topicName;
+  inp.placeholder = topicName ? "" : c.title || t("assunto");
+  (document.querySelector("#delconv-status") as HTMLElement).textContent = "";
+  els.deleteConvDialog.showModal();
+}
+
+/** Destila a conversa pendente para memória e só depois apaga (não perde nada se o resumo falhar). */
+async function saveMemoryThenDelete() {
+  if (deleteConvId == null) return;
+  const id = deleteConvId;
+  const scope = (document.querySelector("#delconv-scope") as HTMLInputElement).value.trim();
+  const status = document.querySelector("#delconv-status") as HTMLElement;
+  status.textContent = t("A destilar…");
+  try {
+    await api.distillConversationToMemory(id, scope);
+  } catch (e) {
+    status.textContent = t("Falha a destilar: ") + e;
+    return;
+  }
+  els.deleteConvDialog.close();
+  deleteConvId = null;
+  await refreshMemory();
+  await removeConversation(id);
 }
 
 async function removeConversation(id: number) {
@@ -6752,6 +6809,17 @@ async function init() {
   document.querySelector("#distill-save")!.addEventListener("click", () => void saveDistill());
   document.querySelector("#distill-redraft")!.addEventListener("click", () => void redraftDistill());
   document.querySelector("#distill-discard")!.addEventListener("click", () => void discardDistill());
+  document.querySelector("#delconv-save-delete")!.addEventListener("click", () => void saveMemoryThenDelete());
+  document.querySelector("#delconv-only-delete")!.addEventListener("click", () => {
+    els.deleteConvDialog.close();
+    const id = deleteConvId;
+    deleteConvId = null;
+    if (id != null) void removeConversation(id);
+  });
+  document.querySelector("#delconv-cancel")!.addEventListener("click", () => {
+    els.deleteConvDialog.close();
+    deleteConvId = null;
+  });
   document
     .querySelector("#project-files-close")!
     .addEventListener("click", () => els.projectFilesDialog.close());

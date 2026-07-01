@@ -1,7 +1,7 @@
-//! Leitura de memória: ficheiros markdown numa pasta + um CLAUDE.md opcional.
+//! Leitura e escrita de memória: ficheiros markdown numa pasta + um CLAUDE.md opcional.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::settings::Settings;
 
@@ -41,6 +41,44 @@ pub fn load_raw(settings: &Settings) -> String {
     }
 
     parts.join("\n\n---\n\n")
+}
+
+/// Escreve uma nova nota de memória (`<slug>-<data>.md`) na pasta configurada; cria a pasta se
+/// não existir. Acrescenta um sufixo numérico se já houver uma nota com o mesmo nome+data.
+pub fn write_memory_note(dir: &str, name_hint: &str, content: &str) -> std::io::Result<PathBuf> {
+    let dir_path = Path::new(dir);
+    fs::create_dir_all(dir_path)?;
+    let slug = slugify(name_hint);
+    let base = if slug.is_empty() { "nota".to_string() } else { slug };
+    let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let mut path = dir_path.join(format!("{base}-{date}.md"));
+    let mut n = 2;
+    while path.exists() {
+        path = dir_path.join(format!("{base}-{date}-{n}.md"));
+        n += 1;
+    }
+    fs::write(&path, content)?;
+    Ok(path)
+}
+
+/// Nome de ficheiro seguro e legível a partir de texto livre: minúsculas, hífens, sem acentos
+/// tratados (fica alfanumérico simples), sem hífens duplicados/nas pontas.
+fn slugify(s: &str) -> String {
+    let mut out = String::new();
+    let mut last_dash = false;
+    for c in s.trim().to_lowercase().chars() {
+        if c.is_alphanumeric() {
+            out.push(c);
+            last_dash = false;
+        } else if !last_dash && !out.is_empty() {
+            out.push('-');
+            last_dash = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    out
 }
 
 /// Pré-visualização curta para a UI (primeiros N caracteres).

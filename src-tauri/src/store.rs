@@ -445,6 +445,25 @@ pub fn topic_transcript(conn: &Connection, topic_id: i64, max_chars: usize) -> R
     Ok(out)
 }
 
+/// Transcript de uma única conversa (para destilar antes de apagar) — mesma forma de
+/// `topic_transcript`, mas sem agrupar por tópico (uma conversa pode não ter nenhum).
+pub fn conversation_transcript(conn: &Connection, conversation_id: i64) -> Result<String> {
+    let mut stmt = conn.prepare(
+        "SELECT role, content FROM messages
+         WHERE conversation_id = ?1 AND role IN ('user','assistant') AND superseded = 0
+         ORDER BY id ASC",
+    )?;
+    let rows = stmt.query_map(params![conversation_id], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut out = String::new();
+    for row in rows.flatten() {
+        let (role, content) = row;
+        out.push_str(&format!("{role}: {content}\n"));
+    }
+    Ok(out)
+}
+
 /// Colunas partilhadas por `get_messages` e `list_message_versions` — inclui as contagens de
 /// versão calculadas por subquery correlacionada (barato: só há >1 versão em mensagens
 /// regeneradas, e conversas são pequenas).
