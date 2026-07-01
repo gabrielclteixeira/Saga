@@ -114,6 +114,8 @@ const EN: Record<string, string> = {
   "Ver ficheiros": "View files",
   "Ficheiros do projeto": "Project files",
   "Ficheiros do projeto: {p}": "Project files: {p}",
+  "Menos": "Less",
+  "Mais ações": "More actions",
   "Pasta vazia (ou só tem subpastas ignoradas, como node_modules).":
     "Empty folder (or it only has ignored subfolders, like node_modules).",
   "Escreve uma mensagem…": "Type a message…",

@@ -510,8 +510,8 @@ body.dragging-conv {
   word-break: break-all;
 }
 .topic-act {
-  visibility: hidden;
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   background: transparent;
@@ -525,14 +525,18 @@ body.dragging-conv {
   width: 14px;
   height: 14px;
 }
-.topic-head:hover .topic-act {
-  visibility: visible;
-}
 .topic-act:hover {
   color: var(--text);
 }
 .topic-del:hover {
   color: var(--danger);
+}
+/* Seta que troca o nome do tópico pelos botões de ação (não há espaço para os dois). */
+.topic-expand .ic {
+  transition: transform 0.12s ease;
+}
+.topic-expand.expanded .ic {
+  transform: rotate(180deg);
 }
 /* Pílula passiva de destilação: padrão detetado por capturar (sempre visível). */
 .topic-hint {

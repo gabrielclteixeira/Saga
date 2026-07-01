@@ -2024,6 +2024,10 @@ function toggleCollapsed(key: string) {
   localStorage.setItem("saga.collapsedTopics", JSON.stringify([...s]));
 }
 
+/** Tópicos com as ações (editar/renomear/apagar) reveladas — a seta ">" na linha do tópico
+ * troca o nome por estes botões em vez de os empilhar ao lado (não há espaço para os dois). */
+const expandedTopicActions = new Set<number>();
+
 /** Linha de uma conversa: título + mover + renomear + apagar. Arrastável para um grupo de tópico. */
 function convRow(c: ConversationMeta): HTMLElement {
   const row = document.createElement("div");
@@ -2114,9 +2118,11 @@ function renderSidebar() {
     caret.className = "topic-caret" + (isCollapsed ? " collapsed" : "");
     caret.innerHTML = icon("chevron");
 
+    const actionsExpanded = !!topic && expandedTopicActions.has(topic.id);
     const name = document.createElement("span");
     name.className = "topic-name";
     name.textContent = label;
+    name.hidden = actionsExpanded; // dá o espaço aos botões de ação enquanto estão revelados
     if (topic) {
       name.title = label;
       name.addEventListener("dblclick", (e) => {
@@ -2206,7 +2212,20 @@ function renderSidebar() {
         void deleteTopicUi(topic.id);
       });
 
-      head.append(add, distill, edit, ren, del);
+      // Seta ">" revela os botões de ação no lugar do nome; "<" volta a mostrar o nome.
+      const toggle = document.createElement("button");
+      toggle.className = "topic-act topic-expand" + (actionsExpanded ? " expanded" : "");
+      toggle.innerHTML = icon("chevron");
+      toggle.title = actionsExpanded ? t("Menos") : t("Mais ações");
+      toggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (actionsExpanded) expandedTopicActions.delete(topic.id);
+        else expandedTopicActions.add(topic.id);
+        renderSidebar();
+      });
+
+      if (actionsExpanded) head.append(add, distill, edit, ren, del, toggle);
+      else head.append(toggle);
     }
 
     group.appendChild(head);
