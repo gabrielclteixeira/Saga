@@ -264,6 +264,11 @@ Claude; plus a **model field on scheduled automations**) ·
   (end-of-Saga summary pass vs a cheap local-model classifier per turn vs an explicit "capture this" affordance);
   the type-classification step (let the same generation pass pick the type); dedupe against existing docs of any
   type; keep it **opt-in** so it never feels intrusive.
+- **Save a Saga to memory on delete** — when you delete a chat, offer to **distil it into the model's memory**
+  first (so the knowledge outlives the transcript) instead of losing it. If the Saga already belongs to a **topic**,
+  pre-select that topic as the memory's scope (still editable); if it's **unassociated**, ask which topic/subject to
+  file it under — or keep it global. One prompt on delete: *keep in memory?* → pick scope → confirm. Reuses the
+  local-model summarization (same pass as compact) to condense the chat before storing.
 - **Agentic Plan execution (v2)** — today Plan mode *generates* each step (reasoning/writing, optionally web-grounded);
   a v2 would let approved steps take **real actions** via the agentic tool loop (browser, workspace, MCP, files) on
   the Claude route, with per-step approval for risky ones.
