@@ -1370,6 +1370,8 @@ function formatToolStep(tool: string, detail: string): string {
       return t("a criar PDF");
     case "skill":
       return `${t("Skill aplicada")}: ${detail}`;
+    case "subagents_skipped":
+      return t("Subagentes: ferramentas disponíveis têm prioridade este turno — sem paralelismo.");
     case "plan":
       return t("a planear…");
     case "research":
@@ -1673,6 +1675,37 @@ function escapeHtml(s: string): string {
   const div = document.createElement("div");
   div.textContent = s;
   return div.innerHTML;
+}
+
+/** Fecha um diálogo ao clicar no fundo (fora da caixa) — como o Escape, mas pelo rato. Não se aplica
+ * ao wizard (fluxo guiado, sem saída lateral). Quando o diálogo tem um passo de "Guardar" explícito,
+ * `isDirty` decide se há algo a perder e pede confirmação antes de fechar — clicar fora costuma ser
+ * um gesto acidental, ao contrário de um botão "Cancelar"/"Descartar" explícito (que continua a
+ * fechar sem perguntar). Sem `isDirty`, o diálogo fecha sempre logo (nada a perder). */
+function wireBackdropDismiss(dialog: HTMLDialogElement, isDirty?: () => boolean) {
+  dialog.addEventListener("click", (e) => {
+    if (e.target !== dialog) return; // só o fundo — o conteúdo tem os seus próprios handlers
+    if (isDirty?.() && !confirm(t("Fechar sem guardar as alterações?"))) return;
+    dialog.close();
+  });
+}
+
+/** Para diálogos com muitos campos: em vez de comparar campo a campo, marca "sujo" a partir de
+ * qualquer input/change desde que abriu ou desde o último `markClean()`. `markDirty()` cobre
+ * mudanças que não passam por um `<input>` (ex.: escolher pasta via diálogo nativo do SO). */
+function trackDirty(scope: HTMLElement): { isDirty: () => boolean; markClean: () => void; markDirty: () => void } {
+  let dirty = false;
+  scope.addEventListener("input", () => (dirty = true), true);
+  scope.addEventListener("change", () => (dirty = true), true);
+  return {
+    isDirty: () => dirty,
+    markClean: () => {
+      dirty = false;
+    },
+    markDirty: () => {
+      dirty = true;
+    },
+  };
 }
 
 function renderAccounting(a: Accounting) {
@@ -2382,6 +2415,7 @@ async function deleteTopicUi(id: number) {
 // a pasta dá file tools (ler/editar) aos chats do tópico.
 let editingTopicId: number | null = null;
 let editingFolder = "";
+const topicDirty = trackDirty(els.topicDialog);
 function renderTopicFolder() {
   (document.querySelector("#topic-folder-path") as HTMLElement).textContent = editingFolder;
   document.querySelector("#topic-folder-clear")!.toggleAttribute("hidden", !editingFolder);
@@ -2396,6 +2430,7 @@ function openTopicEditor(tp: Topic) {
     tp.permission_mode || "read";
   renderTopicFolder();
   els.topicDialog.showModal();
+  topicDirty.markClean();
 }
 async function pickTopicFolder() {
   try {
@@ -2403,6 +2438,7 @@ async function pickTopicFolder() {
     if (typeof picked === "string") {
       editingFolder = picked;
       renderTopicFolder();
+      topicDirty.markDirty();
     }
   } catch (e) {
     console.error(e);
@@ -2539,6 +2575,8 @@ async function saveDistill() {
   distillTopicId = null;
   distillFields = null;
   await loadConversations();
+  const kindLabel = { skill: "Skill", playbook: "Playbook", workflow: "Workflow", agent: "Agent" }[kind];
+  showHint(t("{kind} \"{name}\" criado no Workspace.", { kind: kindLabel, name }), "check");
 }
 
 /** Descarta a proposta e limpa a dica do tópico. */
@@ -3959,9 +3997,10 @@ function autoGrow() {
   els.input.style.height = Math.min(els.input.scrollHeight, 160) + "px";
 }
 
-/** Toast transitório (avisos não-bloqueantes). */
+/** Toast transitório (avisos não-bloqueantes). `iconName` (opcional, ex. "check") destaca
+ * confirmações positivas — sem emojis, sempre `icon()`, conforme o resto da UI. */
 let hintTimer: number | undefined;
-function showHint(msg: string) {
+function showHint(msg: string, iconName?: string) {
   let el = document.querySelector<HTMLElement>("#hint-toast");
   if (!el) {
     el = document.createElement("div");
@@ -3969,7 +4008,8 @@ function showHint(msg: string) {
     el.className = "hint-toast";
     document.body.appendChild(el);
   }
-  el.textContent = msg;
+  el.innerHTML = iconName ? `${icon(iconName)}<span>${escapeHtml(msg)}</span>` : escapeHtml(msg);
+  el.classList.toggle("hint-toast-icon", !!iconName);
   el.hidden = false;
   if (hintTimer) clearTimeout(hintTimer);
   hintTimer = window.setTimeout(() => {
@@ -6866,9 +6906,19 @@ async function init() {
       projectFilesTopic = null;
     }
   });
+
+  // Clicar fora fecha o diálogo (como o Escape, mas pelo rato) — exceto no wizard, que é um fluxo
+  // guiado sem saída lateral. Diálogos com edições por guardar confirmam antes de fechar; os de
+  // leitura/confirmação simples fecham logo, sem perguntar.
+  wireBackdropDismiss(els.dialog); // Definições gerais: tudo aplica-se de imediato, nada a perder.
+  wireBackdropDismiss(els.topicDialog, topicDirty.isDirty);
+  wireBackdropDismiss(els.distillDialog, () => true); // o rascunho é sempre algo a perder.
+  wireBackdropDismiss(els.deleteConvDialog); // sair = cancelar, sempre seguro.
+  wireBackdropDismiss(els.projectFilesDialog); // visualizador, sem edição.
   document.querySelector("#topic-folder-clear")!.addEventListener("click", () => {
     editingFolder = "";
     renderTopicFolder();
+    topicDirty.markDirty();
   });
   els.convSearch.addEventListener("input", onSearch);
   document.querySelector("#btn-attach")!.addEventListener("click", () => els.fileInput.click());

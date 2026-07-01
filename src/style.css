@@ -3953,6 +3953,16 @@ input[type="checkbox"]:disabled {
 .hint-toast[hidden] {
   display: none;
 }
+.hint-toast-icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-color: var(--local);
+}
+.hint-toast-icon .ic {
+  color: var(--local);
+  flex-shrink: 0;
+}
 /* Banner "atualização pronta — reiniciar". */
 .update-ready {
   position: fixed;

@@ -2413,6 +2413,16 @@ atuais de que não tens a certeza, di-lo claramente em vez de arriscar um palpit
                     || has_ws
                     || forced_workflow
                     || project_root.is_some());
+            // O orquestrador de subagentes (abaixo) não tem acesso a ferramentas — se este turno já
+            // tem ferramentas disponíveis (browser/MCP/workspace/projeto), elas têm prioridade e o
+            // toggle Subagentes fica sem efeito. Sem isto o utilizador via a UI ligada sem saber
+            // porque é que nada mudou — avisa em vez de ficar silencioso.
+            if subagents && want_tools {
+                let _ = channel.send(StreamEvent::ToolStep {
+                    tool: "subagents_skipped".to_string(),
+                    detail: String::new(),
+                });
+            }
             if want_tools {
                 // Loop agêntico com ferramentas (browser e/ou servidores MCP) — só API.
                 let tx_d = channel.clone();
