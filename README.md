@@ -248,43 +248,42 @@ as an agent default) ·
 with fallback to the default if the pinned model was deleted) ·
 **per-context model selection** (in-chat A/B: regenerate the same prompt on another installed local model or
 Claude; plus a **model field on scheduled automations**) ·
-**artifact toolbar overflow menu** ("⋯" collapses controls that don't fit when the panel is narrow).
+**artifact toolbar overflow menu** ("⋯" collapses controls that don't fit when the panel is narrow) ·
+**richer first-time experience** (optional one-click **embed-model install** in the wizard, with a passive
+Settings hint when none is detected; an actionable "Ollama isn't running" hint on connection-refused instead of
+the raw error; seeded example **playbook + workflow** so the Workspace isn't empty on first run; a **replayable
+mini-tour** covering the route picker, Workspace and Automations, not just the rail/composer) ·
+**save a Saga to memory on delete** (deleting a chat with real content offers to **distil it into memory** first
+— scope pre-filled from the topic name when there is one, editable — instead of losing it silently when you
+clean up; reuses the local-model summarization from **compact**) ·
+**Clarification v3 — self-consistency** (an **L3 signal** for the hardest borderline calls left undecided by the
+L1/L2 gate: sample a few short "what would you assume" completions at different temperatures and measure
+embedding agreement — high agreement means the model would answer the same way regardless, so it skips the
+clarify card even when L1/L2 leaned vague; local route + `high` level only, since the Claude API has no
+per-request temperature to sample with) ·
+**Smart Saga** (in normal chat, not just Plan mode, a deterministic **fail-closed** detector asks before
+searching the web when a request looks like it needs current external facts — a price, a result, today's news —
+and the turn has no web access yet; answering "yes" turns on grounded search for that turn only, "no" tells the
+model to admit uncertainty instead of guessing — never a silent search, never a model self-judgment call).
 
 **Next:**
 
-- **First-time experience** *(current focus)* — make the first run delightful and self-explanatory beyond the
-  existing welcome flow: detect an **incomplete setup** (Ollama not running, no model pulled, no embed model for
-  the L2 clarification) and guide the fix inline; seed a couple of **example skills/workflows** so the Workspace
-  isn't empty; **suggested starter prompts** in the empty state; a short **guided tour** of the key surfaces
-  (composer toggles, route picker, Workspace, Automations). Goal: a new user is productive within a minute,
-  without reading docs.
 - **Zero-setup distribution** — bundle/auto-install Ollama as a managed sidecar (auto-pull a small default
   model on first run), package the Playwright sidecar (`externalBin`) so the browser tool needs no manual
   install. Goal: double-click the installer and it just works.
 - **Code-sign & notarize installers** *(current focus)* — the updater is signed and auto-update is live; still
   pending is OS-level **code-signing + notarization** (Apple Developer ID / Windows Authenticode) to drop the
   "unknown publisher" warnings.
-- **Projects — auto mode & rollback** — Projects now cover all three routes (Claude API, Claude CLI, local
-  Ollama), with a live file explorer and an audit trail. The remaining piece is an **auto** permission mode: after
-  you **approve a plan**, the agent runs the file edits unattended to the end (extending Plan mode's draft →
-  approve → execute to real edits), with the folder **snapshotted before the run** so **rollback** undoes the
-  whole thing in one click. This is the home for **Agentic Plan execution (v2)** below. Open: rollback via
+- **Projects — auto mode & rollback** — Projects now cover all three routes (Claude API, Claude
+  CLI, local Ollama), with a live file explorer and an audit trail. The remaining piece is an **auto** permission
+  mode: after you **approve a plan**, the agent runs the file edits unattended to the end (extending Plan mode's
+  draft → approve → execute to real edits), with the folder **snapshotted before the run** so **rollback** undoes
+  the whole thing in one click. This is the home for **Agentic Plan execution (v2)** below. Open: rollback via
   per-run shadow git (stash/commit) vs a filesystem snapshot copy; how to combine the multi-step tool loop with
   the (currently separate) verify/debate.
-- **Save a Saga to memory on delete** — when you delete a chat, offer to **distil it into the model's memory**
-  first (so the knowledge outlives the transcript) instead of losing it. If the Saga already belongs to a **topic**,
-  pre-select that topic as the memory's scope (still editable); if it's **unassociated**, ask which topic/subject to
-  file it under — or keep it global. One prompt on delete: *keep in memory?* → pick scope → confirm. Reuses the
-  local-model summarization (same pass as compact) to condense the chat before storing.
 - **Agentic Plan execution (v2)** — today Plan mode *generates* each step (reasoning/writing, optionally web-grounded);
   a v2 would let approved steps take **real actions** via the agentic tool loop (browser, workspace, MCP, files) on
   the Claude route, with per-step approval for risky ones.
-- **Clarification v3 — self-consistency** — the embedding L2 and adaptive per-model sensitivity shipped; the
-  remaining lever is a **self-consistency** signal (sample a few plan drafts, measure assumption divergence) for the
-  hardest borderline calls.
-- **Smart Saga** — in *normal* chat (not just Plan mode), the model decides when it actually needs the web and
-  **asks you inline** before searching (e.g. "queres que pesquise os preços atuais?"), instead of guessing or
-  hallucinating — the ask-before-acting / clarification pattern extended to regular chat.
 
 **Open questions:**
 
