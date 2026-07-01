@@ -127,6 +127,39 @@ pub fn wants_web(task: &str) -> bool {
     !(has_file && !has_web)
 }
 
+/// Sinais de atualidade/recência — usados só pelo Smart Saga (não pelo `wants_web`, que já falha
+/// aberto de propósito e não precisa de distinguir "agora" de um facto qualquer).
+const CURRENCY_SIGNALS: &[&str] = &[
+    "hoje", "agora", "atual", "atuais", "esta semana", "este mês", "recente", "recentes",
+    "últimas", "último", "última", "neste momento", "today", "now", "current", "currently",
+    "this week", "this month", "latest", "recent",
+];
+
+/// Sinais de facto externo — o tipo de coisa que muda no mundo real e que o modelo não pode saber
+/// sem pesquisar (preço, evento, notícia…).
+const EXTERNAL_FACT_SIGNALS: &[&str] = &[
+    "preço", "preços", "cotação", "tempo", "meteorologia", "previsão", "notícia", "notícias",
+    "resultado", "resultados", "quem ganhou", "quem venceu", "placar", "classificação", "price",
+    "weather", "forecast", "news", "score", "who won", "result",
+];
+
+/// Detetor determinístico do Smart Saga: esta mensagem parece precisar de dados atuais/externos que
+/// o modelo não pode saber sem pesquisar? Ao contrário de `wants_web` (que falha ABERTO — nunca
+/// esconde a tool), este falha FECHADO — nunca interrompe à toa. Só dispara com um sinal de facto
+/// externo COMBINADO com recência OU fraseado como pergunta; nunca um sinal isolado. Pedidos de
+/// ficheiro (mesmos sinais/deteção de `wants_web`) vetam sempre. Devolve o sinal que disparou (para
+/// a UI explicar "porquê"), ou `None` se não disparar.
+pub fn needs_web_confirm(task: &str) -> Option<&'static str> {
+    let lower = task.to_lowercase();
+    if FILE_SIGNALS.iter().any(|s| lower.contains(s)) || has_file_extension(&lower) {
+        return None;
+    }
+    let fact = EXTERNAL_FACT_SIGNALS.iter().find(|s| lower.contains(**s))?;
+    let has_currency = CURRENCY_SIGNALS.iter().any(|s| lower.contains(s));
+    let ends_with_question = lower.trim_end().ends_with('?');
+    (has_currency || ends_with_question).then_some(*fact)
+}
+
 /// Exemplos curados (bilingue) para a L2: o centróide dos vagos vs dos específicos no espaço de
 /// embeddings classifica os casos fronteira. Não precisa de treino — só de cosseno.
 const EXEMPLARS: &[(&str, bool)] = &[
@@ -563,5 +596,40 @@ mod tests {
         // Equidistante dos dois centróides → margem ~0, o gatilho da L3.
         let (_, margin) = centroid_margin(&exemplars, &[1.0, 1.0]).unwrap();
         assert!(margin < 0.01, "esperava margem ~0 no meio do caminho, veio {margin}");
+    }
+
+    #[test]
+    fn needs_web_confirm_fires_on_fact_plus_currency_or_question() {
+        assert_eq!(
+            needs_web_confirm("qual é o preço do Bitcoin hoje?"),
+            Some("preço")
+        );
+        assert_eq!(
+            needs_web_confirm("o preço do bitcoin subiu hoje"),
+            Some("preço")
+        ); // sem "?", mas tem recência
+        assert_eq!(
+            needs_web_confirm("qual é o preço do bitcoin?"),
+            Some("preço")
+        ); // sem recência, mas é pergunta
+    }
+
+    #[test]
+    fn needs_web_confirm_never_fires_on_isolated_signal() {
+        assert_eq!(needs_web_confirm("isto é atual?"), None); // recência+pergunta, sem facto
+        assert_eq!(needs_web_confirm("bom dia, tudo bem?"), None); // nenhum sinal
+        assert_eq!(needs_web_confirm("qual é o preço disto"), None); // facto isolado, sem "?" nem recência
+    }
+
+    #[test]
+    fn needs_web_confirm_file_request_always_vetoes() {
+        assert_eq!(
+            needs_web_confirm("cria o cv.html com o preço atual do bitcoin"),
+            None
+        );
+        assert_eq!(
+            needs_web_confirm("guarda o preço de hoje num ficheiro relatorio.md"),
+            None
+        );
     }
 }

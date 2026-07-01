@@ -634,6 +634,8 @@ app.innerHTML = `
           </label>
           <p class="wiz-hint">${t("Off: nunca. Leve e Médio clarificam só o pedido inicial vago (no Médio o modelo decide o que falta). Alto: também a meio da conversa. Aplica-se ao chat e ao Plan mode.")}</p>
           <p class="wiz-hint" id="hub-clarify-l2"></p>
+          <label class="ws-check"><input type="checkbox" id="hub-smart-web" /> ${t("Perguntar antes de pesquisar (Smart Saga)")}</label>
+          <p class="wiz-hint">${t("No chat normal (fora do Plan mode), quando o pedido parece precisar de dados atuais e ainda não tens 🔎/pasta/ferramentas ligadas, pergunta antes de responder de cabeça ou pesquisar às escondas.")}</p>
         </fieldset>
 
         <fieldset>
@@ -3303,7 +3305,12 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
       async (evt) => {
         // Eventos interativos bloqueiam o backend à espera de resposta → garante que a Saga certa
         // está à vista (re-anexa a bolha) antes de mostrar o cartão, mesmo que se tenha navegado.
-        if (evt.kind === "ApprovalRequest" || evt.kind === "Clarify" || evt.kind === "Plan") {
+        if (
+          evt.kind === "ApprovalRequest" ||
+          evt.kind === "Clarify" ||
+          evt.kind === "Plan" ||
+          evt.kind === "SearchConfirm"
+        ) {
           if (!viewing()) await selectConversation(conversationId);
           awaitingPrompt.add(conversationId);
         }
@@ -3330,6 +3337,9 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
         } else if (evt.kind === "Clarify") {
           stopWaitTicker(); // agora espera-se o utilizador
           showClarifyCard(evt.id, evt.questions, conversationId);
+        } else if (evt.kind === "SearchConfirm") {
+          stopWaitTicker(); // agora espera-se o utilizador
+          showSearchConfirmCard(evt.id, evt.hint, conversationId);
         } else if (evt.kind === "Plan") {
           stopWaitTicker(); // agora espera-se o utilizador (não o modelo)
           showPlanCard(evt.id, evt.steps, assistant, evt.needs_web, evt.research, conversationId);
@@ -4831,6 +4841,29 @@ function showApproval(id: number, tool: string, preview: string, conversationId:
   els.messages.scrollTop = els.messages.scrollHeight;
 }
 
+/** Cartão do Smart Saga (chat normal, fora do Plan mode): o pedido parece precisar de dados
+ * atuais e este turno ainda não tem acesso à web — pergunta antes de decidir sozinho. */
+function showSearchConfirmCard(id: number, hint: string, conversationId: number) {
+  const card = document.createElement("div");
+  card.className = "approval-card";
+  card.innerHTML = `
+    <div class="approval-head">${t("Pesquisar na web?")}</div>
+    <div class="plan-hint">${escapeHtml(hint)}</div>
+    <div class="approval-bar">
+      <button type="button" class="ghost" data-ok="0">${t("Não, responde assim")}</button>
+      <button type="button" class="primary" data-ok="1">${t("Sim, pesquisa")}</button>
+    </div>`;
+  const done = (search: boolean) => {
+    awaitingPrompt.delete(conversationId);
+    api.respondSearchConfirm(id, search).catch(() => {});
+    card.remove();
+  };
+  card.querySelector('[data-ok="1"]')!.addEventListener("click", () => done(true));
+  card.querySelector('[data-ok="0"]')!.addEventListener("click", () => done(false));
+  els.messages.appendChild(card);
+  els.messages.scrollTop = els.messages.scrollHeight;
+}
+
 /** Cartão de esclarecimento (Plan mode): perguntas com campos de resposta + Responder/Saltar.
  * Saltar planeia na mesma com o que houver. */
 function showClarifyCard(id: number, questions: string[], conversationId: number) {
@@ -5949,6 +5982,7 @@ function hubLoad(s: Settings) {
           : t("Para clarificação mais precisa, instala um modelo de embeddings (ex.: nomic-embed-text) no separador Modelos — sem ele, usa só heurística.");
     })
     .catch(() => {});
+  hubIn("#hub-smart-web").checked = s.smart_web_confirm;
   hubSel("#hub-web-provider").value = s.web_search_provider;
   applyWebProviderUi(true);
   hubIn("#hub-num-ctx").value = String(s.ollama_num_ctx);
@@ -6107,6 +6141,7 @@ async function hubSave() {
       research_max_rounds: Math.min(5, Math.max(1, parseInt(hubIn("#hub-research-rounds").value) || 3)),
       local_web_search: hubIn("#hub-local-web").checked,
       clarify_level: hubSel("#hub-clarify-level").value as Settings["clarify_level"],
+      smart_web_confirm: hubIn("#hub-smart-web").checked,
       web_search_provider: hubSel("#hub-web-provider").value as Settings["web_search_provider"],
       web_search_keys: webSearchKeysPatch(),
       ollama_num_ctx: Math.max(2048, parseInt(hubIn("#hub-num-ctx").value) || 8192),

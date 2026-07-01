@@ -58,6 +58,7 @@ export interface Settings {
   web_search_provider: "duckduckgo" | "tavily" | "brave" | "serper" | "exa" | "jina";
   web_search_keys: Record<string, string>;
   onboarding_done: boolean;
+  smart_web_confirm: boolean;
 }
 
 export interface DocMeta {
@@ -258,6 +259,7 @@ export type StreamEvent =
   | { kind: "ToolStep"; tool: string; detail: string }
   | { kind: "ApprovalRequest"; id: number; tool: string; preview: string }
   | { kind: "Clarify"; id: number; questions: string[] }
+  | { kind: "SearchConfirm"; id: number; hint: string }
   | { kind: "Plan"; id: number; steps: string[]; needs_web: boolean; research: boolean }
   | { kind: "PlanStep"; index: number; status: string }
   | {
@@ -366,6 +368,8 @@ export const api = {
     invoke<void>("respond_plan", { id, approved, steps, research }),
   respondClarify: (id: number, answered: boolean, answers: string[]) =>
     invoke<void>("respond_clarify", { id, answered, answers }),
+  respondSearchConfirm: (id: number, search: boolean) =>
+    invoke<void>("respond_search_confirm", { id, search }),
   setMessageSteps: (messageId: number, steps: string[]) =>
     invoke<void>("set_message_steps", { messageId, steps }),
   listMessageVersions: (messageId: number) =>

@@ -186,6 +186,7 @@ pub fn run() {
             commands::approve_action,
             commands::respond_plan,
             commands::respond_clarify,
+            commands::respond_search_confirm,
             commands::detect_embed_model,
             commands::ensure_workspace_defaults,
             commands::get_workspace_index,

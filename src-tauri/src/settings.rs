@@ -75,6 +75,10 @@ pub struct Settings {
     pub web_search_keys: BTreeMap<String, String>,
     /// Onboarding (wizard de 1.º arranque) concluído.
     pub onboarding_done: bool,
+    /// Smart Saga: no chat normal (fora do Plan mode), pergunta antes de pesquisar na web quando o
+    /// pedido parece precisar de dados atuais/externos e o turno ainda não tem acesso à web. Default
+    /// true — o detetor (`clarify::needs_web_confirm`) falha fechado e dispara raramente.
+    pub smart_web_confirm: bool,
 }
 
 impl Default for Settings {
@@ -128,6 +132,7 @@ impl Default for Settings {
             web_search_provider: "duckduckgo".into(),
             web_search_keys: BTreeMap::new(),
             onboarding_done: false,
+            smart_web_confirm: true,
         }
     }
 }

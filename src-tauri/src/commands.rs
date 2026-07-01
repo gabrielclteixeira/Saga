@@ -61,6 +61,8 @@ pub struct AppState {
     /// Esclarecimentos pendentes (id → (canal, modelo)); `None` = saltou, `Some(answers)` = respondeu.
     /// O modelo é guardado para o `respond_clarify` afinar o viés adaptativo desse modelo.
     pub pending_clarify: tokio::sync::Mutex<HashMap<u64, (oneshot::Sender<Option<Vec<String>>>, String)>>,
+    /// Confirmações de pesquisa pendentes (Smart Saga: id → canal). `true` = pesquisa este turno.
+    pub pending_search: tokio::sync::Mutex<HashMap<u64, oneshot::Sender<bool>>>,
     /// Gerações em curso (conversation_id → canal de cancelamento). O botão "Parar" dispara-o e a
     /// geração termina cooperativamente, preservando o texto já produzido.
     pub cancels: Mutex<HashMap<i64, oneshot::Sender<()>>>,
@@ -88,6 +90,7 @@ impl AppState {
             approval_seq: AtomicU64::new(0),
             pending_plans: tokio::sync::Mutex::new(HashMap::new()),
             pending_clarify: tokio::sync::Mutex::new(HashMap::new()),
+            pending_search: tokio::sync::Mutex::new(HashMap::new()),
             cancels: Mutex::new(HashMap::new()),
             project_watchers: Mutex::new(HashMap::new()),
             local_gen: tokio::sync::Mutex::new(()),
@@ -145,6 +148,13 @@ pub enum StreamEvent {
     Clarify {
         id: u64,
         questions: Vec<String>,
+    },
+    /// Smart Saga (chat normal, fora do Plan mode): o pedido parece precisar de dados atuais e o
+    /// turno ainda não tem acesso à web — pergunta antes de pesquisar. A UI responde com
+    /// `respond_search_confirm`.
+    SearchConfirm {
+        id: u64,
+        hint: String,
     },
     /// Plano rascunhado, à espera de aprovação/edição do utilizador (Plan mode).
     Plan {
@@ -1223,6 +1233,19 @@ pub async fn respond_clarify(
     Ok(())
 }
 
+/// Resposta ao cartão do Smart Saga (chat normal): `search=true` → pesquisa este turno.
+#[tauri::command]
+pub async fn respond_search_confirm(
+    state: State<'_, AppState>,
+    id: u64,
+    search: bool,
+) -> Result<(), String> {
+    if let Some(tx) = state.pending_search.lock().await.remove(&id) {
+        let _ = tx.send(search);
+    }
+    Ok(())
+}
+
 // ---- Arranque com o sistema (autostart) ----
 
 /// Está a app configurada para arrancar com o sistema?
@@ -1738,7 +1761,10 @@ pub async fn send_message_stream(
     model_override: Option<String>,
     regenerate: bool,
     think_level: String,
-    research: bool,
+    // Smart Saga (não-Plan-mode) pode virar `true` a meio da função, se o utilizador aceitar o
+    // cartão de confirmação — o resto do código já condicionado a `research` aplica-se então só
+    // a este turno, sem precisar de passagem de estado nova.
+    mut research: bool,
     subagents: bool,
     plan: bool,
 ) -> Result<(), String> {
@@ -2110,6 +2136,66 @@ pub async fn send_message_stream(
                         &prepared.full_messages,
                         &format!("Esclarecimentos que dei:\n{qa}"),
                     );
+                }
+            }
+        }
+    }
+    // Smart Saga (chat normal, fora do Plan mode): o pedido parece precisar de dados atuais e
+    // este turno ainda não tem acesso à web? Pergunta antes de decidir sozinho — nunca pesquisa
+    // às escondas nem responde de cabeça algo que pode estar desatualizado. Detetor determinístico
+    // e fail-CLOSED (`needs_web_confirm`): mesma filosofia do `wants_web` já usado no resto do
+    // clarify.rs — nunca julgamento do próprio modelo (ver histórico do `needs_web_check` removido
+    // do Plan mode por não ser fiável).
+    if !regenerate
+        && !forced_workflow
+        && !latest_user_has_image
+        && settings.smart_web_confirm
+        && !research
+    {
+        let capable = match prepared.route {
+            router::Route::Local => !local_openai,
+            router::Route::Claude => !cloud_openai,
+        };
+        if capable {
+            let task = messages
+                .iter()
+                .rev()
+                .find(|m| m.role == "user")
+                .map(|m| m.content.trim().to_string())
+                .unwrap_or_default();
+            if let Some(signal) = crate::clarify::needs_web_confirm(&task) {
+                // Já tem acesso à web este turno por outra via → perguntar seria só fricção.
+                let already_has_web = settings.local_web_search
+                    || project_root.is_some()
+                    || (prepared.route == router::Route::Claude
+                        && settings.claude_mode == "api"
+                        && (settings.enable_browser_tools
+                            || settings
+                                .mcp_servers
+                                .iter()
+                                .any(|s| s.enabled && !s.name.trim().is_empty())
+                            || {
+                                let idx = crate::workspace::index(&settings.workspace_dir)
+                                    .active(topic_name.as_deref());
+                                !idx.skills.is_empty() || !idx.playbooks.is_empty()
+                            }));
+                if !already_has_web {
+                    let id = state.approval_seq.fetch_add(1, Ordering::Relaxed) + 1;
+                    let (txo, rxo) = oneshot::channel();
+                    state.pending_search.lock().await.insert(id, txo);
+                    let hint = format!(
+                        "Isto parece precisar de dados atuais (\"{signal}\") — queres que eu pesquise na web antes de responder?"
+                    );
+                    let _ = channel.send(StreamEvent::SearchConfirm { id, hint });
+                    if rxo.await.unwrap_or(false) {
+                        research = true;
+                    } else {
+                        prepared.full_messages = crate::planner::with_instruction(
+                            &prepared.full_messages,
+                            "Não tens acesso à web neste turno. Se a resposta depender de dados \
+atuais de que não tens a certeza, di-lo claramente em vez de arriscar um palpite desatualizado.",
+                        );
+                    }
                 }
             }
         }
