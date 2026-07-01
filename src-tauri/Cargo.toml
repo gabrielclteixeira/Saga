@@ -1,6 +1,6 @@
 [package]
 name = "saga"
-version = "0.9.2"
+version = "0.10.0"
 description = "Saga — assistente desktop local-first (Ollama) com escalonamento opcional para o Claude"
 authors = ["Gabriel Teixeira <gabrielcalaca@hotmail.com>"]
 license = "MIT"
