@@ -101,22 +101,39 @@ fn walk(dir: &Path, prefix: &str, out: &mut String, count: &mut usize, max: usiz
     }
 }
 
+/// Tamanho legível (B / KB / MB) — para o modelo aferir se o ficheiro cabe no contexto.
+fn human_bytes(n: usize) -> String {
+    if n < 1024 {
+        format!("{n} B")
+    } else if n < 1024 * 1024 {
+        format!("{:.1} KB", n as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", n as f64 / (1024.0 * 1024.0))
+    }
+}
+
 /// Lê um ficheiro de texto dentro da pasta (com limite). Binários extraem-se via `extract`.
+/// Prefixa um cabeçalho com o tamanho (linhas · bytes) para o modelo decidir se cabe no contexto
+/// antes de o reescrever com project_edit.
 pub fn read_file(root: &str, rel: &str) -> Result<String, String> {
     let path = resolve_in_root(root, rel).ok_or_else(|| {
         format!("caminho fora da pasta do projeto ou inválido: {rel}")
     })?;
     let bytes = std::fs::read(&path).map_err(|e| format!("não foi possível ler {rel}: {e}"))?;
+    let size = human_bytes(bytes.len());
     // Texto direto; se não for UTF-8 válido, tenta extrair (pdf/docx/xlsx) pelo nome.
     if let Ok(s) = std::str::from_utf8(&bytes) {
-        let mut s = s.to_string();
-        if s.len() > MAX_READ_BYTES {
-            s.truncate(MAX_READ_BYTES);
-            s.push_str("\n… (truncado)");
+        let lines = s.lines().count();
+        let header = format!("[{rel} · {lines} linhas · {size}]\n\n");
+        let mut body = s.to_string();
+        if body.len() > MAX_READ_BYTES {
+            body.truncate(MAX_READ_BYTES);
+            body.push_str("\n… (truncado — ficheiro grande; edita só o necessário)");
         }
-        Ok(s)
+        Ok(format!("{header}{body}"))
     } else {
-        Ok(crate::extract::extract(rel, &bytes))
+        let text = crate::extract::extract(rel, &bytes);
+        Ok(format!("[{rel} · {size} · binário/extraído]\n\n{text}"))
     }
 }
 

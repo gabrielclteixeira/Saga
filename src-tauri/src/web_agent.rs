@@ -138,6 +138,9 @@ where
             sys.push_str(
                 " Podes editar/criar/apagar com project_edit/project_create/project_delete (cada ação é confirmada pelo utilizador). Usa caminhos relativos à raiz.",
             );
+            sys.push_str(
+                " REGRA ABSOLUTA: antes de project_edit (que substitui o ficheiro INTEIRO), lê SEMPRE o ficheiro primeiro com project_read — sem o ler, perdes o conteúdo que lá está. O project_read indica no topo o tamanho (linhas · bytes); se for grande demais para caber no teu contexto, não o reescrevas às cegas — edita só o necessário ou avisa o utilizador.",
+            );
         }
         sys.push_str(
             " Quando te pedirem para criar/editar/apagar um ficheiro, USA estas ferramentas — não mandes copiar/colar nem digas que não tens acesso ao disco.",
@@ -300,7 +303,7 @@ do motor em Modelos → Avançado. Não inventes resultados."
                         // project_create é só para ficheiros novos: se já existe, instrui a usar
                         // project_edit em vez de sobrescrever às escondidas (evita o "copia à mão").
                         (Some(p), _) if name == "project_create" && project::file_exists(&p.root, &path) => {
-                            format!("o ficheiro '{path}' já existe — usa project_edit para substituir o conteúdo (project_create é só para ficheiros novos)")
+                            format!("o ficheiro '{path}' já existe — lê-o primeiro com project_read e depois usa project_edit para substituir o conteúdo (project_create é só para ficheiros novos)")
                         }
                         (Some(p), Some(g)) if p.writable => {
                             // Escrita confirmada pelo mesmo gate da rota Claude (ask + action_log).

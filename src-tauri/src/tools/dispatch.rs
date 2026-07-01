@@ -426,7 +426,7 @@ impl ToolHost for Dispatcher<'_> {
             );
             if p.writable {
                 s.push_str(
-                    " Podes editar/criar/apagar com project_edit/project_create/project_delete (cada ação é confirmada pelo utilizador). Usa caminhos relativos à raiz. project_create é só para ficheiros novos — se já existir, usa project_edit. Quando te pedirem para criar/editar um ficheiro, USA estas ferramentas — não mandes copiar/colar nem digas que não tens acesso ao disco.",
+                    " Podes editar/criar/apagar com project_edit/project_create/project_delete (cada ação é confirmada pelo utilizador). Usa caminhos relativos à raiz. project_create é só para ficheiros novos — se já existir, usa project_edit. REGRA ABSOLUTA: antes de project_edit (substitui o ficheiro INTEIRO), lê SEMPRE o ficheiro primeiro com project_read — o cabeçalho indica o tamanho (linhas · bytes); se for grande demais para o teu contexto, edita só o necessário em vez de reescrever às cegas. Quando te pedirem para criar/editar um ficheiro, USA estas ferramentas — não mandes copiar/colar nem digas que não tens acesso ao disco.",
                 );
             }
             s.push('\n');
@@ -447,7 +447,7 @@ impl ToolHost for Dispatcher<'_> {
                 let path = params.get("path").and_then(|x| x.as_str()).unwrap_or("");
                 if crate::tools::project::file_exists(&p.root, path) {
                     return Ok(format!(
-                        "o ficheiro '{path}' já existe — usa project_edit para substituir o conteúdo (project_create é só para ficheiros novos)"
+                        "o ficheiro '{path}' já existe — lê-o primeiro com project_read e depois usa project_edit para substituir o conteúdo (project_create é só para ficheiros novos)"
                     ));
                 }
             }
