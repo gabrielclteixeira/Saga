@@ -1507,6 +1507,17 @@ mark.find-current {
 .msg-actions .model-pick {
   padding: 5px 8px;
 }
+.escalate-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--accent);
+}
+.escalate-hint button {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 /* Editar a própria mensagem (aparece ao passar o rato) */
 .msg.user .user-actions {
   visibility: hidden;

@@ -1268,7 +1268,7 @@ function renderMessagesInner() {
     // Barra de ações: só na última resposta do assistente e fora de streaming.
     const isLast = index === state.items.length - 1;
     if (item.role === "assistant" && isLast && !state.busy && !item.error) {
-      row.appendChild(buildActions());
+      row.appendChild(buildActions(item, index));
     }
 
     // Editar a própria mensagem.
@@ -1470,7 +1470,24 @@ function buildCompactDivider(count: number): HTMLDetailsElement {
   return det;
 }
 
-function buildActions(): HTMLDivElement {
+/** Deteção barata e determinística (mesmo espírito do clarify::specificity no backend, nunca um
+ * julgamento do modelo): a mensagem do utilizador pede claramente para criar/editar um ficheiro, mas
+ * nenhum step deste turno gravou nada. Falha para o lado seguro — na dúvida, não sinaliza nada. */
+function looksLikeUnfulfilledFileRequest(userText: string, steps: string[] | undefined): boolean {
+  if (!userText.trim()) return false;
+  const wroteFile = (steps || []).some(
+    (s) => s.startsWith("project_create") || s.startsWith("project_edit") || s.startsWith("project_save_file")
+  );
+  if (wroteFile) return false;
+  const lower = userText.toLowerCase();
+  const verb =
+    /\b(cria|criar|edita|editar|grava|gravar|guarda|guardar|atualiza|atualizar|create|save|write|update)\b/;
+  const noun = /\b(ficheiro|arquivo|pasta|projeto|file)\b/;
+  const ext = /\.[a-z]{1,5}\b/;
+  return verb.test(lower) && (noun.test(lower) || ext.test(lower));
+}
+
+function buildActions(item: Item, index: number): HTMLDivElement {
   const actions = document.createElement("div");
   actions.className = "msg-actions";
 
@@ -1526,6 +1543,23 @@ function buildActions(): HTMLDivElement {
       else regenerate({ routeOverride: "claude", modelOverride: v });
     });
     actions.appendChild(sel);
+  }
+
+  // Sugestão de escalar: pediste um ficheiro na rota local e nada foi gravado neste turno.
+  if (item.meta?.route === "local" && cloudEnabled()) {
+    const conv = state.conversations.find((c) => c.id === state.currentConversationId);
+    const tp = conv?.topic_id != null ? state.topics.find((t) => t.id === conv.topic_id) : null;
+    const prevUser = [...state.items].slice(0, index).reverse().find((m) => m.role === "user");
+    if (tp?.folder_path.trim() && prevUser && looksLikeUnfulfilledFileRequest(prevUser.content, item.steps)) {
+      const hint = document.createElement("div");
+      hint.className = "escalate-hint";
+      hint.innerHTML = `<span>${escapeHtml(t("Pedido de ficheiro sem gravação"))}</span>`;
+      const btn = mk("escalate", t("Tentar pela rota Claude"), t("Escalar esta resposta para o Claude"), () =>
+        regenerate({ routeOverride: "claude" })
+      );
+      hint.appendChild(btn);
+      actions.appendChild(hint);
+    }
   }
 
   return actions;

@@ -102,11 +102,12 @@ const EN: Record<string, string> = {
   "Escolher pasta…": "Choose folder…",
   "Remover pasta": "Remove folder",
   "Acesso aos ficheiros": "File access",
-  "Leitura (o agente lê a pasta)": "Read (the agent reads the folder)",
-  "Edição confirmada (pede aprovação para gravar)":
-    "Confirmed edits (asks before writing)",
-  "Anexar uma pasta dá a árvore ao contexto; ler/editar ficheiros corre no modelo local (Ollama) ou no Claude (modo API), com confirmação de cada gravação.":
-    "Attaching a folder adds the file tree to the context; reading/editing files runs on the local model (Ollama) or on Claude (API mode), confirming every write.",
+  "Leitura (o agente só lê a pasta — sem escrever nada)":
+    "Read (the agent only reads the folder — no writes at all)",
+  "Edição confirmada (o agente pode gravar, com aprovação)":
+    "Confirmed edits (the agent can save, with approval)",
+  "Anexar uma pasta dá a árvore ao contexto. Em 'Leitura' o agente não escreve ficheiros de todo (mas continuas a poder guardar manualmente, ex. num artefacto). Em 'Edição confirmada' o modelo local (Ollama) ou o Claude (modo API) também podem criar/editar, sempre com confirmação de cada gravação.":
+    "Attaching a folder adds the file tree to the context. In 'Read' the agent never writes files (but you can still save manually, e.g. from an artifact). In 'Confirmed edits' the local model (Ollama) or Claude (API mode) can also create/edit, always confirming every write.",
   "Projeto: ": "Project: ",
   "Escreve uma mensagem…": "Type a message…",
   "Enviar": "Send",
@@ -127,6 +128,8 @@ const EN: Record<string, string> = {
   "confiança": "confidence",
   "Regenerar": "Regenerate",
   "Perguntar ao Claude": "Ask Claude",
+  "Pedido de ficheiro sem gravação": "File request wasn't saved",
+  "Tentar pela rota Claude": "Try via the Claude route",
   "Relatório": "Report",
   "Fontes ({n})": "Sources ({n})",
   "raciocínio": "reasoning",
