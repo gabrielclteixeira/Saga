@@ -2459,6 +2459,14 @@ dialog::backdrop {
 .settings .row input {
   flex: 1;
 }
+.model-pick-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.model-pick-row select {
+  flex: 1;
+}
 .pull-status {
   font-size: 12px;
   color: var(--muted);

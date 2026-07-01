@@ -1,6 +1,7 @@
 mod accounting;
 mod agent;
 mod clarify;
+mod claude_cli_models;
 mod commands;
 mod deep_research;
 mod extract;
@@ -195,6 +196,8 @@ pub fn run() {
             commands::log_frontend,
             commands::log_dir,
             commands::open_logs,
+            commands::claude_cli_models_scratch_dir,
+            commands::refresh_claude_cli_models,
             commands::extract_file_text,
             commands::attachment_from_path,
             commands::warm_model,

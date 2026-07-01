@@ -152,6 +152,12 @@ export interface Diagnostics {
   claude_detail: string;
 }
 
+export interface ClaudeCliModelsResult {
+  models: string[];
+  raw: string;
+  scratch_dir: string;
+}
+
 export interface Accounting {
   local_requests: number;
   claude_requests: number;
@@ -282,6 +288,8 @@ export const api = {
   optimizeOllama: () => invoke<void>("optimize_ollama"),
   revertOllama: () => invoke<void>("revert_ollama_opt"),
   openLogs: () => invoke<void>("open_logs"),
+  claudeCliModelsScratchDir: () => invoke<string>("claude_cli_models_scratch_dir"),
+  refreshClaudeCliModels: () => invoke<ClaudeCliModelsResult>("refresh_claude_cli_models"),
   resetAccounting: () => invoke<Accounting>("reset_accounting"),
   getMemoryPreview: () => invoke<string>("get_memory_preview"),
   diagnostics: () => invoke<Diagnostics>("diagnostics"),

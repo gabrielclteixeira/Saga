@@ -232,6 +232,16 @@ const EN: Record<string, string> = {
   "Opus 4.8 — topo": "Opus 4.8 — top tier",
   "Fable 5 — mais capaz": "Fable 5 — most capable",
   "Personalizado…": "Custom…",
+  "Descobrir modelos pela CLI (corre o claude num terminal oculto)":
+    "Discover models via the CLI (runs claude in a hidden terminal)",
+  "Descobre os modelos correndo a tua sessão da CLI (subscrição). 1.ª vez: corre `claude` num terminal normal na pasta {p} e aceita o diálogo de confiança — o Saga nunca responde a esse diálogo por ti.":
+    "Discovers models by running your CLI (subscription) session. First time: run `claude` in a regular terminal in the {p} folder and accept the trust dialog — Saga never answers that dialog for you.",
+  "A correr o Claude CLI para descobrir modelos… (até 20s)":
+    "Running the Claude CLI to discover models… (up to 20s)",
+  "Encontrado(s): {m} — confirma o ID exato antes de usar (o menu da CLI pode mostrar nomes amigáveis, não o ID da API); cola o valor certo em \"Personalizado…\".":
+    "Found: {m} — confirm the exact ID before using it (the CLI menu may show friendly names, not the API ID); paste the right value into \"Custom…\".",
+  "Não consegui reconhecer modelos na resposta. Saída bruta nos logs do Saga (Definições → Diagnóstico → Abrir logs).":
+    "Couldn't recognize any models in the response. Raw output is in Saga's logs (Settings → Diagnostics → Open logs).",
   "Modelo (ID personalizado)": "Model (custom ID)",
   "Modelo (ID)": "Model (ID)",
   "Caminho da CLI": "CLI path",

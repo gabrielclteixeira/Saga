@@ -1111,6 +1111,46 @@ pub fn open_logs(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+#[derive(Serialize)]
+pub struct ClaudeCliModelsResult {
+    models: Vec<String>,
+    raw: String,
+    scratch_dir: String,
+}
+
+/// A pasta "scratch" onde o refresh de modelos corre a CLI — mostrada nas Definições para o
+/// utilizador a confiar manualmente uma vez (correr `claude` aí num terminal e aceitar o
+/// diálogo de confiança). Nunca automatizamos essa aceitação.
+#[tauri::command]
+pub fn claude_cli_models_scratch_dir(app: tauri::AppHandle) -> Result<String, String> {
+    crate::claude_cli_models::scratch_dir(&app)
+        .map(|p| p.to_string_lossy().to_string())
+        .map_err(|e| e.to_string())
+}
+
+/// Descobre os modelos disponíveis correndo a Claude CLI interativa num PTY, navegando até
+/// `/model` e fazendo parsing best-effort do menu — só faz sentido na rota CLI/subscrição, onde
+/// não existe um endpoint de listagem (ver claude_cli_models.rs). Sempre devolve o texto bruto
+/// capturado, mesmo quando o parsing não encontra nada, para se poder depurar sem adivinhar.
+#[tauri::command]
+pub async fn refresh_claude_cli_models(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ClaudeCliModelsResult, String> {
+    let cli_path = state.settings.lock().unwrap().claude_cli_path.clone();
+    let scratch = crate::claude_cli_models::scratch_dir(&app).map_err(|e| e.to_string())?;
+    let scratch_str = scratch.to_string_lossy().to_string();
+    tauri::async_runtime::spawn_blocking(move || crate::claude_cli_models::discover(&cli_path, &scratch))
+        .await
+        .map_err(|e| format!("falha a correr a descoberta: {e}"))?
+        .map(|d| ClaudeCliModelsResult {
+            models: d.models,
+            raw: d.raw,
+            scratch_dir: scratch_str,
+        })
+        .map_err(|e| e.to_string())
+}
+
 /// Extrai texto de um documento anexado (PDF/Word/Excel/texto) a partir dos bytes
 /// em base64. Corre em blocking pois a extração (PDF/zip) é CPU-bound e síncrona.
 #[tauri::command]

@@ -19,6 +19,7 @@ import {
   type Attachment,
   type ChatMessage,
   type ChatResponse,
+  type ClaudeCliModelsResult,
   type ConversationMeta,
   type Diagnostics,
   type DistillProposal,
@@ -555,14 +556,18 @@ app.innerHTML = `
             </select>
           </label>
           <label>${t("Modelo")}
-            <select id="hub-claude-preset">
-              <option value="claude-haiku-4-5-20251001">${t("Haiku 4.5 — rápido e barato")}</option>
-              <option value="claude-sonnet-4-6">${t("Sonnet 4.6 — equilíbrio")}</option>
-              <option value="claude-opus-4-8">${t("Opus 4.8 — topo")}</option>
-              <option value="claude-fable-5">${t("Fable 5 — mais capaz")}</option>
-              <option value="__custom__">${t("Personalizado…")}</option>
-            </select>
+            <div class="model-pick-row">
+              <select id="hub-claude-preset">
+                <option value="claude-haiku-4-5-20251001">${t("Haiku 4.5 — rápido e barato")}</option>
+                <option value="claude-sonnet-4-6">${t("Sonnet 4.6 — equilíbrio")}</option>
+                <option value="claude-opus-4-8">${t("Opus 4.8 — topo")}</option>
+                <option value="claude-fable-5">${t("Fable 5 — mais capaz")}</option>
+                <option value="__custom__">${t("Personalizado…")}</option>
+              </select>
+              <button type="button" class="ghost" id="hub-claude-refresh-models" title="${t("Descobrir modelos pela CLI (corre o claude num terminal oculto)")}" hidden>${icon("refresh")}</button>
+            </div>
           </label>
+          <p class="wiz-hint" id="hub-claude-refresh-hint" hidden></p>
           <label id="hub-claude-custom-wrap" hidden>${t("Modelo (ID)")} <input id="hub-claude-model" type="text" /></label>
           <label>${t("Caminho da CLI")} <input id="hub-claude-cli" type="text" /></label>
           <label>${t("API key")} <input id="hub-claude-key" type="password" /></label>
@@ -5641,6 +5646,60 @@ function applyHubProviderFields() {
   if (lp === "openai") void renderLmInstalled(); // lista de descarregados do LM Studio
   document.querySelector("#hub-claude-fields")!.toggleAttribute("hidden", cp !== "claude");
   document.querySelector("#hub-openai-cloud-fields")!.toggleAttribute("hidden", cp !== "openai");
+  // Descobrir modelos pela CLI só faz sentido em modo CLI/subscrição (a API tem chave própria).
+  const isClaudeCli = cp === "claude" && hubSel("#hub-claude-mode").value === "cli";
+  document.querySelector("#hub-claude-refresh-models")!.toggleAttribute("hidden", !isClaudeCli);
+  const hint = document.querySelector<HTMLElement>("#hub-claude-refresh-hint")!;
+  if (isClaudeCli) {
+    hint.hidden = false;
+    void primeClaudeRefreshHint();
+  } else {
+    hint.hidden = true;
+  }
+}
+
+/** Mostra a pasta scratch (para o utilizador a confiar manualmente uma vez) antes do 1.º refresh. */
+let claudeScratchDirCache: string | null = null;
+async function primeClaudeRefreshHint() {
+  const hint = document.querySelector<HTMLElement>("#hub-claude-refresh-hint")!;
+  if (hint.dataset.state === "result" || hint.dataset.state === "busy") return; // não pisar um resultado/estado em curso
+  try {
+    if (!claudeScratchDirCache) claudeScratchDirCache = await api.claudeCliModelsScratchDir();
+    hint.textContent = t(
+      "Descobre os modelos correndo a tua sessão da CLI (subscrição). 1.ª vez: corre `claude` num terminal normal na pasta {p} e aceita o diálogo de confiança — o Saga nunca responde a esse diálogo por ti.",
+      { p: claudeScratchDirCache }
+    );
+  } catch {
+    hint.textContent = "";
+  }
+}
+
+async function refreshClaudeCliModels() {
+  const btn = document.querySelector<HTMLButtonElement>("#hub-claude-refresh-models")!;
+  const hint = document.querySelector<HTMLElement>("#hub-claude-refresh-hint")!;
+  btn.disabled = true;
+  hint.dataset.state = "busy";
+  hint.textContent = t("A correr o Claude CLI para descobrir modelos… (até 20s)");
+  try {
+    const r: ClaudeCliModelsResult = await api.refreshClaudeCliModels();
+    hint.dataset.state = "result";
+    if (r.models.length) {
+      hint.textContent = t(
+        "Encontrado(s): {m} — confirma o ID exato antes de usar (o menu da CLI pode mostrar nomes amigáveis, não o ID da API); cola o valor certo em \"Personalizado…\".",
+        { m: r.models.join(", ") }
+      );
+    } else {
+      hint.textContent = t(
+        "Não consegui reconhecer modelos na resposta. Saída bruta nos logs do Saga (Definições → Diagnóstico → Abrir logs)."
+      );
+      void api.logFrontend("warn", `[claude-cli-models] saída não reconhecida:\n${r.raw}`);
+    }
+  } catch (e) {
+    hint.dataset.state = "result";
+    hint.textContent = String(e);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function saveModelsSettings(patch: Partial<Settings>) {
@@ -6230,6 +6289,10 @@ function wireWorkspaceUi() {
   document.querySelector("#hub-close")!.addEventListener("click", () => showView(null));
   document.querySelector("#hub-local-provider")!.addEventListener("change", applyHubProviderFields);
   document.querySelector("#hub-cloud-provider")!.addEventListener("change", applyHubProviderFields);
+  document.querySelector("#hub-claude-mode")!.addEventListener("change", applyHubProviderFields);
+  document
+    .querySelector("#hub-claude-refresh-models")!
+    .addEventListener("click", () => void refreshClaudeCliModels());
   document.querySelector("#hub-web-provider")!.addEventListener("change", () => applyWebProviderUi(true));
   document.querySelector("#hub-claude-preset")!.addEventListener("change", () => {
     const v = hubSel("#hub-claude-preset").value;
