@@ -139,11 +139,38 @@ git tag v0.2.3 && git push origin v0.2.3
 When the run is green, **publish the draft** from the Releases page — don't "create a new release" from the
 tag, or you get an empty one without the installers.
 
-Installers are currently **unsigned** (Windows SmartScreen / macOS Gatekeeper will warn — "More info → Run
-anyway" / right-click → Open). To sign and re-enable **in-app auto-update**: set
-`bundle.createUpdaterArtifacts: true`, generate an updater key (`npx @tauri-apps/cli signer generate`), put
-the public key in `tauri.conf.json` → `plugins.updater.pubkey`, and add the `TAURI_SIGNING_PRIVATE_KEY` /
-`_PASSWORD` CI secrets. For full code signing, add OS certs (Windows OV/EV; Apple Developer + notarization).
+### Auto-update artifact signing (done)
+
+Release artifacts are signed with a minisign-style keypair so the in-app updater can verify `latest.json`
+and the `.sig` files: set `bundle.createUpdaterArtifacts: true`, generate a key
+(`npx @tauri-apps/cli signer generate`), put the public key in `tauri.conf.json` →
+`plugins.updater.pubkey`, and add the `TAURI_SIGNING_PRIVATE_KEY` / `_PASSWORD` CI secrets. This is
+unrelated to OS trust and does **not** stop SmartScreen/Gatekeeper warnings — see below for that.
+
+### OS-level code signing (not yet active — needs external credentials)
+
+Installers (`.exe`/`.msi`, `.dmg`/`.app`) are currently **unsigned at the OS level** — Windows SmartScreen /
+macOS Gatekeeper will warn ("More info → Run anyway" / right-click → Open). The release workflow already
+passes through the required secrets and safely no-ops while they're unset — nothing to fix in code, only
+credentials to go acquire:
+
+**Windows (Authenticode)** — pick one, and verify current pricing/eligibility yourself, this changes:
+- *Azure Trusted/Artifact Signing* (recommended — cloud HSM, no physical token, works on GitHub-hosted
+  runners): create an Artifact Signing Account + certificate profile in Azure, add `AZURE_CLIENT_ID` /
+  `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID` CI secrets, add a step installing `trusted-signing-cli`, then
+  set `bundle.windows.signCommand` in `tauri.conf.json` to invoke it.
+- *Traditional OV/EV `.pfx` certificate*: realistically only works for OV certs bought before June 2023 —
+  CA/Browser Forum rules since then require the key on an HSM, which usually can't export to a portable
+  `.pfx`. If you have one anyway, add `WINDOWS_CERTIFICATE` / `WINDOWS_CERTIFICATE_PASSWORD` CI secrets and
+  set `bundle.windows.certificateThumbprint` / `digestAlgorithm` / `timestampUrl` in `tauri.conf.json`.
+
+**macOS (Developer ID + notarization)**:
+1. Enrol in the Apple Developer Program (~$99/yr) and create a *Developer ID Application* certificate.
+2. Add `APPLE_CERTIFICATE` (base64-encoded `.p12`) and `APPLE_CERTIFICATE_PASSWORD` CI secrets —
+   `tauri-action` imports these into a temporary CI keychain automatically, no extra workflow step needed.
+3. Add `APPLE_ID` / `APPLE_PASSWORD` (an app-specific password) / `APPLE_TEAM_ID` for notarization.
+4. No further `tauri.conf.json` changes needed — hardened runtime is already on
+   (`bundle.macOS.hardenedRuntime`), and Saga's capabilities don't require special entitlements.
 
 ## Identity
 
@@ -271,9 +298,10 @@ model to admit uncertainty instead of guessing — never a silent search, never 
 - **Zero-setup distribution** — bundle/auto-install Ollama as a managed sidecar (auto-pull a small default
   model on first run), package the Playwright sidecar (`externalBin`) so the browser tool needs no manual
   install. Goal: double-click the installer and it just works.
-- **Code-sign & notarize installers** *(current focus)* — the updater is signed and auto-update is live; still
-  pending is OS-level **code-signing + notarization** (Apple Developer ID / Windows Authenticode) to drop the
-  "unknown publisher" warnings.
+- **Code-sign & notarize installers** — the release workflow now passes through the Windows/Azure and Apple
+  signing secrets and no-ops safely while they're unset (see README "Releasing"); still pending is actually
+  **acquiring** a Windows signing method (Azure Trusted Signing recommended) and an Apple Developer ID
+  certificate + notarization credentials to drop the "unknown publisher" warnings.
 - **Projects — auto mode & rollback** — Projects now cover all three routes (Claude API, Claude
   CLI, local Ollama), with a live file explorer and an audit trail. The remaining piece is an **auto** permission
   mode: after you **approve a plan**, the agent runs the file edits unattended to the end (extending Plan mode's

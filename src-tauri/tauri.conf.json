@@ -38,6 +38,9 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    },
+    "macOS": {
+      "hardenedRuntime": true
     }
   },
   "plugins": {

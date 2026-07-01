@@ -66,13 +66,29 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Auto-update signing (gera latest.json + assina os artefactos).
+          # Auto-update signing (gera latest.json + assina os artefactos). Já ativo.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Code signing — Windows (preencher os secrets para assinar o instalador):
-          # WINDOWS_CERTIFICATE / WINDOWS_CERTIFICATE_PASSWORD (ver tauri.conf bundle.windows)
-          # macOS notarização:
-          # APPLE_CERTIFICATE / APPLE_CERTIFICATE_PASSWORD / APPLE_SIGNING_IDENTITY / APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID
+          # --- Code-signing OS-level (instalador em si) — ver README "Releasing" ---
+          # Windows Authenticode: passivo até bundle.windows.certificateThumbprint OU
+          # bundle.windows.signCommand existir em tauri.conf.json (ainda não existe — sem
+          # secrets nem essa chave, esta leg builda exatamente como hoje, sem assinatura).
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          # Só necessário para o caminho Azure Trusted/Artifact Signing (recomendado — sem
+          # token físico, funciona em runners efémeros); requer também um passo a instalar
+          # a trusted-signing-cli e o signCommand em tauri.conf.json, ainda por acrescentar.
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          # macOS: assinatura Developer ID + notarização. Passivo sem APPLE_CERTIFICATE — o
+          # tauri-cli importa o .p12 para um keychain temporário sozinho, sem passo extra.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Saga ${{ github.ref_name }}"
