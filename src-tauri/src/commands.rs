@@ -67,6 +67,12 @@ pub struct AppState {
     /// Watchers de pasta de projeto ativos (topic_id → watcher). Um por diálogo "Ver ficheiros"
     /// aberto; parar/substituir remove a entrada, o que faz o watcher (RAII) parar sozinho.
     pub project_watchers: Mutex<HashMap<i64, notify::RecommendedWatcher>>,
+    /// Serializa gerações na rota LOCAL (Ollama/LM Studio): só uma de cada vez, porque competem
+    /// pela mesma GPU/VRAM — correr duas em paralelo não dá mais débito, só torna as duas mais
+    /// lentas (e pode nem caber em VRAM). O Claude não usa este lock — cada conversa gera livre e
+    /// concorrentemente, já que corre na infraestrutura da Anthropic, não no hardware local. Uma
+    /// 2.ª conversa a pedir geração local espera aqui (fila), sem bloquear o resto da UI.
+    pub local_gen: tokio::sync::Mutex<()>,
 }
 
 impl AppState {
@@ -84,6 +90,7 @@ impl AppState {
             pending_clarify: tokio::sync::Mutex::new(HashMap::new()),
             cancels: Mutex::new(HashMap::new()),
             project_watchers: Mutex::new(HashMap::new()),
+            local_gen: tokio::sync::Mutex::new(()),
         }
     }
 }
@@ -1936,7 +1943,15 @@ pub async fn send_message_stream(
     // termina a geração, preservando o texto já acumulado.
     let (cancel_tx, mut cancel_rx) = oneshot::channel::<()>();
     state.cancels.lock().unwrap().insert(conversation_id, cancel_tx);
-    let gen_fut = async { if plan {
+    let gen_fut = async {
+        // Rota local: só uma geração de cada vez em toda a app (ver AppState.local_gen) — espera
+        // aqui a vez, sem bloquear a UI de outras conversas. Rota Claude nunca espera por isto.
+        let _local_gen_permit = if prepared.route == router::Route::Local {
+            Some(state.local_gen.lock().await)
+        } else {
+            None
+        };
+        if plan {
         // Plan mode: planeia → aprova/edita → executa passo a passo (planner orquestra; 🔎 fundamenta).
         let use_api = prepared.route == router::Route::Claude;
         let plan_gopts = providers::ollama::GenOpts {

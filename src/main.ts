@@ -2849,8 +2849,9 @@ function resetCompaction() {
 }
 
 async function selectConversation(id: number) {
-  // Bloqueia só quando há um cartão à espera de resposta (não durante streaming normal).
-  if (awaitingPrompt) return;
+  // Bloqueia SÓ sair da conversa que tem um cartão à espera de resposta — não impede ires ver
+  // outras conversas enquanto isso não está resolvido.
+  if (state.currentConversationId != null && awaitingPrompt.has(state.currentConversationId)) return;
   closeDrawers(); // ecrã estreito: escolher uma conversa fecha a gaveta da lista
   // Guarda de corrida: cliques rápidos disparam várias cargas; só a última vence.
   const seq = ++selectSeq;
@@ -2861,8 +2862,12 @@ async function selectConversation(id: number) {
   const msgs = await api.getConversation(id);
   if (seq !== selectSeq) return;
   state.items = msgs.map(storedToItem);
-  // Se esta Saga está a gerar agora (em fundo), re-anexa a bolha em curso para se ver ao vivo.
-  if (streamingConvId === id && streamingItem) state.items.push(streamingItem);
+  // Se esta Saga está a gerar agora (em fundo, ou noutra que não a que se estava a ver), re-anexa
+  // a bolha em curso para se ver ao vivo — e sincroniza o botão Enviar/Parar com ESTA conversa
+  // (cada uma tem o seu próprio estado "a gerar", não é mais um `busy` global).
+  const live = streamingItems.get(id);
+  if (live) state.items.push(live);
+  setBusy(streamingItems.has(id));
   try {
     const c = await api.getCompaction(id);
     if (seq !== selectSeq) return;
@@ -3130,12 +3135,16 @@ function warmLocalModel(model?: string, force = false) {
 }
 
 // Troca de Saga: corrida (cliques rápidos) + streaming em fundo.
-// `selectSeq` deixa só o clique mais recente aplicar-se; `streamingConvId`/`streamingItem` permitem
-// continuar a gerar numa Saga enquanto se vê outra (e re-anexar a bolha ao voltar).
+// `selectSeq` deixa só o clique mais recente aplicar-se; `streamingItems` (por conversationId, não
+// só uma) permite gerar em VÁRIAS Sagas ao mesmo tempo enquanto se navega entre elas — Claude não
+// tem limite; o local serializa-se sozinho do lado do backend (só 1 geração local de cada vez,
+// para não competir por VRAM/GPU — ver AppState.local_gen), mas isso não bloqueia a UI: só faz a
+// 2.ª geração local esperar a vez, tal como já esperaria pelo 1.º token.
 let selectSeq = 0;
-let streamingConvId: number | null = null;
-let streamingItem: Item | null = null;
-let awaitingPrompt = false; // há um cartão (plano/esclarecimento/aprovação) à espera de resposta
+const streamingItems = new Map<number, Item>();
+// Conversas com um cartão (plano/esclarecimento/aprovação) por resolver — evita navegar para
+// fora de uma que precisa da tua resposta; não impede olhar para OUTRAS conversas entretanto.
+const awaitingPrompt = new Set<number>();
 
 async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   const conversationId = state.currentConversationId!;
@@ -3181,11 +3190,10 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
   waitStart = Date.now();
   const assistant: Item = { role: "assistant", content: "", report: sendOpts.research };
   state.items.push(assistant);
-  streamingConvId = conversationId;
-  streamingItem = assistant;
+  streamingItems.set(conversationId, assistant);
   // Esta Saga ainda está a ser vista? (permite gerar em fundo enquanto se navega para outra)
   const viewing = () => state.currentConversationId === conversationId;
-  setBusy(true);
+  if (viewing()) setBusy(true); // só mexe no botão/estado global se for a Saga que estás a ver
   renderMessages();
   scrollChatToBottom(); // novo turno (envio/regenerar) = salta para o fim
   startWaitTicker();
@@ -3230,7 +3238,7 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
         // está à vista (re-anexa a bolha) antes de mostrar o cartão, mesmo que se tenha navegado.
         if (evt.kind === "ApprovalRequest" || evt.kind === "Clarify" || evt.kind === "Plan") {
           if (!viewing()) await selectConversation(conversationId);
-          awaitingPrompt = true;
+          awaitingPrompt.add(conversationId);
         }
         if (evt.kind === "Start") {
           start = { route: evt.route, model: evt.model, reason: evt.reason };
@@ -3251,13 +3259,13 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
           if (viewing()) renderMessages();
           paintBubble();
         } else if (evt.kind === "ApprovalRequest") {
-          showApproval(evt.id, evt.tool, evt.preview);
+          showApproval(evt.id, evt.tool, evt.preview, conversationId);
         } else if (evt.kind === "Clarify") {
           stopWaitTicker(); // agora espera-se o utilizador
-          showClarifyCard(evt.id, evt.questions);
+          showClarifyCard(evt.id, evt.questions, conversationId);
         } else if (evt.kind === "Plan") {
           stopWaitTicker(); // agora espera-se o utilizador (não o modelo)
-          showPlanCard(evt.id, evt.steps, assistant, evt.needs_web, evt.research);
+          showPlanCard(evt.id, evt.steps, assistant, evt.needs_web, evt.research, conversationId);
         } else if (evt.kind === "PlanStep") {
           if (assistant.plan?.steps[evt.index]) {
             assistant.plan.steps[evt.index].status =
@@ -3308,18 +3316,17 @@ async function streamAssistant(payload: ChatMessage[], opts: SendOpts) {
       );
     }
   } finally {
-    setBusy(false);
-    stopWaitTicker();
-    if (streamingItem === assistant) {
-      streamingConvId = null;
-      streamingItem = null;
+    if (viewing()) {
+      setBusy(false);
+      stopWaitTicker();
     }
+    if (streamingItems.get(conversationId) === assistant) streamingItems.delete(conversationId);
     // Cancelado antes do 1.º token → bolha vazia sem utilidade: remove-a.
     if (!assistant.content && !assistant.thinking && !assistant.steps?.length && !assistant.error) {
       const i = state.items.indexOf(assistant);
       if (i >= 0) state.items.splice(i, 1);
     }
-    awaitingPrompt = false;
+    awaitingPrompt.delete(conversationId);
     // Breadcrumb: última ação antes de um eventual crash do renderer (render pesado com imagem).
     const hasImg = state.items.some((i) => i.attachments && i.attachments.length);
     void api
@@ -3720,10 +3727,12 @@ function setBusy(b: boolean) {
   els.send.disabled = false;
 }
 
-/** Cancela a geração em curso (botão "Parar"). O backend finaliza com o parcial já gerado. */
+/** Cancela a geração da conversa que ESTÁS A VER (botão "Parar") — nunca a de outra em fundo,
+ * mesmo que tenha começado primeiro. O backend finaliza com o parcial já gerado. */
 function cancelCurrentGeneration() {
-  if (streamingConvId == null) return;
-  void api.cancelGeneration(streamingConvId).catch(() => {});
+  const id = state.currentConversationId;
+  if (id == null || !streamingItems.has(id)) return;
+  void api.cancelGeneration(id).catch(() => {});
   showHint(t("Geração parada."));
 }
 
@@ -4705,7 +4714,7 @@ function showUpdateReady(version: string) {
 }
 
 // ---- Aprovação de ações (modo "ask") ----
-function showApproval(id: number, tool: string, preview: string) {
+function showApproval(id: number, tool: string, preview: string, conversationId: number) {
   const card = document.createElement("div");
   card.className = "approval-card";
   card.innerHTML = `
@@ -4717,7 +4726,7 @@ function showApproval(id: number, tool: string, preview: string) {
       <button type="button" class="primary" data-ok="1">${t("Aprovar")}</button>
     </div>`;
   const done = (ok: boolean) => {
-    awaitingPrompt = false;
+    awaitingPrompt.delete(conversationId);
     api.approveAction(id, ok).catch(() => {});
     card.remove();
   };
@@ -4729,7 +4738,7 @@ function showApproval(id: number, tool: string, preview: string) {
 
 /** Cartão de esclarecimento (Plan mode): perguntas com campos de resposta + Responder/Saltar.
  * Saltar planeia na mesma com o que houver. */
-function showClarifyCard(id: number, questions: string[]) {
+function showClarifyCard(id: number, questions: string[], conversationId: number) {
   const card = document.createElement("div");
   card.className = "approval-card plan-card";
   card.innerHTML = `
@@ -4762,7 +4771,7 @@ function showClarifyCard(id: number, questions: string[]) {
     list.appendChild(row);
   }
   const done = (answered: boolean) => {
-    awaitingPrompt = false;
+    awaitingPrompt.delete(conversationId);
     const answers = inputs.map((i) => i.value.trim());
     api.respondClarify(id, answered, answered ? answers : []).catch(() => {});
     card.remove();
@@ -4784,6 +4793,7 @@ function showPlanCard(
   assistant: Item,
   needsWeb: boolean,
   research: boolean,
+  conversationId: number,
 ) {
   const card = document.createElement("div");
   card.className = "approval-card plan-card";
@@ -4869,7 +4879,7 @@ function showPlanCard(
       // Guarda os passos na mensagem → render da checklist com estado durante a execução.
       assistant.plan = { steps: edited.map((title) => ({ title, status: "pending" })) };
     }
-    awaitingPrompt = false;
+    awaitingPrompt.delete(conversationId);
     api.respondPlan(id, ok, edited, useWeb).catch(() => {});
     card.remove();
     renderMessages();
