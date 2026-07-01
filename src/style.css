@@ -2123,6 +2123,19 @@ mark.find-current {
   border-radius: 8px;
   transition: outline 0.2s;
 }
+/* Escurece tudo à volta da feature em destaque — 4 bandas em torno de um "buraco" recortado no
+   retângulo do alvo, em vez de clip-path/mask (à prova de overflow/stacking dos antepassados). */
+.tour-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 9997;
+  pointer-events: none;
+}
+.tour-scrim > div {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.6);
+  transition: all 0.18s ease-out;
+}
 
 /* Campos de agente no editor de workspace */
 .ws-agent-fields {

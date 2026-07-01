@@ -4757,14 +4757,35 @@ async function finishWizard() {
 }
 
 /** Mini-tour: dicas curtas apontando ao rail, à rota, ao Workspace, às Automações e ao composer. */
+/** Posiciona as 4 bandas do véu à volta do retângulo do alvo (com uma margem), deixando-o visível. */
+function positionTourScrim(scrim: HTMLElement, r: DOMRect, pad = 6) {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const x0 = Math.max(0, r.left - pad);
+  const y0 = Math.max(0, r.top - pad);
+  const x1 = Math.min(vw, r.right + pad);
+  const y1 = Math.min(vh, r.bottom + pad);
+  const [top, bottom, left, right] = Array.from(scrim.children) as HTMLElement[];
+  top.style.cssText = `left:0; top:0; width:${vw}px; height:${y0}px;`;
+  bottom.style.cssText = `left:0; top:${y1}px; width:${vw}px; height:${Math.max(0, vh - y1)}px;`;
+  left.style.cssText = `left:0; top:${y0}px; width:${x0}px; height:${Math.max(0, y1 - y0)}px;`;
+  right.style.cssText = `left:${x1}px; top:${y0}px; width:${Math.max(0, vw - x1)}px; height:${Math.max(0, y1 - y0)}px;`;
+}
+
 function maybeMiniTour(force = false) {
   if (!force && localStorage.getItem("saga.tourDone") === "1") return;
   localStorage.setItem("saga.tourDone", "1");
+  // Véu escuro por trás da feature em destaque — criado uma vez, reposicionado a cada passo.
+  const scrim = document.createElement("div");
+  scrim.className = "tour-scrim";
+  scrim.append(...Array.from({ length: 4 }, () => document.createElement("div")));
+  document.body.appendChild(scrim);
   const tip = (anchorSel: string, text: string, place: "right" | "top") =>
     new Promise<void>((resolve) => {
       const anchor = document.querySelector<HTMLElement>(anchorSel);
       if (!anchor) return resolve();
       const r = anchor.getBoundingClientRect();
+      positionTourScrim(scrim, r);
       const pop = document.createElement("div");
       pop.className = `mini-tour ${place}`;
       pop.innerHTML = `<p>${text}</p><button type="button" class="primary">${t("Percebi")}</button>`;
@@ -4797,6 +4818,7 @@ function maybeMiniTour(force = false) {
       "right"
     );
     await tip("#composer", t("Escreve a tua pergunta aqui. Boa viagem!"), "top");
+    scrim.remove();
   })();
 }
 
