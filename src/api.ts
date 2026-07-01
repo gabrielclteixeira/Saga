@@ -293,6 +293,12 @@ export const api = {
   listProjectFiles: (topicId: number) => invoke<string[]>("list_project_files", { topicId }),
   readProjectFileRaw: (topicId: number, path: string) =>
     invoke<string>("read_project_file_raw", { topicId, path }),
+  startProjectWatch: (topicId: number, onEvent: () => void): Promise<void> => {
+    const channel = new Channel<{ kind: "Changed" }>();
+    channel.onmessage = () => onEvent();
+    return invoke<void>("start_project_watch", { topicId, channel });
+  },
+  stopProjectWatch: (topicId: number) => invoke<void>("stop_project_watch", { topicId }),
   refreshClaudeCliModels: () => invoke<ClaudeCliModelsResult>("refresh_claude_cli_models"),
   resetAccounting: () => invoke<Accounting>("reset_accounting"),
   getMemoryPreview: () => invoke<string>("get_memory_preview"),

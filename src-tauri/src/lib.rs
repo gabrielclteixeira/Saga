@@ -171,6 +171,8 @@ pub fn run() {
             commands::open_project_folder,
             commands::list_project_files,
             commands::read_project_file_raw,
+            commands::start_project_watch,
+            commands::stop_project_watch,
             commands::search_chats,
             commands::get_conversation_accounting,
             commands::truncate_conversation,

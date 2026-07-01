@@ -581,14 +581,19 @@ body.dragging-conv {
   border-radius: 8px;
   padding: 6px;
 }
-.project-files-list button {
-  display: block;
+.project-files-list li {
+  list-style: none;
+}
+.project-file-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   width: 100%;
   text-align: left;
   background: transparent;
   border: none;
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   font: inherit;
   font-size: 12px;
   font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
@@ -596,8 +601,20 @@ body.dragging-conv {
   cursor: pointer;
   word-break: break-all;
 }
-.project-files-list button:hover {
+.project-file-row:hover {
   background: var(--bg-3);
+}
+.project-file-row .ic {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  color: var(--muted);
+}
+.project-file-row.is-dir .ic {
+  transition: transform 0.12s ease;
+}
+.project-file-row.is-dir.expanded .ic {
+  transform: rotate(90deg);
 }
 /* Popover para mover uma conversa para um tópico */
 .topic-menu {

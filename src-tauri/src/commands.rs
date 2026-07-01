@@ -64,6 +64,9 @@ pub struct AppState {
     /// Gerações em curso (conversation_id → canal de cancelamento). O botão "Parar" dispara-o e a
     /// geração termina cooperativamente, preservando o texto já produzido.
     pub cancels: Mutex<HashMap<i64, oneshot::Sender<()>>>,
+    /// Watchers de pasta de projeto ativos (topic_id → watcher). Um por diálogo "Ver ficheiros"
+    /// aberto; parar/substituir remove a entrada, o que faz o watcher (RAII) parar sozinho.
+    pub project_watchers: Mutex<HashMap<i64, notify::RecommendedWatcher>>,
 }
 
 impl AppState {
@@ -80,6 +83,7 @@ impl AppState {
             pending_plans: tokio::sync::Mutex::new(HashMap::new()),
             pending_clarify: tokio::sync::Mutex::new(HashMap::new()),
             cancels: Mutex::new(HashMap::new()),
+            project_watchers: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -671,6 +675,49 @@ pub fn read_project_file_raw(state: State<AppState>, topic_id: i64, path: String
         topic_folder(&conn, topic_id)?
     };
     crate::tools::project::read_file_raw(&folder, &path)
+}
+
+/// Eventos do watcher de pasta de projeto — o payload é só "algo mudou"; o frontend volta a
+/// chamar `list_project_files` para saber o quê (mais simples e robusto do que tentar traduzir
+/// eventos brutos do SO em criações/edições/remoções exatas).
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind")]
+pub enum ProjectWatchEvent {
+    Changed,
+}
+
+/// Começa a vigiar a pasta do projeto (recursivo) e empurra um evento para `channel` de cada vez
+/// que algo muda — para o diálogo "Ver ficheiros" se atualizar sozinho. Substitui um watcher já
+/// ativo para o mesmo tópico (ex.: reabrir o diálogo).
+#[tauri::command]
+pub fn start_project_watch(
+    state: State<AppState>,
+    topic_id: i64,
+    channel: Channel<ProjectWatchEvent>,
+) -> Result<(), String> {
+    let folder = {
+        let conn = state.db.lock().unwrap();
+        topic_folder(&conn, topic_id)?
+    };
+    use notify::Watcher;
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        if res.is_ok() {
+            let _ = channel.send(ProjectWatchEvent::Changed);
+        }
+    })
+    .map_err(|e| e.to_string())?;
+    watcher
+        .watch(std::path::Path::new(&folder), notify::RecursiveMode::Recursive)
+        .map_err(|e| e.to_string())?;
+    state.project_watchers.lock().unwrap().insert(topic_id, watcher);
+    Ok(())
+}
+
+/// Para de vigiar (dropar o watcher já para o SO de o notificar) — chamado quando o diálogo fecha.
+#[tauri::command]
+pub fn stop_project_watch(state: State<AppState>, topic_id: i64) -> Result<(), String> {
+    state.project_watchers.lock().unwrap().remove(&topic_id);
+    Ok(())
 }
 
 #[tauri::command]

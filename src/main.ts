@@ -3948,30 +3948,107 @@ function classifyByExtension(path: string): ArtifactKind {
   return "code";
 }
 
-/** Lista os ficheiros da pasta do projeto do tópico; clicar num abre-o no painel de artefactos. */
-async function openProjectFilesDialog(topic: Topic) {
-  els.projectFilesTitle.textContent = t("Ficheiros do projeto: {p}", { p: topic.folder_path });
-  els.projectFilesList.innerHTML = "";
-  els.projectFilesStatus.textContent = t("A carregar…");
-  if (!els.projectFilesDialog.open) els.projectFilesDialog.showModal();
+interface FileTreeNode {
+  name: string;
+  path: string; // relativo à raiz do projeto, barras normais
+  isDir: boolean;
+  children: FileTreeNode[];
+}
+
+/** Constrói uma árvore a partir dos caminhos relativos "flat" que o backend devolve. */
+function buildFileTree(paths: string[]): FileTreeNode[] {
+  const root: FileTreeNode[] = [];
+  for (const full of paths) {
+    const parts = full.split("/");
+    let level = root;
+    let acc = "";
+    for (let i = 0; i < parts.length; i++) {
+      const name = parts[i];
+      acc = acc ? `${acc}/${name}` : name;
+      const isDir = i < parts.length - 1;
+      let node = level.find((n) => n.name === name && n.isDir === isDir);
+      if (!node) {
+        node = { name, path: acc, isDir, children: [] };
+        level.push(node);
+      }
+      level = node.children;
+    }
+  }
+  const sortRec = (nodes: FileTreeNode[]) => {
+    nodes.sort((a, b) => (a.isDir !== b.isDir ? (a.isDir ? -1 : 1) : a.name.localeCompare(b.name)));
+    for (const n of nodes) if (n.isDir) sortRec(n.children);
+  };
+  sortRec(root);
+  return root;
+}
+
+/** Pastas expandidas na árvore atual — sobrevive a refreshes ao vivo (watcher), só se limpa
+ * quando o diálogo é reaberto de propósito, para não colapsar tudo a cada mudança na pasta. */
+const expandedProjectFolders = new Set<string>();
+
+function renderFileTree(topic: Topic, nodes: FileTreeNode[], container: HTMLElement, depth: number) {
+  for (const node of nodes) {
+    const li = document.createElement("li");
+    li.style.paddingLeft = `${depth * 14}px`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    const expanded = node.isDir && expandedProjectFolders.has(node.path);
+    btn.className = "ghost project-file-row" + (node.isDir ? " is-dir" : "") + (expanded ? " expanded" : "");
+    btn.innerHTML = (node.isDir ? icon("chevron") : icon("doc")) + `<span>${escapeHtml(node.name)}</span>`;
+    if (node.isDir) {
+      btn.addEventListener("click", () => {
+        if (expandedProjectFolders.has(node.path)) expandedProjectFolders.delete(node.path);
+        else expandedProjectFolders.add(node.path);
+        void refreshProjectFilesList(topic);
+      });
+    } else {
+      btn.addEventListener("click", () => void previewProjectFile(topic, node.path));
+    }
+    li.appendChild(btn);
+    container.appendChild(li);
+    if (node.isDir && expanded) renderFileTree(topic, node.children, container, depth + 1);
+  }
+}
+
+/** Relê a pasta e redesenha a árvore — chamado ao abrir o diálogo e sempre que o watcher (ver
+ * openProjectFilesDialog) sinalizar uma mudança na pasta, para o mesmo diálogo se atualizar
+ * sozinho enquanto está aberto. */
+async function refreshProjectFilesList(topic: Topic) {
   try {
     const files = await api.listProjectFiles(topic.id);
     els.projectFilesStatus.textContent = files.length
       ? ""
       : t("Pasta vazia (ou só tem subpastas ignoradas, como node_modules).");
-    for (const path of files) {
-      const li = document.createElement("li");
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "ghost";
-      btn.textContent = path;
-      btn.addEventListener("click", () => void previewProjectFile(topic, path));
-      li.appendChild(btn);
-      els.projectFilesList.appendChild(li);
-    }
+    els.projectFilesList.innerHTML = "";
+    renderFileTree(topic, buildFileTree(files), els.projectFilesList, 0);
   } catch (e) {
     els.projectFilesStatus.textContent = String(e);
   }
+}
+
+/** Tópico do diálogo "Ver ficheiros" atualmente aberto (para o handler do watcher saber a quem
+ * pertence um evento, e para o "close" do diálogo saber que watcher parar). */
+let projectFilesTopic: Topic | null = null;
+
+/** Abre o diálogo com a árvore de ficheiros do projeto e começa a vigiar a pasta em tempo real
+ * (notify — muda algo em disco, o backend empurra um evento, relemos e redesenhamos). */
+async function openProjectFilesDialog(topic: Topic) {
+  projectFilesTopic = topic;
+  expandedProjectFolders.clear();
+  els.projectFilesTitle.textContent = t("Ficheiros do projeto: {p}", { p: topic.folder_path });
+  els.projectFilesList.innerHTML = "";
+  els.projectFilesStatus.textContent = t("A carregar…");
+  if (!els.projectFilesDialog.open) els.projectFilesDialog.showModal();
+  await refreshProjectFilesList(topic);
+
+  let debounce: number | undefined;
+  api
+    .startProjectWatch(topic.id, () => {
+      if (projectFilesTopic?.id !== topic.id) return; // diálogo já fechado ou trocou de tópico
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => void refreshProjectFilesList(topic), 300);
+    })
+    .catch((e) => showHint(String(e)));
 }
 
 /** Lê um ficheiro do projeto e abre-o no painel de artefactos (mesmo visor dos artefactos do chat). */
@@ -6566,6 +6643,14 @@ async function init() {
   document
     .querySelector("#project-files-close")!
     .addEventListener("click", () => els.projectFilesDialog.close());
+  // Seja como for que o diálogo feche (botão, Escape, ou a preview de um ficheiro), pára o
+  // watcher — senão fica a vigiar a pasta para sempre em segundo plano.
+  els.projectFilesDialog.addEventListener("close", () => {
+    if (projectFilesTopic) {
+      api.stopProjectWatch(projectFilesTopic.id).catch(() => {});
+      projectFilesTopic = null;
+    }
+  });
   document.querySelector("#topic-folder-clear")!.addEventListener("click", () => {
     editingFolder = "";
     renderTopicFolder();
